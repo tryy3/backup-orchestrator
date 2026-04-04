@@ -36,6 +36,11 @@ frontend/dist/
 .DS_Store
 Thumbs.db
 
+# Nix / direnv
+.direnv/
+.go/
+result
+
 # Environment
 .env
 .env.local
