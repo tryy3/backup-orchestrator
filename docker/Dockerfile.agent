@@ -1,0 +1,42 @@
+# Stage 1: Build agent
+FROM docker.io/library/golang:1.26.1-alpine AS builder
+RUN apk add --no-cache git
+WORKDIR /app
+
+# Copy agent module and download deps
+COPY agent/go.mod agent/go.sum ./agent/
+RUN cd agent && go mod download
+
+# Copy proto-generated code
+COPY agent/internal/gen/ ./agent/internal/gen/
+
+# Copy agent source
+COPY agent/ ./agent/
+
+# Build
+RUN cd agent && CGO_ENABLED=0 go build -o /agent ./cmd/agent
+
+# Stage 2: Runtime with restic + rclone
+FROM docker.io/library/alpine:3.23
+RUN apk add --no-cache ca-certificates tzdata curl
+
+# Install restic
+ARG RESTIC_VERSION=0.17.3
+RUN curl -L "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_amd64.bz2" | bunzip2 > /usr/local/bin/restic \
+    && chmod +x /usr/local/bin/restic
+
+# Install rclone
+ARG RCLONE_VERSION=1.69.1
+RUN curl -L "https://github.com/rclone/rclone/releases/download/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-linux-amd64.zip" -o /tmp/rclone.zip \
+    && unzip /tmp/rclone.zip -d /tmp \
+    && cp /tmp/rclone-*/rclone /usr/local/bin/rclone \
+    && chmod +x /usr/local/bin/rclone \
+    && rm -rf /tmp/rclone*
+
+COPY --from=builder /agent /usr/local/bin/agent
+
+ENV BACKUP_DATA_DIR=/data
+
+VOLUME ["/data"]
+
+ENTRYPOINT ["agent"]
