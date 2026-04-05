@@ -58,52 +58,52 @@ async function handleSubmit() {
 <template>
   <div class="mx-auto max-w-2xl">
     <LoadingSpinner v-if="formLoading" />
-    <form v-else class="space-y-6 rounded-lg bg-white p-6 shadow" @submit.prevent="handleSubmit">
-      <div v-if="store.error" class="rounded-md bg-red-50 p-3 text-sm text-red-700">
+    <form v-else class="space-y-6 rounded border border-surface-700 bg-surface-900 p-6" @submit.prevent="handleSubmit">
+      <div v-if="store.error" class="rounded border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
         {{ store.error }}
       </div>
 
       <!-- Name -->
       <div>
-        <label class="block text-sm font-medium text-gray-700">Name</label>
+        <label class="block text-sm font-medium text-slate-400">Name</label>
         <input
           v-model="form.name"
           type="text"
           required
-          class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500"
+          class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
           placeholder="e.g. healthcheck-start, notify-discord"
         />
       </div>
 
       <!-- Command -->
       <div>
-        <label class="block text-sm font-medium text-gray-700">Command</label>
+        <label class="block text-sm font-medium text-slate-400">Command</label>
         <textarea
           v-model="form.command"
           rows="4"
           required
-          class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-blue-500 focus:ring-blue-500"
+          class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
           placeholder="curl -s https://hc-ping.com/uuid/start"
         />
       </div>
 
       <!-- Timeout -->
       <div>
-        <label class="block text-sm font-medium text-gray-700">Timeout (seconds)</label>
+        <label class="block text-sm font-medium text-slate-400">Timeout (seconds)</label>
         <input
           v-model.number="form.timeout"
           type="number"
           min="1"
-          class="mt-1 block w-32 rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500"
+          class="mt-1 block w-32 rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
         />
       </div>
 
       <!-- On Error -->
       <div>
-        <label class="block text-sm font-medium text-gray-700">On Error</label>
+        <label class="block text-sm font-medium text-slate-400">On Error</label>
         <select
           v-model="form.on_error"
-          class="mt-1 block w-48 rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500"
+          class="mt-1 block w-48 rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
         >
           <option value="continue">Continue</option>
           <option value="abort">Abort</option>
@@ -111,16 +111,16 @@ async function handleSubmit() {
       </div>
 
       <!-- Actions -->
-      <div class="flex justify-end gap-3 border-t border-gray-200 pt-4">
+      <div class="flex justify-end gap-3 border-t border-surface-700 pt-4">
         <router-link
           to="/scripts"
-          class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          class="rounded border border-surface-600 bg-surface-700 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-surface-600"
         >
           Cancel
         </router-link>
         <button
           type="submit"
-          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          class="rounded bg-accent/10 px-4 py-2 text-sm font-medium text-accent ring-1 ring-accent/30 transition-colors hover:bg-accent/20 disabled:opacity-50"
           :disabled="saving"
         >
           {{ saving ? 'Saving...' : isEdit ? 'Update Script' : 'Create Script' }}

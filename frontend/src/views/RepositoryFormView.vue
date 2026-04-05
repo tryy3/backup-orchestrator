@@ -73,45 +73,45 @@ const approvedAgents = computed(() => agentsStore.list.filter((a) => a.status ==
 <template>
   <div class="mx-auto max-w-2xl">
     <LoadingSpinner v-if="formLoading" />
-    <form v-else class="space-y-6 rounded-lg bg-white p-6 shadow" @submit.prevent="handleSubmit">
-      <div v-if="repoStore.error" class="rounded-md bg-red-50 p-3 text-sm text-red-700">
+    <form v-else class="space-y-6 rounded border border-surface-700 bg-surface-900 p-6" @submit.prevent="handleSubmit">
+      <div v-if="repoStore.error" class="rounded border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
         {{ repoStore.error }}
       </div>
 
       <!-- Name -->
       <div>
-        <label class="block text-sm font-medium text-gray-700">Name</label>
+        <label class="block text-sm font-medium text-slate-400">Name</label>
         <input
           v-model="form.name"
           type="text"
           required
-          class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500"
+          class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
           placeholder="e.g. local-nas, s3-offsite"
         />
       </div>
 
       <!-- Scope -->
       <div>
-        <label class="block text-sm font-medium text-gray-700">Scope</label>
+        <label class="block text-sm font-medium text-slate-400">Scope</label>
         <div class="mt-2 flex gap-4">
           <label class="flex items-center gap-2">
-            <input v-model="form.scope" type="radio" value="global" class="text-blue-600" />
-            <span class="text-sm text-gray-700">Global (available to all agents)</span>
+            <input v-model="form.scope" type="radio" value="global" class="text-accent" />
+            <span class="text-sm text-slate-300">Global (available to all agents)</span>
           </label>
           <label class="flex items-center gap-2">
-            <input v-model="form.scope" type="radio" value="local" class="text-blue-600" />
-            <span class="text-sm text-gray-700">Local (bound to one agent)</span>
+            <input v-model="form.scope" type="radio" value="local" class="text-accent" />
+            <span class="text-sm text-slate-300">Local (bound to one agent)</span>
           </label>
         </div>
       </div>
 
       <!-- Agent (shown for local scope) -->
       <div v-if="form.scope === 'local'">
-        <label class="block text-sm font-medium text-gray-700">Agent</label>
+        <label class="block text-sm font-medium text-slate-400">Agent</label>
         <select
           v-model="form.agent_id"
           required
-          class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500"
+          class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
         >
           <option value="" disabled>Select an agent</option>
           <option v-for="agent in approvedAgents" :key="agent.id" :value="agent.id">
@@ -122,10 +122,10 @@ const approvedAgents = computed(() => agentsStore.list.filter((a) => a.status ==
 
       <!-- Type -->
       <div>
-        <label class="block text-sm font-medium text-gray-700">Type</label>
+        <label class="block text-sm font-medium text-slate-400">Type</label>
         <select
           v-model="form.type"
-          class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500"
+          class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
         >
           <option v-for="t in repoTypes" :key="t" :value="t">{{ t }}</option>
         </select>
@@ -133,39 +133,39 @@ const approvedAgents = computed(() => agentsStore.list.filter((a) => a.status ==
 
       <!-- Path -->
       <div>
-        <label class="block text-sm font-medium text-gray-700">Path</label>
+        <label class="block text-sm font-medium text-slate-400">Path</label>
         <input
           v-model="form.path"
           type="text"
           required
-          class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-blue-500 focus:ring-blue-500"
+          class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
           placeholder="e.g. /mnt/backup or rclone:remote:bucket/path"
         />
       </div>
 
       <!-- Password -->
       <div>
-        <label class="block text-sm font-medium text-gray-700">Repository Password</label>
+        <label class="block text-sm font-medium text-slate-400">Repository Password</label>
         <input
           v-model="form.password"
           type="password"
           required
-          class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500"
+          class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
           placeholder="Restic repository password"
         />
       </div>
 
       <!-- Actions -->
-      <div class="flex justify-end gap-3 border-t border-gray-200 pt-4">
+      <div class="flex justify-end gap-3 border-t border-surface-700 pt-4">
         <router-link
           to="/repositories"
-          class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          class="rounded border border-surface-600 bg-surface-700 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-surface-600"
         >
           Cancel
         </router-link>
         <button
           type="submit"
-          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          class="rounded bg-accent/10 px-4 py-2 text-sm font-medium text-accent ring-1 ring-accent/30 transition-colors hover:bg-accent/20 disabled:opacity-50"
           :disabled="saving"
         >
           {{ saving ? 'Saving...' : isEdit ? 'Update Repository' : 'Create Repository' }}

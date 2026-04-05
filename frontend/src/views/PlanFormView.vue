@@ -136,32 +136,32 @@ const cronPatterns = [
   <div class="mx-auto max-w-3xl">
     <LoadingSpinner v-if="formLoading" />
     <form v-else class="space-y-8" @submit.prevent="handleSubmit">
-      <div v-if="plansStore.error" class="rounded-md bg-red-50 p-3 text-sm text-red-700">
+      <div v-if="plansStore.error" class="rounded border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
         {{ plansStore.error }}
       </div>
 
       <!-- Section: Basic -->
-      <div class="rounded-lg bg-white p-6 shadow">
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">Basic Information</h3>
+      <div class="rounded border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-4 text-lg font-semibold text-slate-100">Basic Information</h3>
 
         <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700">Name</label>
+            <label class="block text-sm font-medium text-slate-400">Name</label>
             <input
               v-model="form.name"
               type="text"
               required
-              class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500"
+              class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
               placeholder="e.g. daily-home, database-backup"
             />
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700">Agent</label>
+            <label class="block text-sm font-medium text-slate-400">Agent</label>
             <select
               v-model="form.agent_id"
               required
-              class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-blue-500"
+              class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
             >
               <option value="" disabled>Select an agent</option>
               <option v-for="agent in approvedAgents" :key="agent.id" :value="agent.id">
@@ -174,30 +174,30 @@ const cronPatterns = [
             <input
               v-model="form.enabled"
               type="checkbox"
-              class="rounded text-blue-600"
+              class="rounded text-accent"
             />
-            <label class="text-sm font-medium text-gray-700">Enabled</label>
+            <label class="text-sm font-medium text-slate-400">Enabled</label>
           </div>
         </div>
       </div>
 
       <!-- Section: Paths -->
-      <div class="rounded-lg bg-white p-6 shadow">
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">Paths</h3>
+      <div class="rounded border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-4 text-lg font-semibold text-slate-100">Paths</h3>
 
         <div class="space-y-3">
-          <label class="block text-sm font-medium text-gray-700">Paths to back up</label>
+          <label class="block text-sm font-medium text-slate-400">Paths to back up</label>
           <div v-for="(_, idx) in form.paths" :key="idx" class="flex gap-2">
             <input
               v-model="form.paths[idx]"
               type="text"
-              class="block flex-1 rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-blue-500 focus:ring-blue-500"
+              class="block flex-1 rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
               placeholder="/path/to/backup"
             />
             <button
               v-if="form.paths.length > 1"
               type="button"
-              class="rounded-md px-2 text-red-600 hover:bg-red-50"
+              class="rounded px-2 text-red-400 hover:bg-red-500/10"
               @click="removePath(idx)"
             >
               &times;
@@ -205,7 +205,7 @@ const cronPatterns = [
           </div>
           <button
             type="button"
-            class="text-sm font-medium text-blue-600 hover:text-blue-700"
+            class="text-sm font-medium text-accent hover:text-accent-dim"
             @click="addPath"
           >
             + Add path
@@ -213,17 +213,17 @@ const cronPatterns = [
         </div>
 
         <div class="mt-6 space-y-3">
-          <label class="block text-sm font-medium text-gray-700">Excludes</label>
+          <label class="block text-sm font-medium text-slate-400">Excludes</label>
           <div v-for="(_, idx) in (form.excludes ?? [])" :key="idx" class="flex gap-2">
             <input
               v-model="form.excludes![idx]"
               type="text"
-              class="block flex-1 rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-blue-500 focus:ring-blue-500"
+              class="block flex-1 rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
               placeholder="*.tmp, .cache, node_modules"
             />
             <button
               type="button"
-              class="rounded-md px-2 text-red-600 hover:bg-red-50"
+              class="rounded px-2 text-red-400 hover:bg-red-500/10"
               @click="removeExclude(idx)"
             >
               &times;
@@ -231,7 +231,7 @@ const cronPatterns = [
           </div>
           <button
             type="button"
-            class="text-sm font-medium text-blue-600 hover:text-blue-700"
+            class="text-sm font-medium text-accent hover:text-accent-dim"
             @click="addExclude"
           >
             + Add exclude
@@ -240,16 +240,16 @@ const cronPatterns = [
       </div>
 
       <!-- Section: Schedule -->
-      <div class="rounded-lg bg-white p-6 shadow">
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">Schedule</h3>
+      <div class="rounded border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-4 text-lg font-semibold text-slate-100">Schedule</h3>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700">Cron expression</label>
+          <label class="block text-sm font-medium text-slate-400">Cron expression</label>
           <input
             v-model="form.schedule"
             type="text"
             required
-            class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 font-mono focus:border-blue-500 focus:ring-blue-500"
+            class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
             placeholder="0 2 * * *"
           />
           <div class="mt-2 flex flex-wrap gap-2">
@@ -257,7 +257,7 @@ const cronPatterns = [
               v-for="pat in cronPatterns"
               :key="pat.value"
               type="button"
-              class="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700 hover:bg-gray-200"
+              class="rounded bg-surface-800 px-2 py-1 text-xs text-slate-300 hover:bg-surface-700"
               @click="form.schedule = pat.value"
             >
               {{ pat.label }}
@@ -267,22 +267,22 @@ const cronPatterns = [
       </div>
 
       <!-- Section: Repositories -->
-      <div class="rounded-lg bg-white p-6 shadow">
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">Repositories</h3>
+      <div class="rounded border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-4 text-lg font-semibold text-slate-100">Repositories</h3>
         <RepositoryPicker v-model="form.repository_ids" :agent-id="form.agent_id" />
       </div>
 
       <!-- Section: Retention -->
-      <div class="rounded-lg bg-white p-6 shadow">
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">Retention Policy</h3>
+      <div class="rounded border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-4 text-lg font-semibold text-slate-100">Retention Policy</h3>
 
         <label class="flex items-center gap-2">
           <input
             v-model="overrideRetention"
             type="checkbox"
-            class="rounded text-blue-600"
+            class="rounded text-accent"
           />
-          <span class="text-sm font-medium text-gray-700">Override global defaults</span>
+          <span class="text-sm font-medium text-slate-400">Override global defaults</span>
         </label>
 
         <div v-if="overrideRetention" class="mt-4">
@@ -291,34 +291,34 @@ const cronPatterns = [
       </div>
 
       <!-- Section: Forget/Prune -->
-      <div class="rounded-lg bg-white p-6 shadow">
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">Forget & Prune</h3>
+      <div class="rounded border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-4 text-lg font-semibold text-slate-100">Forget & Prune</h3>
 
         <div class="space-y-3">
           <label class="flex items-center gap-2">
             <input
               v-model="form.forget_after_backup"
               type="checkbox"
-              class="rounded text-blue-600"
+              class="rounded text-accent"
             />
-            <span class="text-sm text-gray-700">Run forget after backup</span>
+            <span class="text-sm text-slate-400">Run forget after backup</span>
           </label>
 
           <label class="flex items-center gap-2">
             <input
               v-model="form.prune_after_forget"
               type="checkbox"
-              class="rounded text-blue-600"
+              class="rounded text-accent"
             />
-            <span class="text-sm text-gray-700">Run prune after forget</span>
+            <span class="text-sm text-slate-400">Run prune after forget</span>
           </label>
 
           <div v-if="!form.prune_after_forget">
-            <label class="block text-sm font-medium text-gray-700">Separate prune schedule</label>
+            <label class="block text-sm font-medium text-slate-400">Separate prune schedule</label>
             <input
               v-model="form.prune_schedule"
               type="text"
-              class="mt-1 block w-64 rounded-md border border-gray-300 px-3 py-2 font-mono focus:border-blue-500 focus:ring-blue-500"
+              class="mt-1 block w-64 rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
               placeholder="0 4 * * 0"
             />
           </div>
@@ -326,19 +326,19 @@ const cronPatterns = [
       </div>
 
       <!-- Section: Tags -->
-      <div class="rounded-lg bg-white p-6 shadow">
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">Tags</h3>
+      <div class="rounded border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-4 text-lg font-semibold text-slate-100">Tags</h3>
         <div class="space-y-2">
           <div v-for="(_, idx) in (form.tags ?? [])" :key="idx" class="flex gap-2">
             <input
               v-model="form.tags![idx]"
               type="text"
-              class="block flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              class="block flex-1 rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
               placeholder="e.g. critical:yes"
             />
             <button
               type="button"
-              class="rounded-md px-2 text-red-600 hover:bg-red-50"
+              class="rounded px-2 text-red-400 hover:bg-red-500/10"
               @click="removeTag(idx)"
             >
               &times;
@@ -346,7 +346,7 @@ const cronPatterns = [
           </div>
           <button
             type="button"
-            class="text-sm font-medium text-blue-600 hover:text-blue-700"
+            class="text-sm font-medium text-accent hover:text-accent-dim"
             @click="addTag"
           >
             + Add tag
@@ -358,13 +358,13 @@ const cronPatterns = [
       <div class="flex justify-end gap-3">
         <router-link
           to="/plans"
-          class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          class="rounded border border-surface-600 bg-surface-700 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-surface-600"
         >
           Cancel
         </router-link>
         <button
           type="submit"
-          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          class="rounded bg-accent/10 px-4 py-2 text-sm font-medium text-accent ring-1 ring-accent/30 transition-colors hover:bg-accent/20 disabled:opacity-50"
           :disabled="saving"
         >
           {{ saving ? 'Saving...' : isEdit ? 'Update Plan' : 'Create Plan' }}

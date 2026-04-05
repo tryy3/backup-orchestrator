@@ -77,7 +77,7 @@ function openConfirmDialog(id: string, action: 'delete' | 'approve' | 'reject') 
       <template #cell-name="{ row }">
         <router-link
           :to="`/agents/${row.id}`"
-          class="font-medium text-blue-600 hover:text-blue-700"
+          class="font-medium text-accent hover:text-accent-dim"
         >
           {{ row.name }}
         </router-link>
@@ -95,20 +95,20 @@ function openConfirmDialog(id: string, action: 'delete' | 'approve' | 'reject') 
         <div class="flex items-center gap-2">
           <template v-if="row.status === 'pending'">
             <button
-              class="rounded bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700"
+              class="rounded bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-400 ring-1 ring-green-500/20 hover:bg-green-500/20"
               @click.stop="openConfirmDialog(row.id as string, 'approve')"
             >
               Approve
             </button>
             <button
-              class="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700"
+              class="rounded bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/20"
               @click.stop="openConfirmDialog(row.id as string, 'reject')"
             >
               Reject
             </button>
           </template>
           <button
-            class="rounded bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-200"
+            class="rounded bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/20"
             @click.stop="openConfirmDialog(row.id as string, 'delete')"
           >
             Delete

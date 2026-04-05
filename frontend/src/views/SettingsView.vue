@@ -42,18 +42,18 @@ async function handleSave() {
   <div class="mx-auto max-w-2xl space-y-6">
     <LoadingSpinner v-if="store.loading" />
 
-    <div v-else class="rounded-lg bg-white p-6 shadow">
-      <h3 class="mb-6 text-lg font-semibold text-gray-900">Default Retention Policy</h3>
+    <div v-else class="rounded border border-surface-700 bg-surface-900 p-6">
+      <h3 class="mb-6 text-lg font-semibold text-slate-100">Default Retention Policy</h3>
 
-      <p class="mb-4 text-sm text-gray-500">
+      <p class="mb-4 text-sm text-slate-400">
         These defaults apply to backup plans that do not override retention settings.
       </p>
 
-      <div v-if="store.error" class="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+      <div v-if="store.error" class="mb-4 rounded border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
         {{ store.error }}
       </div>
 
-      <div v-if="saved" class="mb-4 rounded-md bg-green-50 p-3 text-sm text-green-700">
+      <div v-if="saved" class="mb-4 rounded border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-400">
         Settings saved successfully.
       </div>
 
@@ -61,7 +61,7 @@ async function handleSave() {
 
       <div class="mt-6 flex justify-end">
         <button
-          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          class="rounded bg-accent/10 px-4 py-2 text-sm font-medium text-accent ring-1 ring-accent/30 transition-colors hover:bg-accent/20 disabled:opacity-50"
           :disabled="saving"
           @click="handleSave"
         >

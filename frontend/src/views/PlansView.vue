@@ -60,7 +60,7 @@ async function handleDelete() {
       <div>
         <select
           v-model="agentFilter"
-          class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+          class="rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
           @change="loadPlans()"
         >
           <option value="">All agents</option>
@@ -72,7 +72,7 @@ async function handleDelete() {
 
       <router-link
         to="/plans/new"
-        class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        class="rounded bg-accent/10 px-4 py-2 text-sm font-medium text-accent ring-1 ring-accent/30 transition-colors hover:bg-accent/20"
       >
         New Plan
       </router-link>
@@ -89,7 +89,7 @@ async function handleDelete() {
       <template #cell-name="{ row }">
         <router-link
           :to="`/plans/${row.id}`"
-          class="font-medium text-blue-600 hover:text-blue-700"
+          class="font-medium text-accent hover:text-accent-dim"
           @click.stop
         >
           {{ row.name }}
@@ -112,20 +112,20 @@ async function handleDelete() {
         <div class="flex items-center gap-2">
           <router-link
             :to="`/plans/${row.id}`"
-            class="rounded bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200"
+            class="rounded bg-surface-800 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-surface-700"
             @click.stop
           >
             View
           </router-link>
           <router-link
             :to="`/plans/${row.id}/edit`"
-            class="rounded bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200"
+            class="rounded bg-surface-800 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-surface-700"
             @click.stop
           >
             Edit
           </router-link>
           <button
-            class="rounded bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-200"
+            class="rounded bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/20"
             @click.stop="openDelete(row.id as string)"
           >
             Delete

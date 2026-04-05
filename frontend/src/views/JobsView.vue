@@ -62,7 +62,7 @@ const statuses = ['', 'running', 'success', 'partial', 'failed']
     <div class="flex flex-wrap gap-3">
       <select
         v-model="agentFilter"
-        class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+        class="rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
         @change="loadJobs()"
       >
         <option value="">All agents</option>
@@ -73,7 +73,7 @@ const statuses = ['', 'running', 'success', 'partial', 'failed']
 
       <select
         v-model="planFilter"
-        class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+        class="rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
         @change="loadJobs()"
       >
         <option value="">All plans</option>
@@ -84,7 +84,7 @@ const statuses = ['', 'running', 'success', 'partial', 'failed']
 
       <select
         v-model="statusFilter"
-        class="rounded-md border border-gray-300 px-3 py-2 text-sm capitalize focus:border-blue-500 focus:ring-blue-500"
+        class="rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm capitalize text-slate-100 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
         @change="loadJobs()"
       >
         <option v-for="s in statuses" :key="s" :value="s">
@@ -106,7 +106,7 @@ const statuses = ['', 'running', 'success', 'partial', 'failed']
       </template>
 
       <template #cell-plan_name="{ row }">
-        <span class="font-medium text-gray-900">{{ row.plan_name || '-' }}</span>
+        <span class="font-medium text-slate-200">{{ row.plan_name || '-' }}</span>
       </template>
 
       <template #cell-agent_id="{ row }">

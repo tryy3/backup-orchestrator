@@ -50,15 +50,15 @@ async function handleDelete() {
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <!-- Filter tabs -->
-      <div class="flex gap-1 rounded-lg bg-gray-100 p-1">
+      <div class="flex gap-1 rounded bg-surface-800 p-1">
         <button
           v-for="scope in (['all', 'global', 'local'] as const)"
           :key="scope"
           :class="[
-            'rounded-md px-3 py-1.5 text-sm font-medium capitalize',
+            'rounded px-3 py-1.5 text-sm font-medium capitalize transition-colors',
             scopeFilter === scope
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-600 hover:text-gray-900',
+              ? 'bg-surface-900 text-slate-100 ring-1 ring-accent/30'
+              : 'text-slate-500 hover:text-slate-300',
           ]"
           @click="onFilterChange(scope)"
         >
@@ -68,7 +68,7 @@ async function handleDelete() {
 
       <router-link
         to="/repositories/new"
-        class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        class="rounded bg-accent/10 px-4 py-2 text-sm font-medium text-accent ring-1 ring-accent/30 transition-colors hover:bg-accent/20"
       >
         New Repository
       </router-link>
@@ -82,14 +82,16 @@ async function handleDelete() {
       empty-message="Create a repository to get started."
     >
       <template #cell-name="{ row }">
-        <span class="font-medium text-gray-900">{{ row.name }}</span>
+        <span class="font-medium text-slate-200">{{ row.name }}</span>
       </template>
 
       <template #cell-scope="{ row }">
         <span
           :class="[
             'rounded-full px-2 py-0.5 text-xs font-medium capitalize',
-            row.scope === 'global' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700',
+            row.scope === 'global'
+              ? 'bg-cyan-500/10 text-cyan-400 ring-1 ring-cyan-500/20'
+              : 'bg-surface-800 text-slate-400',
           ]"
         >
           {{ row.scope }}
@@ -97,20 +99,20 @@ async function handleDelete() {
       </template>
 
       <template #cell-path="{ row }">
-        <span class="font-mono text-xs text-gray-600">{{ row.path }}</span>
+        <span class="font-mono text-xs text-slate-500">{{ row.path }}</span>
       </template>
 
       <template #cell-actions="{ row }">
         <div class="flex items-center gap-2">
           <router-link
             :to="`/repositories/${row.id}/edit`"
-            class="rounded bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200"
+            class="rounded bg-surface-800 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-surface-700"
             @click.stop
           >
             Edit
           </router-link>
           <button
-            class="rounded bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-200"
+            class="rounded bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/20"
             @click.stop="openDelete(row.id as string)"
           >
             Delete

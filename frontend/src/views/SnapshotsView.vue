@@ -85,10 +85,10 @@ async function handleRestore() {
     <!-- Selectors -->
     <div class="flex flex-wrap gap-3">
       <div>
-        <label class="block text-sm font-medium text-gray-700">Agent</label>
+        <label class="block text-sm font-medium text-slate-400">Agent</label>
         <select
           v-model="selectedAgent"
-          class="mt-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+          class="mt-1 rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
           @change="selectedRepo = ''; snapshotsStore.list = []"
         >
           <option value="">Select agent</option>
@@ -99,11 +99,11 @@ async function handleRestore() {
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700">Repository</label>
+        <label class="block text-sm font-medium text-slate-400">Repository</label>
         <select
           v-model="selectedRepo"
           :disabled="!selectedAgent"
-          class="mt-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100"
+          class="mt-1 rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30 disabled:bg-surface-800 disabled:text-slate-600"
         >
           <option value="">Select repository</option>
           <option v-for="r in availableRepos" :key="r.id" :value="r.id">
@@ -115,7 +115,7 @@ async function handleRestore() {
       <div class="flex items-end">
         <button
           :disabled="!selectedAgent || !selectedRepo"
-          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          class="rounded bg-accent/10 px-4 py-2 text-sm font-medium text-accent ring-1 ring-accent/30 transition-colors hover:bg-accent/20 disabled:opacity-50"
           @click="loadSnapshots"
         >
           Load Snapshots
@@ -145,22 +145,22 @@ async function handleRestore() {
         <span
           v-for="tag in (row.tags as string[] ?? [])"
           :key="tag"
-          class="mr-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+          class="mr-1 rounded-full bg-surface-800 px-2 py-0.5 text-xs text-slate-400"
         >
           {{ tag }}
         </span>
-        <span v-if="!(row.tags as string[])?.length" class="text-gray-400">-</span>
+        <span v-if="!(row.tags as string[])?.length" class="text-slate-600">-</span>
       </template>
 
       <template #cell-paths="{ row }">
-        <span class="font-mono text-xs text-gray-600">
+        <span class="font-mono text-xs text-slate-500">
           {{ (row.paths as string[] ?? []).join(', ') || '-' }}
         </span>
       </template>
 
       <template #cell-actions="{ row }">
         <button
-          class="rounded bg-green-100 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-200"
+          class="rounded bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-400 ring-1 ring-green-500/20 hover:bg-green-500/20"
           @click.stop="openRestore(row.id as string)"
         >
           Restore
@@ -178,37 +178,39 @@ async function handleRestore() {
       >
         <div v-if="restoreDialogOpen" class="fixed inset-0 z-50 flex items-center justify-center">
           <div class="absolute inset-0 bg-black/50" @click="restoreDialogOpen = false" />
-          <div class="relative z-10 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 class="text-lg font-semibold text-gray-900">Restore Snapshot</h3>
-            <p class="mt-1 text-sm text-gray-500">
-              Restoring snapshot <code class="font-mono text-xs">{{ restoreSnapshotId }}</code>
+          <div class="relative z-10 w-full max-w-md rounded border border-surface-600 bg-surface-800 p-6 shadow-xl">
+            <h3 class="text-lg font-semibold text-slate-100">Restore Snapshot</h3>
+            <p class="mt-1 text-sm text-slate-400">
+              Restoring snapshot <code class="rounded bg-surface-700 px-1 font-mono text-xs text-slate-300">{{ restoreSnapshotId }}</code>
             </p>
 
             <div v-if="restoreSuccess !== null" :class="[
-              'mt-3 rounded-md p-3 text-sm',
-              restoreSuccess ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700',
+              'mt-3 rounded border p-3 text-sm',
+              restoreSuccess
+                ? 'border-green-500/20 bg-green-500/10 text-green-400'
+                : 'border-red-500/20 bg-red-500/10 text-red-400',
             ]">
               {{ restoreMessage }}
             </div>
 
             <div class="mt-4 space-y-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700">Target path</label>
+                <label class="block text-sm font-medium text-slate-400">Target path</label>
                 <input
                   v-model="restoreTarget"
                   type="text"
-                  class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-blue-500 focus:ring-blue-500"
+                  class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
                 />
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-gray-700">
+                <label class="block text-sm font-medium text-slate-400">
                   Specific paths (optional, one per line)
                 </label>
                 <textarea
                   v-model="restorePaths"
                   rows="3"
-                  class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-blue-500 focus:ring-blue-500"
+                  class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
                   placeholder="Leave empty to restore all"
                 />
               </div>
@@ -216,13 +218,13 @@ async function handleRestore() {
 
             <div class="mt-6 flex justify-end gap-3">
               <button
-                class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                class="rounded border border-surface-600 bg-surface-700 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-surface-600"
                 @click="restoreDialogOpen = false"
               >
                 Close
               </button>
               <button
-                class="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                class="rounded bg-green-500/10 px-4 py-2 text-sm font-medium text-green-400 ring-1 ring-green-500/20 transition-colors hover:bg-green-500/20"
                 @click="handleRestore"
               >
                 Start Restore

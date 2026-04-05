@@ -180,16 +180,16 @@ function levelClass(level: string): string {
       <!-- Structured Log Timeline -->
       <div v-if="job.log_entries?.length" class="rounded-lg border border-surface-700 bg-surface-900 p-6">
         <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-500">Job Log</h3>
-        <div class="max-h-[32rem] overflow-auto rounded-lg bg-gray-900 p-4">
+        <div class="max-h-[32rem] overflow-auto rounded-lg bg-surface-950 p-4">
           <div
             v-for="(entry, i) in job.log_entries"
             :key="i"
-            class="border-b border-gray-800 last:border-0"
+            class="border-b border-surface-700 last:border-0"
           >
             <!-- Main log line -->
             <div
               class="flex gap-3 py-1.5 font-mono text-sm leading-relaxed"
-              :class="{ 'cursor-pointer hover:bg-gray-800/50 rounded': hasAttributes(entry.attributes) }"
+              :class="{ 'cursor-pointer hover:bg-surface-800/50 rounded': hasAttributes(entry.attributes) }"
               @click="hasAttributes(entry.attributes) && toggleEntry(i)"
             >
               <span class="shrink-0 text-gray-500">{{ formatLogTimestamp(entry.timestamp, job.log_entries[0]?.timestamp) }}</span>
@@ -207,15 +207,15 @@ function levelClass(level: string): string {
             <!-- Expanded attributes -->
             <div
               v-if="isExpanded(i) && hasAttributes(entry.attributes)"
-              class="ml-[13.5rem] mb-2 rounded bg-gray-800 p-3 font-mono text-xs"
+              class="ml-[13.5rem] mb-2 rounded bg-surface-800 p-3 font-mono text-xs"
             >
               <div
                 v-for="(value, key) in entry.attributes"
                 :key="key"
                 class="flex gap-2 py-0.5"
               >
-                <span class="shrink-0 text-gray-400">{{ key }}:</span>
-                <span class="whitespace-pre-wrap break-all text-gray-200">{{ value }}</span>
+                <span class="shrink-0 text-slate-400">{{ key }}:</span>
+                <span class="whitespace-pre-wrap break-all text-slate-200">{{ value }}</span>
               </div>
             </div>
           </div>
@@ -225,7 +225,7 @@ function levelClass(level: string): string {
       <!-- Fallback: plain log_tail for old jobs -->
       <div v-else-if="job.log_tail" class="rounded-lg border border-surface-700 bg-surface-900 p-6">
         <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-500">Log Output</h3>
-        <pre class="max-h-96 overflow-auto rounded-lg bg-gray-900 p-4 font-mono text-sm text-gray-100">{{ job.log_tail }}</pre>
+        <pre class="max-h-96 overflow-auto rounded-lg bg-surface-950 p-4 font-mono text-sm text-slate-100">{{ job.log_tail }}</pre>
       </div>
     </template>
 

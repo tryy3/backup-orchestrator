@@ -43,7 +43,7 @@ async function handleDelete() {
     <div class="flex justify-end">
       <router-link
         to="/scripts/new"
-        class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        class="rounded bg-accent/10 px-4 py-2 text-sm font-medium text-accent ring-1 ring-accent/30 transition-colors hover:bg-accent/20"
       >
         New Script
       </router-link>
@@ -57,11 +57,11 @@ async function handleDelete() {
       empty-message="Create reusable scripts for hooks."
     >
       <template #cell-name="{ row }">
-        <span class="font-medium text-gray-900">{{ row.name }}</span>
+        <span class="font-medium text-slate-200">{{ row.name }}</span>
       </template>
 
       <template #cell-command="{ row }">
-        <code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700">
+        <code class="rounded bg-surface-800 px-1.5 py-0.5 font-mono text-xs text-slate-300">
           {{ truncate(row.command as string, 60) }}
         </code>
       </template>
@@ -74,7 +74,9 @@ async function handleDelete() {
         <span
           :class="[
             'rounded-full px-2 py-0.5 text-xs font-medium capitalize',
-            row.on_error === 'abort' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700',
+            row.on_error === 'abort'
+              ? 'bg-red-500/15 text-red-400 ring-1 ring-red-500/30'
+              : 'bg-surface-800 text-slate-400',
           ]"
         >
           {{ row.on_error }}
@@ -85,13 +87,13 @@ async function handleDelete() {
         <div class="flex items-center gap-2">
           <router-link
             :to="`/scripts/${row.id}/edit`"
-            class="rounded bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200"
+            class="rounded bg-surface-800 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-surface-700"
             @click.stop
           >
             Edit
           </router-link>
           <button
-            class="rounded bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-200"
+            class="rounded bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/20"
             @click.stop="openDelete(row.id as string)"
           >
             Delete
