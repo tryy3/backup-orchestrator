@@ -86,3 +86,100 @@ time=2026-04-04T22:44:02.941Z level=WARN msg="direct report delivery failed, buf
 time=2026-04-04T22:44:40.897Z level=INFO msg="flushing buffered reports" source=reporter count=1
 
 Browser just says "ERR_EMPTY_RESPONSE"
+
+## Agents page is "gone"
+- not resolved
+- nice to have #v2
+
+With the new redesign of the frontend I noticed the approval of new agents is a bit weird.
+When a new agent needs to be approved we can see a notification about it on the fleet-overview, we can see it "pending".
+
+However it's a bit confusing where to accept it, from the looks of it to accept it we have to click "review" on the notification which brings us to some /agents page which I can only get to this way, it's not in the sidebar or anything.
+
+Ideally what I would like to see is being able to accept/deny it by going directly to the pending agent from fleet-overview.
+This makes most sense.
+
+We could keep the "review" as the more agents I add we might want just a plain list of agents too.
+But in that case it should be exposed on the sidebar.
+
+## Agents remote path
+- not resolved
+- nice to have #v2/v3
+
+When creating paths related to a specific agent it would be nice to get autocomplete or remote "browser" suggestion correct paths.
+
+For example wwhen creating a repository bound to a agent or adding a backup plan, it would be nice if some type of path explorer appeared so that we could traverse through the agent's folder to get the correct path.
+
+Minimizes potential typos and also makes configuration easier.
+
+This would presumably require some new APIs between server and agent.
+
+## More "live" data
+- not resolved
+- nice to have #v2/v3
+
+When new information comes into the server such as job data it should be pushed/streamed to the client.
+Ideally we should use something like WebRTC on the frontend-server.
+
+So if I am standing on the job list, trigger a backup I will want to see live updates on what is going on.
+
+This plays along with ## Backup plans not showing "started" status
+If we have that task, this will be even more important
+
+## GRPC/HTTP migration
+- not resolve
+- future ideas #v3/v4
+
+It would be nice to minimize the amount of ports exposed, ideally I would only want to expose 1 port so an idea is to look into how to combine HTTP with GRPC.
+I got the suggestio nthat some multiplexer like cmux might work?
+Alterenatively maybe a prroxy inside a docker could work but then we can't use minimal containers I guess.
+
+When asked the reasoning for 2 ports I got totld gRPC uses HTTP/2 and not HTTTP/1.1, is there a downside to forcing HTTP/2?
+
+The main reason is that I am exposing the server through tailscale and would like to expose only 1 port as a service, but solutions can be worked around.
+Another option would be that this should be handled on the other side (user/control side), so in my case in the homelab 
+
+## More detailed logs
+- not resolved
+- nice to have #v2/v3
+
+It would be nice to be able to see the actual restic commands being ran.
+For example I got this error
+```json
+error:
+restic snapshots check failed: exit status 1
+stderr: Fatal: parsing repository location failed: invalid backend
+If the repository is in a local directory, you need to add a `local:` prefix
+```
+
+And it would of helped if I knew what command arguments was passed on to understand this more.
+Maybe passing on "environment" variables could be useful too.
+Essentially showing the context that was used when the command was ran.
+
+However keep in mind that some data could be sensitive, if we are passing on data such as Password we should probably skip/ignore them.
+But otherwise it sounds like a good idea
+
+## Accessibility - automatically open modals/navigation
+- not resolve
+- future ideas #v4
+
+I noticed when clicking around that when I arrive on a list/table view such as a /agents /plans /repositories and such.
+I often click on the row instead of "edit".
+
+I think I like the idea of the buttons, but adding the functionality to also clicking on the row to interact with a main functionality.
+
+Keep in mind that some functionality will override this, such as links or buttons.
+
+It seems that /plans works this way but not /repositories.
+So we should make this a consistent behavior and follow the /plans solution
+
+## Syntax bug in repositories
+- not resolved
+- nice to have #v2/v3
+
+when creating a repository that uses rclone I have to append rclone: to the repository path.
+
+I would expect if I select the type "rclone" that this automatically get appended.
+My assumption is that this behaviour is the same on the other types.
+
+Preferably the solution is to append the syntax but an alternative would be to document this behaviour.

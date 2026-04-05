@@ -34,6 +34,8 @@
 
             # Misc
             gnumake
+            rclone
+            gh
           ];
 
           shellHook = ''
