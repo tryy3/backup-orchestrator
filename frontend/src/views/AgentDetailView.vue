@@ -6,9 +6,7 @@ import { useJobsStore } from '../stores/jobs'
 import { usePlansStore } from '../stores/plans'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import LoadingSpinner from '../components/common/LoadingSpinner.vue'
-import DataTable from '../components/common/DataTable.vue'
-import { relativeTime, formatDate, formatDuration, durationBetween } from '../utils/time'
-import type { Column } from '../components/common/DataTable.vue'
+import { relativeTime, formatDate } from '../utils/time'
 
 const route = useRoute()
 const agentsStore = useAgentsStore()
@@ -16,7 +14,7 @@ const jobsStore = useJobsStore()
 const plansStore = usePlansStore()
 
 const agentId = computed(() => route.params.id as string)
-const activeTab = ref<'rclone' | 'plans' | 'jobs'>('plans')
+const configOpen = ref(false)
 const rcloneConfig = ref('')
 const saving = ref(false)
 
@@ -31,25 +29,41 @@ onMounted(async () => {
 
 const agent = computed(() => agentsStore.current)
 
-const jobColumns: Column[] = [
-  { key: 'plan_name', label: 'Plan', sortable: true },
-  { key: 'status', label: 'Status' },
-  { key: 'trigger', label: 'Trigger' },
-  { key: 'started_at', label: 'Started', sortable: true },
-  { key: 'duration', label: 'Duration' },
-]
-
-const recentJobs = computed(() => {
-  return [...jobsStore.list]
-    .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
-    .slice(0, 20)
+const isOnline = computed(() => {
+  if (!agent.value?.last_heartbeat) return false
+  return Date.now() - new Date(agent.value.last_heartbeat).getTime() < 5 * 60 * 1000
 })
+
+// Most recent job per plan
+const recentJobByPlan = computed(() => {
+  const map: Record<string, string> = {}
+  for (const job of jobsStore.list) {
+    if (!job.plan_id) continue
+    if (!map[job.plan_id] || new Date(job.started_at) > new Date(map[job.plan_id])) {
+      map[job.plan_id] = job.started_at
+    }
+  }
+  return map
+})
+
+const failedPlanIds = computed(
+  () =>
+    new Set(
+      jobsStore.list
+        .filter((j) => j.status === 'failed' || j.status === 'partial')
+        .map((j) => j.plan_id)
+        .filter((id): id is string => id != null),
+    ),
+)
+
+const failingPlans = computed(() => plansStore.list.filter((p) => failedPlanIds.value.has(p.id)))
 
 async function saveRclone() {
   saving.value = true
   await agentsStore.updateRclone(agentId.value, rcloneConfig.value)
   saving.value = false
 }
+
 </script>
 
 <template>
@@ -57,150 +71,163 @@ async function saveRclone() {
     <LoadingSpinner v-if="agentsStore.loading && !agent" />
 
     <template v-else-if="agent">
-      <!-- Agent info card -->
-      <div class="rounded-lg bg-white p-6 shadow">
-        <div class="flex items-start justify-between">
-          <div>
-            <h2 class="text-xl font-bold text-gray-900">{{ agent.name }}</h2>
-            <p class="mt-1 text-sm text-gray-500">{{ agent.hostname }}</p>
+      <!-- Page title -->
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-3">
+            <div :class="['h-3 w-3 shrink-0 rounded-full', isOnline ? 'bg-green-400' : 'bg-slate-600']" />
+            <h1 class="text-2xl font-bold tracking-tight text-slate-100">{{ agent.name }}</h1>
+            <StatusBadge :status="agent.status" />
           </div>
-          <StatusBadge :status="agent.status" />
+          <p class="mt-1 pl-6 text-sm text-slate-500">{{ agent.hostname }}</p>
         </div>
-
-        <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          <div>
-            <dt class="text-xs font-medium text-gray-500">OS</dt>
-            <dd class="mt-1 text-sm text-gray-900">{{ agent.os || '-' }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-medium text-gray-500">Agent Version</dt>
-            <dd class="mt-1 text-sm text-gray-900">{{ agent.agent_version || '-' }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-medium text-gray-500">Restic Version</dt>
-            <dd class="mt-1 text-sm text-gray-900">{{ agent.restic_version || '-' }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-medium text-gray-500">Rclone Version</dt>
-            <dd class="mt-1 text-sm text-gray-900">{{ agent.rclone_version || '-' }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-medium text-gray-500">Config Version</dt>
-            <dd class="mt-1 text-sm text-gray-900">{{ agent.config_version }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-medium text-gray-500">Last Heartbeat</dt>
-            <dd class="mt-1 text-sm text-gray-900">{{ relativeTime(agent.last_heartbeat) }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-medium text-gray-500">Config Applied</dt>
-            <dd class="mt-1 text-sm text-gray-900">{{ formatDate(agent.config_applied_at) }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-medium text-gray-500">Registered</dt>
-            <dd class="mt-1 text-sm text-gray-900">{{ formatDate(agent.created_at) }}</dd>
-          </div>
+        <div class="shrink-0 text-right text-xs text-slate-500">
+          <div>Last heartbeat: <span class="text-slate-400">{{ relativeTime(agent.last_heartbeat) }}</span></div>
+          <div>v{{ agent.agent_version || '—' }}</div>
         </div>
       </div>
 
-      <!-- Tabs -->
-      <div class="border-b border-gray-200">
-        <nav class="-mb-px flex gap-6">
-          <button
-            v-for="tab in (['plans', 'jobs', 'rclone'] as const)"
-            :key="tab"
-            :class="[
-              'border-b-2 pb-3 text-sm font-medium capitalize',
-              activeTab === tab
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700',
-            ]"
-            @click="activeTab = tab"
-          >
-            {{ tab === 'rclone' ? 'Rclone Config' : tab === 'plans' ? 'Backup Plans' : 'Recent Jobs' }}
-          </button>
-        </nav>
+      <!-- Failing plan alert -->
+      <div
+        v-if="failingPlans.length > 0"
+        class="flex items-center gap-3 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3"
+      >
+        <div class="h-2 w-2 animate-pulse rounded-full bg-red-400 shrink-0" />
+        <span class="text-sm text-red-300">
+          {{ failingPlans.length }} plan{{ failingPlans.length !== 1 ? 's' : '' }} with recent failures
+        </span>
       </div>
 
-      <!-- Tab: Backup Plans -->
-      <div v-if="activeTab === 'plans'" class="space-y-3">
-        <div v-if="plansStore.list.length === 0" class="rounded-lg bg-white p-6 text-center text-sm text-gray-500 shadow">
+      <!-- Metadata grid -->
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div
+          v-for="(item, i) in [
+            { label: 'OS', value: agent.os || '—' },
+            { label: 'Agent', value: agent.agent_version || '—' },
+            { label: 'Restic', value: agent.restic_version || '—' },
+            { label: 'Rclone', value: agent.rclone_version || '—' },
+            { label: 'Config Version', value: String(agent.config_version) },
+            { label: 'Registered', value: formatDate(agent.created_at) },
+            { label: 'Config Applied', value: formatDate(agent.config_applied_at) },
+            { label: 'Last Heartbeat', value: relativeTime(agent.last_heartbeat) },
+          ]"
+          :key="i"
+          class="rounded-lg border border-surface-700 bg-surface-900 p-3"
+        >
+          <dt class="text-[10px] font-medium uppercase tracking-wider text-slate-600">{{ item.label }}</dt>
+          <dd class="mt-1 truncate text-sm text-slate-300">{{ item.value }}</dd>
+        </div>
+      </div>
+
+      <!-- Backup Plans section -->
+      <div>
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-500">Backup Plans</h2>
+          <span class="text-xs text-slate-600">
+            {{ plansStore.list.length }} plan{{ plansStore.list.length !== 1 ? 's' : '' }}
+          </span>
+        </div>
+        <LoadingSpinner v-if="plansStore.loading" />
+        <div
+          v-else-if="plansStore.list.length === 0"
+          class="rounded-lg border border-dashed border-surface-700 py-8 text-center text-sm text-slate-600"
+        >
           No backup plans assigned to this agent.
         </div>
-        <div v-else class="space-y-2">
-          <router-link
-            v-for="plan in plansStore.list"
-            :key="plan.id"
-            :to="`/plans/${plan.id}`"
-            class="block rounded-lg bg-white p-4 shadow hover:bg-blue-50"
-          >
-            <div class="flex items-center justify-between">
-              <div>
-                <span class="font-medium text-gray-900">{{ plan.name }}</span>
-                <span class="ml-2 text-sm text-gray-500">{{ plan.schedule }}</span>
-              </div>
-              <span
-                :class="[
-                  'rounded-full px-2 py-0.5 text-xs font-medium',
-                  plan.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600',
-                ]"
+        <div v-else class="overflow-hidden rounded-lg border border-surface-700">
+          <table class="min-w-full">
+            <thead class="bg-surface-800">
+              <tr>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Plan</th>
+                <th class="hidden px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500 sm:table-cell">Schedule</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Status</th>
+                <th class="hidden px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500 md:table-cell">Last Run</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-surface-700">
+              <tr
+                v-for="plan in plansStore.list"
+                :key="plan.id"
+                class="cursor-pointer transition-colors hover:bg-surface-800/60"
+                @click="$router.push(`/agents/${agentId}/plans/${plan.id}`)"
               >
-                {{ plan.enabled ? 'Enabled' : 'Disabled' }}
-              </span>
-            </div>
-          </router-link>
+                <td class="px-4 py-3">
+                  <div class="flex items-center gap-2">
+                    <span
+                      :class="[
+                        'h-1.5 w-1.5 shrink-0 rounded-full',
+                        failedPlanIds.has(plan.id)
+                          ? 'bg-red-400'
+                          : plan.enabled
+                            ? 'bg-green-400'
+                            : 'bg-slate-600',
+                      ]"
+                    />
+                    <span class="text-sm font-medium text-slate-200">{{ plan.name }}</span>
+                  </div>
+                </td>
+                <td class="hidden px-4 py-3 font-mono text-xs text-slate-400 sm:table-cell">
+                  {{ plan.schedule || '—' }}
+                </td>
+                <td class="px-4 py-3">
+                  <span
+                    :class="[
+                      'rounded-full px-2 py-0.5 text-xs font-medium',
+                      plan.enabled
+                        ? 'bg-green-500/10 text-green-400 ring-1 ring-green-500/20'
+                        : 'bg-slate-700/40 text-slate-500 ring-1 ring-slate-700',
+                    ]"
+                  >
+                    {{ plan.enabled ? 'Enabled' : 'Disabled' }}
+                  </span>
+                </td>
+                <td class="hidden px-4 py-3 text-xs text-slate-500 md:table-cell">
+                  {{ recentJobByPlan[plan.id] ? relativeTime(recentJobByPlan[plan.id]) : '—' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <!-- Tab: Recent Jobs -->
-      <div v-if="activeTab === 'jobs'">
-        <DataTable
-          :columns="jobColumns"
-          :rows="(recentJobs as unknown as Record<string, unknown>[])"
-          :loading="jobsStore.loading"
-          empty-title="No jobs"
-          empty-message="No jobs have been recorded for this agent."
-          @row-click="(row) => $router.push(`/jobs/${row.id}`)"
+      <!-- Rclone config (collapsible) -->
+      <div class="rounded-lg border border-surface-700 bg-surface-900">
+        <button
+          class="flex w-full items-center justify-between px-4 py-3 text-sm text-slate-400 transition-colors hover:text-slate-200"
+          @click="configOpen = !configOpen"
         >
-          <template #cell-status="{ row }">
-            <StatusBadge :status="(row.status as string)" />
-          </template>
-          <template #cell-started_at="{ row }">
-            {{ relativeTime(row.started_at as string) }}
-          </template>
-          <template #cell-duration="{ row }">
-            {{ formatDuration(durationBetween(row.started_at as string, row.finished_at as string | null)) }}
-          </template>
-        </DataTable>
-      </div>
-
-      <!-- Tab: Rclone Config -->
-      <div v-if="activeTab === 'rclone'" class="rounded-lg bg-white p-6 shadow">
-        <label class="block text-sm font-medium text-gray-700">Rclone Configuration (INI format)</label>
-        <textarea
-          v-model="rcloneConfig"
-          rows="12"
-          class="mt-2 block w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-blue-500 focus:ring-blue-500"
-          placeholder="[remote-name]
-type = s3
-provider = AWS
-access_key_id = ...
-secret_access_key = ...
-region = us-east-1"
-        />
-        <div class="mt-4 flex justify-end">
-          <button
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            :disabled="saving"
-            @click="saveRclone"
+          <span class="font-medium">Rclone Configuration</span>
+          <svg
+            :class="['h-4 w-4 transition-transform', configOpen ? 'rotate-180' : '']"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
           >
-            {{ saving ? 'Saving...' : 'Save Rclone Config' }}
-          </button>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
+        <div v-if="configOpen" class="border-t border-surface-700 p-4">
+          <textarea
+            v-model="rcloneConfig"
+            rows="12"
+            class="block w-full rounded-md border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-xs text-slate-300 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            placeholder="[remote-name]&#10;type = s3&#10;..."
+          />
+          <div class="mt-3 flex justify-end">
+            <button
+              class="rounded-md bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-400 ring-1 ring-cyan-500/30 transition-colors hover:bg-cyan-500/20 disabled:opacity-50"
+              :disabled="saving"
+              @click="saveRclone"
+            >
+              {{ saving ? 'Saving...' : 'Save Config' }}
+            </button>
+          </div>
         </div>
       </div>
     </template>
 
-    <div v-else class="rounded-lg bg-white p-6 text-center text-gray-500 shadow">
+    <div v-else class="rounded-lg border border-surface-700 bg-surface-900 p-6 text-center text-slate-500">
       Agent not found.
     </div>
   </div>

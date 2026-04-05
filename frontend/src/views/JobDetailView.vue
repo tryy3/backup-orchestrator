@@ -9,7 +9,8 @@ import { formatDate, formatDuration, durationBetween, formatBytes } from '../uti
 const route = useRoute()
 const jobsStore = useJobsStore()
 
-const jobId = computed(() => route.params.id as string)
+// job-detail uses :id param; job-console uses :jobId param
+const jobId = computed(() => (route.params.jobId ?? route.params.id) as string)
 const job = computed(() => jobsStore.current)
 
 // Track which log entries are expanded. Errors start expanded.
@@ -79,12 +80,12 @@ function levelClass(level: string): string {
 
     <template v-else-if="job">
       <!-- Job info -->
-      <div class="rounded-lg bg-white p-6 shadow">
+      <div class="rounded-lg border border-surface-700 bg-surface-900 p-6">
         <div class="flex items-start justify-between">
           <div>
-            <h2 class="text-xl font-bold text-gray-900">{{ job.plan_name || 'Job' }}</h2>
-            <p class="mt-1 text-sm text-gray-500">
-              {{ job.type }} - {{ job.trigger }}
+            <h2 class="text-xl font-bold text-slate-100">{{ job.plan_name || 'Job' }}</h2>
+            <p class="mt-1 text-sm text-slate-500">
+              {{ job.type }} · {{ job.trigger }}
             </p>
           </div>
           <StatusBadge :status="job.status" />
@@ -92,55 +93,55 @@ function levelClass(level: string): string {
 
         <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
-            <dt class="text-xs font-medium text-gray-500">Started</dt>
-            <dd class="mt-1 text-sm text-gray-900">{{ formatDate(job.started_at) }}</dd>
+            <dt class="text-xs font-medium text-slate-600">Started</dt>
+            <dd class="mt-1 text-sm text-slate-300">{{ formatDate(job.started_at) }}</dd>
           </div>
           <div>
-            <dt class="text-xs font-medium text-gray-500">Finished</dt>
-            <dd class="mt-1 text-sm text-gray-900">{{ formatDate(job.finished_at) }}</dd>
+            <dt class="text-xs font-medium text-slate-600">Finished</dt>
+            <dd class="mt-1 text-sm text-slate-300">{{ formatDate(job.finished_at) }}</dd>
           </div>
           <div>
-            <dt class="text-xs font-medium text-gray-500">Duration</dt>
-            <dd class="mt-1 text-sm text-gray-900">
+            <dt class="text-xs font-medium text-slate-600">Duration</dt>
+            <dd class="mt-1 text-sm text-slate-300">
               {{ formatDuration(durationBetween(job.started_at, job.finished_at)) }}
             </dd>
           </div>
           <div>
-            <dt class="text-xs font-medium text-gray-500">Type</dt>
-            <dd class="mt-1 text-sm capitalize text-gray-900">{{ job.type }}</dd>
+            <dt class="text-xs font-medium text-slate-600">Type</dt>
+            <dd class="mt-1 text-sm capitalize text-slate-300">{{ job.type }}</dd>
           </div>
         </div>
       </div>
 
       <!-- Repository Results -->
-      <div v-if="job.repository_results?.length" class="rounded-lg bg-white p-6 shadow">
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">Repository Results</h3>
+      <div v-if="job.repository_results?.length" class="rounded-lg border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-500">Repository Results</h3>
         <div class="overflow-x-auto">
-          <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
+          <table class="min-w-full divide-y divide-surface-700">
+            <thead class="bg-surface-800">
               <tr>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Repository</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Snapshot</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">New</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Changed</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Unmodified</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Bytes Added</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Duration</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Repository</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Status</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Snapshot</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">New</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Changed</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Unmodified</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Bytes Added</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Duration</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-gray-200">
+            <tbody class="divide-y divide-surface-700">
               <tr v-for="r in job.repository_results" :key="r.repository_id">
-                <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">{{ r.repository_name }}</td>
+                <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-200">{{ r.repository_name }}</td>
                 <td class="whitespace-nowrap px-4 py-3 text-sm">
                   <StatusBadge :status="r.status" />
                 </td>
-                <td class="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-600">{{ r.snapshot_id || '-' }}</td>
-                <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{{ r.files_new }}</td>
-                <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{{ r.files_changed }}</td>
-                <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{{ r.files_unmodified }}</td>
-                <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{{ formatBytes(r.bytes_added) }}</td>
-                <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{{ formatDuration(r.duration_ms) }}</td>
+                <td class="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-400">{{ r.snapshot_id || '—' }}</td>
+                <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-300">{{ r.files_new }}</td>
+                <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-300">{{ r.files_changed }}</td>
+                <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-300">{{ r.files_unmodified }}</td>
+                <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-300">{{ formatBytes(r.bytes_added) }}</td>
+                <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-300">{{ formatDuration(r.duration_ms) }}</td>
               </tr>
             </tbody>
           </table>
@@ -148,28 +149,28 @@ function levelClass(level: string): string {
       </div>
 
       <!-- Hook Results -->
-      <div v-if="job.hook_results?.length" class="rounded-lg bg-white p-6 shadow">
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">Hook Results</h3>
+      <div v-if="job.hook_results?.length" class="rounded-lg border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-500">Hook Results</h3>
         <div class="overflow-x-auto">
-          <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
+          <table class="min-w-full divide-y divide-surface-700">
+            <thead class="bg-surface-800">
               <tr>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Hook</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Phase</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Error</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Duration</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Hook</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Phase</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Status</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Error</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Duration</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-gray-200">
+            <tbody class="divide-y divide-surface-700">
               <tr v-for="(h, i) in job.hook_results" :key="i">
-                <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">{{ h.hook_name }}</td>
-                <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-600">{{ h.phase }}</td>
+                <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-200">{{ h.hook_name }}</td>
+                <td class="whitespace-nowrap px-4 py-3 text-sm capitalize text-slate-400">{{ h.phase }}</td>
                 <td class="whitespace-nowrap px-4 py-3 text-sm">
                   <StatusBadge :status="h.status" />
                 </td>
-                <td class="max-w-xs truncate px-4 py-3 text-sm text-red-600">{{ h.error || '-' }}</td>
-                <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{{ formatDuration(h.duration_ms) }}</td>
+                <td class="max-w-xs truncate px-4 py-3 text-sm text-red-400">{{ h.error || '—' }}</td>
+                <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-300">{{ formatDuration(h.duration_ms) }}</td>
               </tr>
             </tbody>
           </table>
@@ -177,8 +178,8 @@ function levelClass(level: string): string {
       </div>
 
       <!-- Structured Log Timeline -->
-      <div v-if="job.log_entries?.length" class="rounded-lg bg-white p-6 shadow">
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">Job Log</h3>
+      <div v-if="job.log_entries?.length" class="rounded-lg border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-500">Job Log</h3>
         <div class="max-h-[32rem] overflow-auto rounded-lg bg-gray-900 p-4">
           <div
             v-for="(entry, i) in job.log_entries"
@@ -222,13 +223,13 @@ function levelClass(level: string): string {
       </div>
 
       <!-- Fallback: plain log_tail for old jobs -->
-      <div v-else-if="job.log_tail" class="rounded-lg bg-white p-6 shadow">
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">Log Output</h3>
+      <div v-else-if="job.log_tail" class="rounded-lg border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-500">Log Output</h3>
         <pre class="max-h-96 overflow-auto rounded-lg bg-gray-900 p-4 font-mono text-sm text-gray-100">{{ job.log_tail }}</pre>
       </div>
     </template>
 
-    <div v-else class="rounded-lg bg-white p-6 text-center text-gray-500 shadow">
+    <div v-else class="rounded-lg border border-surface-700 bg-surface-900 p-6 text-center text-slate-500">
       Job not found.
     </div>
   </div>

@@ -8,7 +8,7 @@ defineProps<{
   <div class="flex items-center justify-center py-8">
     <svg
       :class="[
-        'animate-spin text-blue-600',
+        'animate-spin text-cyan-400',
         size === 'sm' ? 'h-5 w-5' : size === 'lg' ? 'h-12 w-12' : 'h-8 w-8',
       ]"
       xmlns="http://www.w3.org/2000/svg"

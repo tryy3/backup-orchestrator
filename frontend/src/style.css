@@ -1,1 +1,48 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+@theme {
+  /* Dark surface palette */
+  --color-surface-950: #07070f;
+  --color-surface-900: #0e0e1a;
+  --color-surface-800: #15152a;
+  --color-surface-700: #1e1e38;
+  --color-surface-600: #28284e;
+
+  /* Accent */
+  --color-accent: #0ddbf2;
+  --color-accent-dim: #0ab8cc;
+
+  /* Font */
+  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: var(--color-surface-950);
+    color: rgb(226 232 240);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(51 65 85) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: rgb(51 65 85);
+    border-radius: 3px;
+  }
+}

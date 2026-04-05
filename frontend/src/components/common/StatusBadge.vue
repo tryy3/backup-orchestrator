@@ -7,25 +7,19 @@ const props = defineProps<{
 
 const colorClasses = computed(() => {
   const s = props.status.toLowerCase()
-  if (['success', 'approved', 'active'].includes(s)) {
-    return 'bg-green-100 text-green-800'
-  }
-  if (['failed', 'rejected'].includes(s)) {
-    return 'bg-red-100 text-red-800'
-  }
-  if (['partial', 'degraded'].includes(s)) {
-    return 'bg-amber-100 text-amber-800'
-  }
-  if (s === 'pending') {
-    return 'bg-blue-100 text-blue-800'
-  }
-  if (s === 'running') {
-    return 'bg-blue-100 text-blue-800 animate-pulse'
-  }
-  if (s === 'offline') {
-    return 'bg-gray-100 text-gray-800'
-  }
-  return 'bg-gray-100 text-gray-600'
+  if (['success', 'approved', 'active'].includes(s))
+    return 'bg-green-500/15 text-green-400 ring-1 ring-green-500/30'
+  if (['failed', 'rejected'].includes(s))
+    return 'bg-red-500/15 text-red-400 ring-1 ring-red-500/30'
+  if (['partial', 'degraded'].includes(s))
+    return 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30'
+  if (s === 'pending')
+    return 'bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30'
+  if (s === 'running')
+    return 'bg-cyan-500/15 text-cyan-400 ring-1 ring-cyan-500/30 animate-pulse'
+  if (s === 'offline')
+    return 'bg-slate-700/50 text-slate-500 ring-1 ring-slate-700'
+  return 'bg-slate-700/30 text-slate-400'
 })
 </script>
 

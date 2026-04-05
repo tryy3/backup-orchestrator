@@ -7,7 +7,7 @@ const sidebarCollapsed = ref(false)
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-gray-50">
+  <div class="flex min-h-screen bg-surface-950">
     <Sidebar :collapsed="sidebarCollapsed" @toggle="sidebarCollapsed = !sidebarCollapsed" />
 
     <!-- Mobile overlay -->

@@ -15,7 +15,7 @@
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             # Go
-            go
+            go_1_26
             gopls
             gotools
             go-tools # staticcheck
@@ -27,8 +27,7 @@
             protoc-gen-go-grpc
 
             # Node.js (frontend)
-            nodejs_22
-            nodePackages.npm
+            nodejs_24
 
             # SQLite (for CLI debugging)
             sqlite

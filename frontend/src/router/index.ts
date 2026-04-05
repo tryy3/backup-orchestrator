@@ -5,7 +5,7 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'dashboard',
+      name: 'fleet-overview',
       component: () => import('../views/DashboardView.vue'),
     },
     {
@@ -15,8 +15,13 @@ const router = createRouter({
     },
     {
       path: '/agents/:id',
-      name: 'agent-detail',
+      name: 'agent-inspect',
       component: () => import('../views/AgentDetailView.vue'),
+    },
+    {
+      path: '/agents/:id/plans/:planId',
+      name: 'plan-history',
+      component: () => import('../views/PlanHistoryView.vue'),
     },
     {
       path: '/repositories',
@@ -76,6 +81,11 @@ const router = createRouter({
     {
       path: '/jobs/:id',
       name: 'job-detail',
+      component: () => import('../views/JobDetailView.vue'),
+    },
+    {
+      path: '/agents/:id/plans/:planId/jobs/:jobId',
+      name: 'job-console',
       component: () => import('../views/JobDetailView.vue'),
     },
     {

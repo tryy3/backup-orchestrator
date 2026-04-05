@@ -21,6 +21,9 @@ bin/
 server/internal/gen/
 agent/internal/gen/
 
+# Embedded frontend dist (copied during build)
+server/internal/frontend/dist/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
@@ -31,6 +34,9 @@ frontend/dist/
 *.swp
 *.swo
 *~
+.claude/
+.agents/
+.opencode/
 
 # OS
 .DS_Store
@@ -47,3 +53,6 @@ result
 
 # Agent data (local dev)
 data/
+
+# project specific stufff
+tmp/

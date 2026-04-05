@@ -56,7 +56,7 @@ const sortedRows = computed(() => {
 </script>
 
 <template>
-  <div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+  <div class="overflow-hidden rounded-lg border border-surface-700 bg-surface-900">
     <LoadingSpinner v-if="loading" />
     <EmptyState
       v-else-if="rows.length === 0"
@@ -64,15 +64,15 @@ const sortedRows = computed(() => {
       :message="emptyMessage ?? 'No records found.'"
     />
     <div v-else class="overflow-x-auto">
-      <table class="min-w-full divide-y divide-gray-200">
-        <thead class="bg-gray-50">
+      <table class="min-w-full divide-y divide-surface-700">
+        <thead class="bg-surface-800">
           <tr>
             <th
               v-for="col in columns"
               :key="col.key"
               :class="[
-                'px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500',
-                col.sortable ? 'cursor-pointer select-none hover:text-gray-700' : '',
+                'px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500',
+                col.sortable ? 'cursor-pointer select-none hover:text-slate-300' : '',
               ]"
               @click="toggleSort(col)"
             >
@@ -86,17 +86,14 @@ const sortedRows = computed(() => {
             </th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-200">
+        <tbody class="divide-y divide-surface-700">
           <tr
             v-for="(row, idx) in sortedRows"
             :key="idx"
-            :class="[
-              idx % 2 === 0 ? 'bg-white' : 'bg-gray-50',
-              'hover:bg-blue-50 transition-colors',
-            ]"
+            class="cursor-pointer transition-colors hover:bg-surface-800/60"
             @click="$emit('row-click', row)"
           >
-            <td v-for="col in columns" :key="col.key" class="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+            <td v-for="col in columns" :key="col.key" class="whitespace-nowrap px-4 py-3 text-sm text-slate-300">
               <slot :name="`cell-${col.key}`" :row="row">
                 {{ row[col.key] ?? '-' }}
               </slot>

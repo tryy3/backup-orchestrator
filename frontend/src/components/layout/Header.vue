@@ -1,33 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAgentsStore } from '../../stores/agents'
+import { usePlansStore } from '../../stores/plans'
 
 const route = useRoute()
-
-const routeTitles: Record<string, string> = {
-  dashboard: 'Dashboard',
-  agents: 'Agents',
-  'agent-detail': 'Agent Details',
-  repositories: 'Repositories',
-  'repository-new': 'New Repository',
-  'repository-edit': 'Edit Repository',
-  plans: 'Backup Plans',
-  'plan-new': 'New Backup Plan',
-  'plan-detail': 'Plan Details',
-  'plan-edit': 'Edit Backup Plan',
-  scripts: 'Scripts',
-  'script-new': 'New Script',
-  'script-edit': 'Edit Script',
-  jobs: 'Jobs',
-  'job-detail': 'Job Details',
-  snapshots: 'Snapshots',
-  settings: 'Settings',
-}
-
-const pageTitle = computed(() => {
-  const name = route.name as string
-  return routeTitles[name] ?? 'Backup Orchestrator'
-})
+const agentsStore = useAgentsStore()
+const plansStore = usePlansStore()
 
 interface Breadcrumb {
   label: string
@@ -35,55 +14,73 @@ interface Breadcrumb {
 }
 
 const breadcrumbs = computed<Breadcrumb[]>(() => {
-  const crumbs: Breadcrumb[] = [{ label: 'Home', to: '/' }]
   const name = route.name as string
+  if (!name || name === 'fleet-overview') return []
 
-  if (name === 'dashboard') return crumbs
-
-  if (name === 'agents' || name === 'agent-detail') {
-    crumbs.push({ label: 'Agents', to: '/agents' })
-    if (name === 'agent-detail') crumbs.push({ label: 'Details' })
-  } else if (name?.startsWith('repositor')) {
-    crumbs.push({ label: 'Repositories', to: '/repositories' })
-    if (name === 'repository-new') crumbs.push({ label: 'New' })
-    if (name === 'repository-edit') crumbs.push({ label: 'Edit' })
-  } else if (name?.startsWith('plan')) {
-    crumbs.push({ label: 'Plans', to: '/plans' })
-    if (name === 'plan-new') crumbs.push({ label: 'New' })
-    if (name === 'plan-detail') crumbs.push({ label: 'Details' })
-    if (name === 'plan-edit') crumbs.push({ label: 'Edit' })
-  } else if (name?.startsWith('script')) {
-    crumbs.push({ label: 'Scripts', to: '/scripts' })
-    if (name === 'script-new') crumbs.push({ label: 'New' })
-    if (name === 'script-edit') crumbs.push({ label: 'Edit' })
-  } else if (name === 'jobs' || name === 'job-detail') {
-    crumbs.push({ label: 'Jobs', to: '/jobs' })
-    if (name === 'job-detail') crumbs.push({ label: 'Details' })
-  } else if (name === 'snapshots') {
-    crumbs.push({ label: 'Snapshots' })
-  } else if (name === 'settings') {
-    crumbs.push({ label: 'Settings' })
+  if (name === 'agent-inspect') {
+    return [
+      { label: 'Fleet Overview', to: '/' },
+      { label: agentsStore.current?.name ?? String(route.params.id) },
+    ]
   }
 
-  return crumbs
+  if (name === 'plan-history') {
+    const agentName = agentsStore.current?.name ?? String(route.params.id)
+    const planName = plansStore.current?.name ?? String(route.params.planId)
+    return [
+      { label: 'Fleet Overview', to: '/' },
+      { label: agentName, to: `/agents/${route.params.id}` },
+      { label: planName },
+    ]
+  }
+
+  if (name === 'job-detail' || name === 'job-console') {
+    return [{ label: 'Fleet Overview', to: '/' }]
+  }
+
+  if (name === 'plan-new') return [{ label: 'Plans', to: '/plans' }, { label: 'New Plan' }]
+  if (name === 'plan-edit') return [{ label: 'Plans', to: '/plans' }, { label: 'Edit Plan' }]
+  if (name === 'plan-detail') return [{ label: 'Plans', to: '/plans' }, { label: 'Plan Details' }]
+  if (name?.startsWith('plan')) return [{ label: 'Plans', to: '/plans' }]
+
+  if (name === 'repository-new') return [{ label: 'Repositories', to: '/repositories' }, { label: 'New Repository' }]
+  if (name === 'repository-edit') return [{ label: 'Repositories', to: '/repositories' }, { label: 'Edit Repository' }]
+  if (name?.startsWith('repositor')) return [{ label: 'Repositories', to: '/repositories' }]
+
+  if (name === 'script-new') return [{ label: 'Scripts', to: '/scripts' }, { label: 'New Script' }]
+  if (name === 'script-edit') return [{ label: 'Scripts', to: '/scripts' }, { label: 'Edit Script' }]
+  if (name?.startsWith('script')) return [{ label: 'Scripts', to: '/scripts' }]
+
+  if (name === 'snapshots') return [{ label: 'Snapshots' }]
+  if (name === 'settings') return [{ label: 'Settings' }]
+  if (name === 'agents') return [{ label: 'Agents' }]
+  if (name === 'jobs') return [{ label: 'Jobs' }]
+
+  return []
 })
 </script>
 
 <template>
-  <header class="border-b border-gray-200 bg-white px-6 py-4">
-    <nav class="mb-1 flex items-center gap-1 text-sm text-gray-500">
-      <template v-for="(crumb, index) in breadcrumbs" :key="index">
-        <span v-if="index > 0" class="mx-1">/</span>
+  <header class="sticky top-0 z-10 flex h-12 items-center border-b border-surface-700 bg-surface-900/90 px-6 backdrop-blur">
+    <nav v-if="breadcrumbs.length > 0" class="flex min-w-0 items-center gap-1 text-sm">
+      <template v-for="(crumb, i) in breadcrumbs" :key="i">
+        <span v-if="i > 0" class="select-none text-surface-600">/</span>
         <router-link
           v-if="crumb.to"
           :to="crumb.to"
-          class="hover:text-blue-600"
+          :class="[
+            'flex items-center gap-1 truncate transition-colors',
+            i === 0 ? 'text-accent hover:text-accent-dim' : 'text-slate-500 hover:text-slate-300',
+          ]"
         >
+          <svg v-if="i === 0" class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+          </svg>
           {{ crumb.label }}
         </router-link>
-        <span v-else class="text-gray-700">{{ crumb.label }}</span>
+        <span v-else class="truncate font-medium text-slate-300">{{ crumb.label }}</span>
       </template>
     </nav>
-    <h1 class="text-2xl font-bold text-gray-900">{{ pageTitle }}</h1>
+    <div v-else class="text-sm font-semibold tracking-widest text-slate-700">BACKUP ORCHESTRATOR</div>
   </header>
 </template>
