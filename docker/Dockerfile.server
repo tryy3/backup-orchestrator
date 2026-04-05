@@ -6,28 +6,27 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Build server
-FROM docker.io/library/golang:1.26.1-alpine AS builder
-RUN apk add --no-cache git curl
-WORKDIR /app
-
-# Install buf CLI and protoc plugins for proto generation
-ARG BUF_VERSION=1.50.0
-RUN ARCH=$(uname -m | sed 's/x86_64/x86_64/;s/aarch64/arm64/') \
-    && curl -sSL "https://github.com/bufbuild/buf/releases/download/v${BUF_VERSION}/buf-Linux-${ARCH}" -o /usr/local/bin/buf \
-    && chmod +x /usr/local/bin/buf
+# Stage 2: Generate proto files
+FROM docker.io/library/golang:1.26.1-alpine AS proto-gen
+RUN apk add --no-cache git
+COPY --from=bufbuild/buf:latest /usr/local/bin/buf /usr/local/bin/buf
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.0 \
     && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+WORKDIR /app
+COPY proto/ ./proto/
+RUN cd proto && buf generate
+
+# Stage 3: Build server
+FROM docker.io/library/golang:1.26.1-alpine AS builder
+RUN apk add --no-cache git
+WORKDIR /app
 
 # Copy server module and download deps
 COPY server/go.mod server/go.sum ./server/
 RUN cd server && go mod download
 
-# Copy proto definitions and generate
-COPY proto/ ./proto/
-RUN cd proto && buf generate
-
-# Copy server source
+# Copy generated proto files and server source
+COPY --from=proto-gen /app/server/internal/gen/ ./server/internal/gen/
 COPY server/ ./server/
 
 # Copy built frontend into embed directory
