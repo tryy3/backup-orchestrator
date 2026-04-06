@@ -88,21 +88,18 @@ const jobStats = computed(() => {
     last30: { success: 0, partial: 0, failed: 0, total: 0 },
   }
 
+  function tally(bucket: typeof stats.last7, status: string) {
+    bucket.total++
+    if (status === 'success') bucket.success++
+    else if (status === 'partial') bucket.partial++
+    else if (status === 'failed') bucket.failed++
+  }
+
   for (const job of jobsStore.list) {
     const t = new Date(job.started_at).getTime()
     if (job.status === 'planned' || job.status === 'running') continue
-    if (t >= d30) {
-      stats.last30.total++
-      if (job.status === 'success') stats.last30.success++
-      else if (job.status === 'partial') stats.last30.partial++
-      else if (job.status === 'failed') stats.last30.failed++
-    }
-    if (t >= d7) {
-      stats.last7.total++
-      if (job.status === 'success') stats.last7.success++
-      else if (job.status === 'partial') stats.last7.partial++
-      else if (job.status === 'failed') stats.last7.failed++
-    }
+    if (t >= d30) tally(stats.last30, job.status)
+    if (t >= d7) tally(stats.last7, job.status)
   }
   return stats
 })
@@ -246,7 +243,7 @@ async function saveRclone() {
         <div class="mt-3 flex items-end gap-px" style="height: 24px">
           <div
             v-for="(day, i) in recentSparkline"
-            :key="i"
+            :key="'spark-' + (14 - i)"
             :class="[
               'flex-1 rounded-[1px] transition-colors',
               day.failed > 0
