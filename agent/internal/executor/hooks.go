@@ -40,7 +40,7 @@ type HookResult struct {
 }
 
 // RunHook expands template variables in the hook command and executes it via sh -c.
-func RunHook(ctx context.Context, hook *backupv1.ResolvedHook, hctx *HookContext) *HookResult {
+func RunHook(ctx context.Context, hook *backupv1.ResolvedHook, hctx *HookContext, jlog *slog.Logger) *HookResult {
 	start := time.Now()
 	result := &HookResult{
 		HookName: hook.GetName(),
@@ -64,6 +64,25 @@ func RunHook(ctx context.Context, hook *backupv1.ResolvedHook, hctx *HookContext
 	}
 	hookCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
+
+	// Log the internally-set hook context (template variables we inject).
+	jlog.Info("executing hook",
+		"source", "hook",
+		"hook", hook.GetName(),
+		"phase", hook.GetOnEvent(),
+		"timeout_seconds", timeoutSec,
+		"plan_name", hctx.PlanName,
+		"hostname", hctx.Hostname,
+		"status", hctx.Status,
+		"duration", hctx.Duration,
+		"started_at", hctx.StartedAt,
+		"finished_at", hctx.FinishedAt,
+		"bytes_added", hctx.BytesAdded,
+		"files_new", hctx.FilesNew,
+		"files_changed", hctx.FilesChanged,
+		"snapshot_id", hctx.SnapshotID,
+		"error", hctx.Error,
+	)
 
 	// Execute via sh -c.
 	cmd := exec.CommandContext(hookCtx, "sh", "-c", expanded)
@@ -115,7 +134,7 @@ func RunHooks(ctx context.Context, hooks []*backupv1.ResolvedHook, event string,
 
 	for _, hook := range matching {
 		jlog.Info("running hook", "source", "hook", "phase", event, "hook", hook.GetName())
-		result := RunHook(ctx, hook, hctx)
+		result := RunHook(ctx, hook, hctx, jlog)
 		results = append(results, result)
 
 		if result.Status == "failed" {

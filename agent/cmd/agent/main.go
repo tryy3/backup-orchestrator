@@ -343,7 +343,7 @@ func handleCommand(
 			Type:     repo.GetType(),
 			Path:     repo.GetPath(),
 			Password: repo.GetPassword(),
-		})
+		}, slog.Default())
 		if err != nil {
 			result.Success = false
 			result.Error = err.Error()
@@ -366,7 +366,7 @@ func handleCommand(
 			Type:     repo.GetType(),
 			Path:     repo.GetPath(),
 			Password: repo.GetPassword(),
-		}, action.BrowseSnapshot.GetSnapshotId(), action.BrowseSnapshot.GetPath())
+		}, action.BrowseSnapshot.GetSnapshotId(), action.BrowseSnapshot.GetPath(), slog.Default())
 		if err != nil {
 			result.Success = false
 			result.Error = err.Error()
@@ -389,7 +389,7 @@ func handleCommand(
 			Type:     repo.GetType(),
 			Path:     repo.GetPath(),
 			Password: repo.GetPassword(),
-		}, action.TriggerRestore.GetSnapshotId(), action.TriggerRestore.GetPaths(), action.TriggerRestore.GetTarget())
+		}, action.TriggerRestore.GetSnapshotId(), action.TriggerRestore.GetPaths(), action.TriggerRestore.GetTarget(), slog.Default())
 		if err != nil {
 			result.Success = false
 			result.Error = err.Error()
