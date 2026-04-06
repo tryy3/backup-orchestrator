@@ -8,6 +8,7 @@ import (
 
 	backupv1 "github.com/tryy3/backup-orchestrator/server/internal/gen/backup/v1"
 	"github.com/tryy3/backup-orchestrator/server/internal/database"
+	"github.com/tryy3/backup-orchestrator/server/internal/events"
 )
 
 // Register handles agent enrollment. Creates a new agent record with pending status.
@@ -37,6 +38,12 @@ func (s *GRPCServer) Register(ctx context.Context, req *backupv1.RegisterRequest
 	if err := s.db.CreateAgent(agent); err != nil {
 		return nil, fmt.Errorf("create agent: %w", err)
 	}
+
+	// Broadcast agent.registered event.
+	s.hub.Broadcast(events.Event{
+		Type:    "agent.registered",
+		Payload: agent,
+	})
 
 	return &backupv1.RegisterResponse{
 		AgentId: agentID,

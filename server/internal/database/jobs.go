@@ -251,3 +251,96 @@ func (db *DB) UpdateJobStatus(id, status string, finishedAt *time.Time, logTail 
 	}
 	return nil
 }
+
+// CreatePlannedJob inserts a placeholder job with status "planned" when a backup is triggered.
+// The job is updated later when the agent reports it as started/completed.
+func (db *DB) CreatePlannedJob(agentID, planID, planName, trigger string) (*Job, error) {
+	j := &Job{
+		ID:        uuid.New().String(),
+		AgentID:   agentID,
+		PlanID:    &planID,
+		PlanName:  planName,
+		Type:      "backup",
+		Trigger:   trigger,
+		Status:    "planned",
+		StartedAt: time.Now().UTC(),
+		CreatedAt: time.Now().UTC(),
+	}
+
+	_, err := db.Exec(`
+		INSERT INTO jobs (id, agent_id, plan_id, plan_name, type, trigger, status, started_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		j.ID, j.AgentID, j.PlanID, j.PlanName, j.Type, j.Trigger, j.Status, j.StartedAt, j.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create planned job: %w", err)
+	}
+	return j, nil
+}
+
+// FindPlannedJob finds a planned/running job for a given agent and plan.
+func (db *DB) FindPlannedJob(agentID, planID string) (*Job, error) {
+	j := &Job{}
+	err := db.QueryRow(`
+		SELECT id, agent_id, plan_id, plan_name, type, trigger, status, started_at, finished_at, log_tail, created_at
+		FROM jobs WHERE agent_id = ? AND plan_id = ? AND status IN ('planned', 'running')
+		ORDER BY created_at DESC LIMIT 1`,
+		agentID, planID,
+	).Scan(&j.ID, &j.AgentID, &j.PlanID, &j.PlanName, &j.Type, &j.Trigger, &j.Status, &j.StartedAt, &j.FinishedAt, &j.LogTail, &j.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find planned job: %w", err)
+	}
+	return j, nil
+}
+
+// CompleteJob updates a planned/running job with final results (status, timestamps, logs, results).
+func (db *DB) CompleteJob(j *Job) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`
+		UPDATE jobs SET status=?, started_at=?, finished_at=?, log_tail=? WHERE id=?`,
+		j.Status, j.StartedAt, j.FinishedAt, j.LogTail, j.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update job: %w", err)
+	}
+
+	for _, rr := range j.RepositoryResults {
+		if rr.ID == "" {
+			rr.ID = uuid.New().String()
+		}
+		_, err = tx.Exec(`
+			INSERT INTO job_repository_results (id, job_id, repository_id, repository_name, status, snapshot_id, error,
+				files_new, files_changed, files_unmodified, bytes_added, total_bytes, duration_ms)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			rr.ID, j.ID, rr.RepositoryID, rr.RepositoryName, rr.Status, rr.SnapshotID, rr.Error,
+			rr.FilesNew, rr.FilesChanged, rr.FilesUnmodified, rr.BytesAdded, rr.TotalBytes, rr.DurationMs,
+		)
+		if err != nil {
+			return fmt.Errorf("insert repository result: %w", err)
+		}
+	}
+
+	for _, hr := range j.HookResults {
+		if hr.ID == "" {
+			hr.ID = uuid.New().String()
+		}
+		_, err = tx.Exec(`
+			INSERT INTO job_hook_results (id, job_id, hook_name, phase, status, error, duration_ms)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			hr.ID, j.ID, hr.HookName, hr.Phase, hr.Status, hr.Error, hr.DurationMs,
+		)
+		if err != nil {
+			return fmt.Errorf("insert hook result: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}

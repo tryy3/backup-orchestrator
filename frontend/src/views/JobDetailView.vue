@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { useJobsStore } from '../stores/jobs'
+import { useJobsStore, jobProgress } from '../stores/jobs'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import LoadingSpinner from '../components/common/LoadingSpinner.vue'
 import { formatDate, formatDuration, durationBetween, formatBytes } from '../utils/time'
@@ -12,6 +12,13 @@ const jobsStore = useJobsStore()
 // job-detail uses :id param; job-console uses :jobId param
 const jobId = computed(() => (route.params.jobId ?? route.params.id) as string)
 const job = computed(() => jobsStore.current)
+
+const progress = computed(() => {
+  if (!job.value || (job.value.status !== 'running' && job.value.status !== 'planned')) return null
+  const p = jobProgress.value.get(job.value.agent_id)
+  if (!p) return null
+  return p.percent
+})
 
 // Track which log entries are expanded. Errors start expanded.
 const expandedEntries = ref<Set<number>>(new Set())
@@ -109,6 +116,20 @@ function levelClass(level: string): string {
           <div>
             <dt class="text-xs font-medium text-slate-600">Type</dt>
             <dd class="mt-1 text-sm capitalize text-slate-300">{{ job.type }}</dd>
+          </div>
+        </div>
+
+        <!-- Progress bar for running jobs -->
+        <div v-if="progress !== null && progress >= 0" class="mt-6">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span>Progress</span>
+            <span class="tabular-nums">{{ progress.toFixed(1) }}%</span>
+          </div>
+          <div class="h-2 w-full overflow-hidden rounded-full bg-surface-700">
+            <div
+              class="h-full rounded-full bg-cyan-500 transition-all duration-500"
+              :style="{ width: `${Math.min(progress, 100)}%` }"
+            />
           </div>
         </div>
       </div>

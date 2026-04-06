@@ -69,12 +69,14 @@ export const usePlansStore = defineStore('plans', () => {
     }
   }
 
-  async function trigger(id: string) {
+  async function trigger(id: string): Promise<string | null> {
     error.value = null
     try {
-      await api.trigger(id)
+      const result = await api.trigger(id)
+      return result.job_id ?? null
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
+      return null
     }
   }
 

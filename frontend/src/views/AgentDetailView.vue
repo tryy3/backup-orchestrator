@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAgentsStore } from '../stores/agents'
 import { useJobsStore } from '../stores/jobs'
@@ -18,7 +18,12 @@ const configOpen = ref(false)
 const rcloneConfig = ref('')
 const saving = ref(false)
 
+// Reactive "now" that ticks every 5 seconds for live relative times.
+const now = ref(Date.now())
+let nowTimer: ReturnType<typeof setInterval> | null = null
+
 onMounted(async () => {
+  nowTimer = setInterval(() => { now.value = Date.now() }, 5000)
   await agentsStore.fetchOne(agentId.value)
   if (agentsStore.current) {
     rcloneConfig.value = agentsStore.current.rclone_config || ''
@@ -27,11 +32,15 @@ onMounted(async () => {
   jobsStore.fetchAll({ agent_id: agentId.value })
 })
 
+onUnmounted(() => {
+  if (nowTimer) clearInterval(nowTimer)
+})
+
 const agent = computed(() => agentsStore.current)
 
 const isOnline = computed(() => {
   if (!agent.value?.last_heartbeat) return false
-  return Date.now() - new Date(agent.value.last_heartbeat).getTime() < 5 * 60 * 1000
+  return now.value - new Date(agent.value.last_heartbeat).getTime() < 5 * 60 * 1000
 })
 
 // Most recent job per plan
@@ -58,6 +67,12 @@ const failedPlanIds = computed(
 
 const failingPlans = computed(() => plansStore.list.filter((p) => failedPlanIds.value.has(p.id)))
 
+// Live-updating relative time that refreshes with the `now` tick.
+function liveRelativeTime(ts: string | null): string {
+  void now.value // create reactive dependency
+  return relativeTime(ts)
+}
+
 async function saveRclone() {
   saving.value = true
   await agentsStore.updateRclone(agentId.value, rcloneConfig.value)
@@ -82,7 +97,7 @@ async function saveRclone() {
           <p class="mt-1 pl-6 text-sm text-slate-500">{{ agent.hostname }}</p>
         </div>
         <div class="shrink-0 text-right text-xs text-slate-500">
-          <div>Last heartbeat: <span class="text-slate-400">{{ relativeTime(agent.last_heartbeat) }}</span></div>
+          <div>Last heartbeat: <span class="text-slate-400">{{ liveRelativeTime(agent.last_heartbeat) }}</span></div>
           <div>v{{ agent.agent_version || '—' }}</div>
         </div>
       </div>
@@ -109,7 +124,7 @@ async function saveRclone() {
             { label: 'Config Version', value: String(agent.config_version) },
             { label: 'Registered', value: formatDate(agent.created_at) },
             { label: 'Config Applied', value: formatDate(agent.config_applied_at) },
-            { label: 'Last Heartbeat', value: relativeTime(agent.last_heartbeat) },
+            { label: 'Last Heartbeat', value: liveRelativeTime(agent.last_heartbeat) },
           ]"
           :key="i"
           class="rounded-lg border border-surface-700 bg-surface-900 p-3"
@@ -182,7 +197,7 @@ async function saveRclone() {
                   </span>
                 </td>
                 <td class="hidden px-4 py-3 text-xs text-slate-500 md:table-cell">
-                  {{ recentJobByPlan[plan.id] ? relativeTime(recentJobByPlan[plan.id]) : '—' }}
+                  {{ recentJobByPlan[plan.id] ? liveRelativeTime(recentJobByPlan[plan.id]) : '—' }}
                 </td>
               </tr>
             </tbody>

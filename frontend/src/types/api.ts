@@ -131,7 +131,7 @@ export interface Job {
   plan_name: string
   type: 'backup' | 'forget' | 'prune' | 'restore'
   trigger: 'scheduled' | 'manual'
-  status: 'running' | 'success' | 'partial' | 'failed'
+  status: 'planned' | 'running' | 'success' | 'partial' | 'failed'
   started_at: string
   finished_at: string | null
   log_tail: string | null
@@ -202,4 +202,52 @@ export interface RestoreRequest {
   snapshot_id: string
   paths: string[]
   target: string
+}
+
+// WebSocket event payloads
+export interface JobCreatedEvent {
+  id: string
+  agent_id: string
+  plan_id: string | null
+  plan_name: string
+  type: string
+  trigger: string
+  status: string
+  started_at: string
+  created_at: string
+}
+
+export interface JobStartedEvent {
+  job_id: string
+  agent_id: string
+  plan_id: string
+  plan_name: string
+  started_at: string
+  progress_percent: number
+}
+
+export interface JobProgressEvent {
+  agent_id: string
+  plan_name: string
+  progress_percent: number
+  started_at: string
+}
+
+export interface JobCompletedEvent {
+  id: string
+  agent_id: string
+  plan_id: string | null
+  plan_name: string
+  type: string
+  trigger: string
+  status: string
+  started_at: string
+  finished_at: string | null
+  created_at: string
+}
+
+export interface TriggerResponse {
+  success: boolean
+  error: string
+  job_id: string
 }

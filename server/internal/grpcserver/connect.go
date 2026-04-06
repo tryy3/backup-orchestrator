@@ -8,6 +8,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/tryy3/backup-orchestrator/server/internal/agentmgr"
+	"github.com/tryy3/backup-orchestrator/server/internal/events"
+
 	backupv1 "github.com/tryy3/backup-orchestrator/server/internal/gen/backup/v1"
 )
 
@@ -48,6 +51,15 @@ func (s *GRPCServer) Connect(stream backupv1.BackupService_ConnectServer) error 
 	defer s.mgr.Unregister(agentID)
 
 	log.Printf("Agent %s (%s) connected, status=%s", agentID, agent.Hostname, agent.Status)
+
+	// Broadcast agent.connected event.
+	s.hub.Broadcast(events.Event{
+		Type: "agent.connected",
+		Payload: map[string]interface{}{
+			"agent_id": agentID,
+			"hostname": agent.Hostname,
+		},
+	})
 
 	// Process the first message.
 	s.handleAgentMessage(agentID, agent.Status, firstMsg)
@@ -99,6 +111,14 @@ func (s *GRPCServer) Connect(stream backupv1.BackupService_ConnectServer) error 
 
 	log.Printf("Agent %s disconnected", agentID)
 
+	// Broadcast agent.disconnected event.
+	s.hub.Broadcast(events.Event{
+		Type: "agent.disconnected",
+		Payload: map[string]interface{}{
+			"agent_id": agentID,
+		},
+	})
+
 	if streamErr != nil && streamErr != io.EOF {
 		return streamErr
 	}
@@ -115,13 +135,53 @@ func (s *GRPCServer) handleAgentMessage(agentID, agentStatus string, msg *backup
 			hbStatus = "idle"
 		}
 
-		// Update manager state.
-		s.mgr.UpdateHeartbeat(agentID, hbStatus)
+		// Extract current job info from heartbeat.
+		var currentJob *agentmgr.CurrentJobInfo
+		if hb.CurrentJob != nil {
+			currentJob = &agentmgr.CurrentJobInfo{
+				PlanName:        hb.CurrentJob.PlanName,
+				ProgressPercent: hb.CurrentJob.ProgressPercent,
+			}
+			if hb.CurrentJob.StartedAt != nil {
+				currentJob.StartedAt = hb.CurrentJob.StartedAt.AsTime().Format(time.RFC3339)
+			}
+		}
+
+		// Update manager state and detect job transitions.
+		transition := s.mgr.UpdateHeartbeat(agentID, hbStatus, currentJob)
+
+		// Emit job events based on the transition.
+		switch transition {
+		case agentmgr.JobStarted:
+			// Try to find and update the planned job in the DB.
+			s.handleJobStarted(agentID, currentJob)
+		case agentmgr.JobProgress:
+			if currentJob != nil {
+				s.hub.Broadcast(events.Event{
+					Type: "job.progress",
+					Payload: map[string]interface{}{
+						"agent_id":         agentID,
+						"plan_name":        currentJob.PlanName,
+						"progress_percent": currentJob.ProgressPercent,
+						"started_at":       currentJob.StartedAt,
+					},
+				})
+			}
+		}
 
 		// Update database.
 		if err := s.db.UpdateHeartbeat(agentID, hb.AgentVersion, hb.ResticVersion, hb.RcloneVersion); err != nil {
 			log.Printf("Failed to update heartbeat for agent %s: %v", agentID, err)
 		}
+
+		// Broadcast agent.heartbeat event.
+		s.hub.Broadcast(events.Event{
+			Type: "agent.heartbeat",
+			Payload: map[string]interface{}{
+				"agent_id":  agentID,
+				"timestamp": time.Now().UTC().Format(time.RFC3339),
+			},
+		})
 
 	case *backupv1.AgentMessage_ConfigAck:
 		ack := payload.ConfigAck
@@ -140,4 +200,59 @@ func (s *GRPCServer) handleAgentMessage(agentID, agentStatus string, msg *backup
 	default:
 		log.Printf("Unknown message type from agent %s", agentID)
 	}
+}
+
+// handleJobStarted processes a job-started transition detected from heartbeats.
+// It finds any planned job for this agent's plan and updates it to "running".
+func (s *GRPCServer) handleJobStarted(agentID string, currentJob *agentmgr.CurrentJobInfo) {
+	if currentJob == nil {
+		return
+	}
+
+	// Look up plans for this agent to find the plan ID from the plan name.
+	plans, err := s.db.ListPlans(agentID)
+	if err != nil {
+		log.Printf("Failed to list plans for agent %s: %v", agentID, err)
+		return
+	}
+
+	var planID string
+	for _, p := range plans {
+		if p.Name == currentJob.PlanName {
+			planID = p.ID
+			break
+		}
+	}
+
+	if planID == "" {
+		log.Printf("No plan found named %q for agent %s", currentJob.PlanName, agentID)
+		return
+	}
+
+	// Find planned job and update to running.
+	planned, err := s.db.FindPlannedJob(agentID, planID)
+	if err != nil {
+		log.Printf("Failed to find planned job for agent %s plan %s: %v", agentID, planID, err)
+		return
+	}
+
+	var jobID string
+	if planned != nil {
+		jobID = planned.ID
+		if err := s.db.UpdateJobStatus(planned.ID, "running", nil, nil); err != nil {
+			log.Printf("Failed to update planned job %s to running: %v", planned.ID, err)
+		}
+	}
+
+	s.hub.Broadcast(events.Event{
+		Type: "job.started",
+		Payload: map[string]interface{}{
+			"job_id":           jobID,
+			"agent_id":         agentID,
+			"plan_id":          planID,
+			"plan_name":        currentJob.PlanName,
+			"started_at":       currentJob.StartedAt,
+			"progress_percent": currentJob.ProgressPercent,
+		},
+	})
 }

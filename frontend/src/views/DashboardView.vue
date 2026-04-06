@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useAgentsStore } from '../stores/agents'
-import { useJobsStore } from '../stores/jobs'
+import { useJobsStore, jobProgress } from '../stores/jobs'
 import type { Agent, Job } from '../types/api'
 
 const agentsStore = useAgentsStore()
@@ -285,6 +285,25 @@ function statusDotClass(status: ReturnType<typeof agentHealthStatus>) {
           <span :class="['text-sm font-semibold tabular-nums', reliabilityColor(agent.id)]">
             {{ reliabilityText(agent.id) }}
           </span>
+        </div>
+
+        <!-- Running job indicator -->
+        <div
+          v-if="jobProgress.get(agent.id)"
+          class="mt-2 rounded bg-cyan-500/10 px-2 py-1.5 ring-1 ring-cyan-500/20"
+        >
+          <div class="flex items-center justify-between text-xs text-cyan-400 mb-1">
+            <span class="truncate">{{ jobProgress.get(agent.id)!.planName }}</span>
+            <span v-if="jobProgress.get(agent.id)!.percent >= 0" class="shrink-0 tabular-nums ml-2">
+              {{ jobProgress.get(agent.id)!.percent.toFixed(0) }}%
+            </span>
+          </div>
+          <div class="h-1 w-full overflow-hidden rounded-full bg-surface-700">
+            <div
+              class="h-full rounded-full bg-cyan-500 transition-all duration-500"
+              :style="{ width: `${Math.min(jobProgress.get(agent.id)!.percent >= 0 ? jobProgress.get(agent.id)!.percent : 0, 100)}%` }"
+            />
+          </div>
         </div>
       </router-link>
     </div>
