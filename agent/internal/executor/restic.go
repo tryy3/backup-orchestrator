@@ -5,9 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/tryy3/backup-orchestrator/agent/internal/redact"
 )
 
 // Repository represents a restic backup repository.
@@ -78,7 +81,7 @@ type resticSummary struct {
 }
 
 // Backup runs restic backup with the given parameters and returns parsed results.
-func (r *ResticExecutor) Backup(ctx context.Context, repo Repository, paths, excludes, tags []string) (*BackupResult, error) {
+func (r *ResticExecutor) Backup(ctx context.Context, repo Repository, paths, excludes, tags []string, logger *slog.Logger) (*BackupResult, error) {
 	args := []string{"backup", "--json", "--repo", repo.Path}
 
 	for _, tag := range tags {
@@ -90,7 +93,7 @@ func (r *ResticExecutor) Backup(ctx context.Context, repo Repository, paths, exc
 	args = append(args, paths...)
 
 	start := time.Now()
-	stdout, stderr, err := r.runRestic(ctx, repo, args)
+	stdout, stderr, err := r.runRestic(ctx, repo, args, logger)
 	durationMs := time.Since(start).Milliseconds()
 
 	if err != nil {
@@ -137,7 +140,7 @@ func (r *ResticExecutor) Backup(ctx context.Context, repo Repository, paths, exc
 }
 
 // Forget runs restic forget with the given retention policy and tag filters.
-func (r *ResticExecutor) Forget(ctx context.Context, repo Repository, retention RetentionPolicy, tags []string) error {
+func (r *ResticExecutor) Forget(ctx context.Context, repo Repository, retention RetentionPolicy, tags []string, logger *slog.Logger) error {
 	args := []string{"forget", "--repo", repo.Path}
 
 	if retention.KeepLast > 0 {
@@ -163,7 +166,7 @@ func (r *ResticExecutor) Forget(ctx context.Context, repo Repository, retention 
 		args = append(args, "--tag", tag)
 	}
 
-	_, stderr, err := r.runRestic(ctx, repo, args)
+	_, stderr, err := r.runRestic(ctx, repo, args, logger)
 	if err != nil {
 		return fmt.Errorf("restic forget: %w\nstderr: %s", err, stderr)
 	}
@@ -171,10 +174,10 @@ func (r *ResticExecutor) Forget(ctx context.Context, repo Repository, retention 
 }
 
 // Prune runs restic prune to reclaim space.
-func (r *ResticExecutor) Prune(ctx context.Context, repo Repository) error {
+func (r *ResticExecutor) Prune(ctx context.Context, repo Repository, logger *slog.Logger) error {
 	args := []string{"prune", "--repo", repo.Path}
 
-	_, stderr, err := r.runRestic(ctx, repo, args)
+	_, stderr, err := r.runRestic(ctx, repo, args, logger)
 	if err != nil {
 		return fmt.Errorf("restic prune: %w\nstderr: %s", err, stderr)
 	}
@@ -182,10 +185,10 @@ func (r *ResticExecutor) Prune(ctx context.Context, repo Repository) error {
 }
 
 // Snapshots lists all snapshots in the repository.
-func (r *ResticExecutor) Snapshots(ctx context.Context, repo Repository) ([]SnapshotInfo, error) {
+func (r *ResticExecutor) Snapshots(ctx context.Context, repo Repository, logger *slog.Logger) ([]SnapshotInfo, error) {
 	args := []string{"snapshots", "--json", "--repo", repo.Path}
 
-	stdout, stderr, err := r.runRestic(ctx, repo, args)
+	stdout, stderr, err := r.runRestic(ctx, repo, args, logger)
 	if err != nil {
 		return nil, fmt.Errorf("restic snapshots: %w\nstderr: %s", err, stderr)
 	}
@@ -198,13 +201,13 @@ func (r *ResticExecutor) Snapshots(ctx context.Context, repo Repository) ([]Snap
 }
 
 // ListFiles lists files in a snapshot at the given path.
-func (r *ResticExecutor) ListFiles(ctx context.Context, repo Repository, snapshotID, path string) ([]FileEntry, error) {
+func (r *ResticExecutor) ListFiles(ctx context.Context, repo Repository, snapshotID, path string, logger *slog.Logger) ([]FileEntry, error) {
 	args := []string{"ls", "--json", "--repo", repo.Path, snapshotID}
 	if path != "" {
 		args = append(args, path)
 	}
 
-	stdout, stderr, err := r.runRestic(ctx, repo, args)
+	stdout, stderr, err := r.runRestic(ctx, repo, args, logger)
 	if err != nil {
 		return nil, fmt.Errorf("restic ls: %w\nstderr: %s", err, stderr)
 	}
@@ -229,7 +232,7 @@ func (r *ResticExecutor) ListFiles(ctx context.Context, repo Repository, snapsho
 }
 
 // Restore restores files from a snapshot to the target directory.
-func (r *ResticExecutor) Restore(ctx context.Context, repo Repository, snapshotID string, paths []string, target string) error {
+func (r *ResticExecutor) Restore(ctx context.Context, repo Repository, snapshotID string, paths []string, target string, logger *slog.Logger) error {
 	args := []string{"restore", "--repo", repo.Path, "--target", target}
 
 	for _, p := range paths {
@@ -237,7 +240,7 @@ func (r *ResticExecutor) Restore(ctx context.Context, repo Repository, snapshotI
 	}
 	args = append(args, snapshotID)
 
-	_, stderr, err := r.runRestic(ctx, repo, args)
+	_, stderr, err := r.runRestic(ctx, repo, args, logger)
 	if err != nil {
 		return fmt.Errorf("restic restore: %w\nstderr: %s", err, stderr)
 	}
@@ -245,10 +248,10 @@ func (r *ResticExecutor) Restore(ctx context.Context, repo Repository, snapshotI
 }
 
 // EnsureRepo initializes the repository if it doesn't exist.
-func (r *ResticExecutor) EnsureRepo(ctx context.Context, repo Repository) error {
+func (r *ResticExecutor) EnsureRepo(ctx context.Context, repo Repository, logger *slog.Logger) error {
 	// Try listing snapshots to see if the repo exists.
 	args := []string{"snapshots", "--repo", repo.Path, "--json"}
-	_, stderr, err := r.runRestic(ctx, repo, args)
+	_, stderr, err := r.runRestic(ctx, repo, args, logger)
 	if err == nil {
 		return nil // repo already exists
 	}
@@ -257,7 +260,7 @@ func (r *ResticExecutor) EnsureRepo(ctx context.Context, repo Repository) error 
 	if strings.Contains(stderr, "unable to open repository") ||
 		strings.Contains(stderr, "Is there a repository at the following location") {
 		initArgs := []string{"init", "--repo", repo.Path}
-		_, initStderr, initErr := r.runRestic(ctx, repo, initArgs)
+		_, initStderr, initErr := r.runRestic(ctx, repo, initArgs, logger)
 		if initErr != nil {
 			return fmt.Errorf("restic init: %w\nstderr: %s", initErr, initStderr)
 		}
@@ -268,18 +271,28 @@ func (r *ResticExecutor) EnsureRepo(ctx context.Context, repo Repository) error 
 }
 
 // runRestic executes a restic command with the correct environment variables.
-func (r *ResticExecutor) runRestic(ctx context.Context, repo Repository, args []string) (stdout, stderr string, err error) {
+func (r *ResticExecutor) runRestic(ctx context.Context, repo Repository, args []string, logger *slog.Logger) (stdout, stderr string, err error) {
 	cmd := exec.CommandContext(ctx, "restic", args...)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
-	// Set environment variables.
-	cmd.Env = append(cmd.Environ(), "RESTIC_PASSWORD="+repo.Password)
+	// Set extra environment variables.
+	var extraEnv []string
+	extraEnv = append(extraEnv, "RESTIC_PASSWORD="+repo.Password)
 	if r.RcloneConfigPath != "" {
-		cmd.Env = append(cmd.Env, "RCLONE_CONFIG="+r.RcloneConfigPath)
+		extraEnv = append(extraEnv, "RCLONE_CONFIG="+r.RcloneConfigPath)
 	}
+	cmd.Env = append(cmd.Environ(), extraEnv...)
+
+	// Log the command with redacted sensitive data.
+	logger.Info("executing command",
+		"source", "restic",
+		"command", "restic",
+		"args", redact.Args(args),
+		"env", redact.Env(extraEnv),
+	)
 
 	err = cmd.Run()
 	return stdoutBuf.String(), stderrBuf.String(), err

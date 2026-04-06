@@ -239,7 +239,7 @@ func (o *JobOrchestrator) backupToRepo(
 
 	// Ensure repo is initialized.
 	jlog.Info("ensuring repository is initialized", "source", "restic", "repository", repo.Name)
-	if err := o.Restic.EnsureRepo(ctx, repo); err != nil {
+	if err := o.Restic.EnsureRepo(ctx, repo, jlog); err != nil {
 		jlog.Error("ensure repo failed", "source", "restic", "repository", repo.Name, "error", err)
 		result.Status = "failed"
 		result.Error = fmt.Sprintf("ensure repo: %v", err)
@@ -249,7 +249,7 @@ func (o *JobOrchestrator) backupToRepo(
 
 	// Run backup.
 	jlog.Info("running restic backup", "source", "restic", "repository", repo.Name)
-	backupResult, err := o.Restic.Backup(ctx, repo, plan.GetPaths(), plan.GetExcludes(), tags)
+	backupResult, err := o.Restic.Backup(ctx, repo, plan.GetPaths(), plan.GetExcludes(), tags, jlog)
 	if err != nil {
 		jlog.Error("backup failed", "source", "restic", "repository", repo.Name, "error", err)
 		result.Status = "failed"
@@ -292,7 +292,7 @@ func (o *JobOrchestrator) backupToRepo(
 				KeepYearly:  retention.GetKeepYearly(),
 			}
 			jlog.Info("running forget", "source", "restic", "repository", repo.Name)
-			if err := o.Restic.Forget(ctx, repo, rp, tags); err != nil {
+			if err := o.Restic.Forget(ctx, repo, rp, tags, jlog); err != nil {
 				jlog.Warn("forget failed", "source", "restic", "repository", repo.Name, "error", err)
 				// Forget failure doesn't fail the backup.
 			} else {
@@ -302,7 +302,7 @@ func (o *JobOrchestrator) backupToRepo(
 			// Run prune if configured.
 			if plan.GetPruneAfterForget() {
 				jlog.Info("running prune", "source", "restic", "repository", repo.Name)
-				if err := o.Restic.Prune(ctx, repo); err != nil {
+				if err := o.Restic.Prune(ctx, repo, jlog); err != nil {
 					jlog.Warn("prune failed", "source", "restic", "repository", repo.Name, "error", err)
 					// Prune failure doesn't fail the backup.
 				} else {
