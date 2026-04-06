@@ -218,6 +218,8 @@ func main() {
 			func(cmd *backupv1.Command) *backupv1.CommandResult {
 				return handleCommand(cmd, sched, resticExec, &configMu, &currentConfig, id)
 			},
+			// jobStatus: report current running job for heartbeats.
+			sched.JobStatusFunc(),
 		)
 
 		backoff := time.Second

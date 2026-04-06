@@ -13,7 +13,7 @@ const colorClasses = computed(() => {
     return 'bg-red-500/15 text-red-400 ring-1 ring-red-500/30'
   if (['partial', 'degraded'].includes(s))
     return 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30'
-  if (s === 'pending')
+  if (s === 'pending' || s === 'planned')
     return 'bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30'
   if (s === 'running')
     return 'bg-cyan-500/15 text-cyan-400 ring-1 ring-cyan-500/30 animate-pulse'

@@ -13,13 +13,24 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// JobStatus represents the current job state for heartbeat reporting.
+type JobStatus struct {
+	PlanName        string
+	StartedAt       time.Time
+	ProgressPercent float32 // 0-100, or -1 if unknown
+}
+
+// JobStatusFunc returns the current running job status, or nil if idle.
+type JobStatusFunc func() *JobStatus
+
 // StreamHandler manages the bidirectional Connect stream lifecycle.
 type StreamHandler struct {
-	client     *Client
-	identity   *identity.Identity
-	onApproval func(agentID, apiKey string)
-	onConfig   func(cfg *backupv1.AgentConfig)
-	onCommand  func(cmd *backupv1.Command) *backupv1.CommandResult
+	client      *Client
+	identity    *identity.Identity
+	onApproval  func(agentID, apiKey string)
+	onConfig    func(cfg *backupv1.AgentConfig)
+	onCommand   func(cmd *backupv1.Command) *backupv1.CommandResult
+	jobStatusFn JobStatusFunc
 }
 
 // NewStreamHandler creates a new StreamHandler.
@@ -29,13 +40,15 @@ func NewStreamHandler(
 	onApproval func(agentID, apiKey string),
 	onConfig func(cfg *backupv1.AgentConfig),
 	onCommand func(cmd *backupv1.Command) *backupv1.CommandResult,
+	jobStatusFn JobStatusFunc,
 ) *StreamHandler {
 	return &StreamHandler{
-		client:     client,
-		identity:   id,
-		onApproval: onApproval,
-		onConfig:   onConfig,
-		onCommand:  onCommand,
+		client:      client,
+		identity:    id,
+		onApproval:  onApproval,
+		onConfig:    onConfig,
+		onCommand:   onCommand,
+		jobStatusFn: jobStatusFn,
 	}
 }
 
@@ -115,17 +128,30 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 }
 
 func (s *StreamHandler) sendHeartbeat(stream backupv1.BackupService_ConnectClient) error {
+	hb := &backupv1.Heartbeat{
+		Timestamp:     timestamppb.Now(),
+		Status:        "idle",
+		AgentVersion:  "0.1.0",
+		ResticVersion: fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
+		RcloneVersion: "1.68.0",
+	}
+
+	if s.jobStatusFn != nil {
+		if js := s.jobStatusFn(); js != nil {
+			hb.Status = "running"
+			hb.CurrentJob = &backupv1.RunningJob{
+				PlanName:        js.PlanName,
+				StartedAt:       timestamppb.New(js.StartedAt),
+				ProgressPercent: js.ProgressPercent,
+			}
+		}
+	}
+
 	msg := &backupv1.AgentMessage{
 		AgentId: s.identity.AgentID,
 		ApiKey:  s.identity.APIKey,
 		Payload: &backupv1.AgentMessage_Heartbeat{
-			Heartbeat: &backupv1.Heartbeat{
-				Timestamp:     timestamppb.Now(),
-				Status:        "idle",
-				AgentVersion:  "0.1.0",
-				ResticVersion: fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
-				RcloneVersion: "1.68.0",
-			},
+			Heartbeat: hb,
 		},
 	}
 	return stream.Send(msg)

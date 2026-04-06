@@ -15,6 +15,7 @@ import (
 	"github.com/tryy3/backup-orchestrator/server/internal/config"
 	"github.com/tryy3/backup-orchestrator/server/internal/configpush"
 	"github.com/tryy3/backup-orchestrator/server/internal/database"
+	"github.com/tryy3/backup-orchestrator/server/internal/events"
 	"github.com/tryy3/backup-orchestrator/server/internal/grpcserver"
 )
 
@@ -37,15 +38,18 @@ func main() {
 	// Create config resolver.
 	resolver := configpush.New(db, mgr)
 
+	// Create event hub for WebSocket push.
+	hub := events.NewHub()
+
 	// Create gRPC server.
-	grpcSrv := grpcserver.NewGRPCServer(db, mgr, resolver)
+	grpcSrv := grpcserver.NewGRPCServer(db, mgr, resolver, hub)
 	grpcLis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
 	if err != nil {
 		log.Fatalf("Failed to listen on gRPC port %s: %v", cfg.GRPCPort, err)
 	}
 
 	// Create HTTP server.
-	router := api.NewRouter(db, mgr, resolver)
+	router := api.NewRouter(db, mgr, resolver, hub)
 	httpSrv := &http.Server{
 		Addr:    ":" + cfg.HTTPPort,
 		Handler: router,

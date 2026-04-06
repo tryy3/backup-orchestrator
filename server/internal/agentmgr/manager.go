@@ -16,8 +16,17 @@ type ConnectedAgent struct {
 	SendCh      chan *backupv1.ServerMessage
 	LastHeart   time.Time
 	Status      string
+	CurrentJob  *CurrentJobInfo // tracks the currently running job (from heartbeats)
 	PendingCmds map[string]chan *backupv1.CommandResult // command_id -> response channel
 	mu          sync.Mutex
+}
+
+// CurrentJobInfo holds info about a job currently being executed by an agent.
+type CurrentJobInfo struct {
+	PlanName        string
+	PlanID          string
+	ProgressPercent float32
+	StartedAt       string
 }
 
 // Manager maintains a thread-safe registry of connected agents.
@@ -171,17 +180,60 @@ func (m *Manager) HandleCommandResult(agentID string, result *backupv1.CommandRe
 	}
 }
 
-// UpdateHeartbeat updates the last heartbeat time and status for a connected agent.
-func (m *Manager) UpdateHeartbeat(agentID, status string) {
+// HeartbeatJobTransition represents a change in the agent's current job state.
+type HeartbeatJobTransition int
+
+const (
+	// JobNoChange means no change in job state.
+	JobNoChange HeartbeatJobTransition = iota
+	// JobStarted means a new job started executing.
+	JobStarted
+	// JobProgress means the job is still running with updated progress.
+	JobProgress
+	// JobStopped means the agent was running a job but is now idle (job finished or aborted).
+	JobStopped
+)
+
+// UpdateHeartbeat updates the last heartbeat time, status, and current job info.
+// Returns the job transition type and the current job info (if any).
+func (m *Manager) UpdateHeartbeat(agentID, status string, currentJob *CurrentJobInfo) HeartbeatJobTransition {
 	m.mu.RLock()
 	agent, ok := m.agents[agentID]
 	m.mu.RUnlock()
 	if !ok {
-		return
+		return JobNoChange
 	}
 
 	agent.mu.Lock()
+	defer agent.mu.Unlock()
+
 	agent.LastHeart = time.Now()
 	agent.Status = status
-	agent.mu.Unlock()
+
+	prevJob := agent.CurrentJob
+	agent.CurrentJob = currentJob
+
+	switch {
+	case prevJob == nil && currentJob != nil:
+		return JobStarted
+	case prevJob != nil && currentJob == nil:
+		return JobStopped
+	case prevJob != nil && currentJob != nil:
+		return JobProgress
+	default:
+		return JobNoChange
+	}
+}
+
+// GetCurrentJob returns the current job info for an agent (if any).
+func (m *Manager) GetCurrentJob(agentID string) *CurrentJobInfo {
+	m.mu.RLock()
+	agent, ok := m.agents[agentID]
+	m.mu.RUnlock()
+	if !ok {
+		return nil
+	}
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	return agent.CurrentJob
 }

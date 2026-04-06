@@ -11,6 +11,7 @@ import (
 
 	"github.com/tryy3/backup-orchestrator/server/internal/configpush"
 	"github.com/tryy3/backup-orchestrator/server/internal/database"
+	"github.com/tryy3/backup-orchestrator/server/internal/events"
 	"github.com/tryy3/backup-orchestrator/server/internal/frontend"
 )
 
@@ -22,7 +23,7 @@ type AgentCommander interface {
 }
 
 // NewRouter creates and configures the Chi HTTP router with all API routes.
-func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolver) http.Handler {
+func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolver, hub *events.Hub) http.Handler {
 	r := chi.NewRouter()
 
 	// Middleware
@@ -35,6 +36,9 @@ func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolv
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	// WebSocket endpoint (before JSON content-type middleware).
+	r.Get("/api/ws", websocketHandler(hub))
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
@@ -66,7 +70,7 @@ func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolv
 		r.Get("/plans/{id}", getPlanHandler(db))
 		r.Put("/plans/{id}", updatePlanHandler(db, resolver))
 		r.Delete("/plans/{id}", deletePlanHandler(db, resolver))
-		r.Post("/plans/{id}/trigger", triggerPlanHandler(db, cmdr))
+		r.Post("/plans/{id}/trigger", triggerPlanHandler(db, cmdr, hub))
 
 		// Hooks
 		r.Get("/plans/{id}/hooks", listHooksHandler(db))

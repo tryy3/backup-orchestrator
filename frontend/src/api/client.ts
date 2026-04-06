@@ -14,6 +14,7 @@ import type {
   Settings,
   BrowseRequest,
   RestoreRequest,
+  TriggerResponse,
 } from '../types/api'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
@@ -87,7 +88,7 @@ export const plans = {
   update: (id: string, data: Partial<BackupPlanCreate>) =>
     request<BackupPlan>(`/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   remove: (id: string) => request<void>(`/plans/${id}`, { method: 'DELETE' }),
-  trigger: (id: string) => request<void>(`/plans/${id}/trigger`, { method: 'POST' }),
+  trigger: (id: string) => request<TriggerResponse>(`/plans/${id}/trigger`, { method: 'POST' }),
 }
 
 // Plan Hooks

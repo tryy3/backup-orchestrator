@@ -4,9 +4,11 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/robfig/cron/v3"
 	"github.com/tryy3/backup-orchestrator/agent/internal/executor"
+	"github.com/tryy3/backup-orchestrator/agent/internal/grpcclient"
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
 )
 
@@ -20,6 +22,9 @@ type Scheduler struct {
 	reporter ReportFunc
 	mu       sync.Mutex
 	entryIDs map[string]cron.EntryID // plan_id -> entry
+
+	jobMu      sync.RWMutex
+	currentJob *grpcclient.JobStatus
 }
 
 // New creates a new Scheduler.
@@ -79,7 +84,9 @@ func (s *Scheduler) UpdateSchedule(
 
 		entryID, err := s.cron.AddFunc(schedule, func() {
 			slog.Info("triggered scheduled backup", "source", "scheduler", "plan", p.GetName())
+			s.setCurrentJob(p.GetName())
 			report := s.executor.ExecuteBackupJob(context.Background(), p, r, dr, "scheduled")
+			s.clearCurrentJob()
 			if s.reporter != nil {
 				s.reporter(report)
 			}
@@ -116,9 +123,37 @@ func (s *Scheduler) TriggerNow(
 
 	go func() {
 		slog.Info("manual trigger for plan", "source", "scheduler", "plan", targetPlan.GetName())
+		s.setCurrentJob(targetPlan.GetName())
 		report := s.executor.ExecuteBackupJob(context.Background(), targetPlan, repos, defaultRetention, "manual")
+		s.clearCurrentJob()
 		if s.reporter != nil {
 			s.reporter(report)
 		}
 	}()
+}
+
+func (s *Scheduler) setCurrentJob(planName string) {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+	s.currentJob = &grpcclient.JobStatus{
+		PlanName:        planName,
+		StartedAt:       time.Now(),
+		ProgressPercent: -1, // unknown
+	}
+}
+
+func (s *Scheduler) clearCurrentJob() {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+	s.currentJob = nil
+}
+
+// JobStatusFunc returns a function compatible with grpcclient.JobStatusFunc
+// that reports the currently running job, or nil if idle.
+func (s *Scheduler) JobStatusFunc() grpcclient.JobStatusFunc {
+	return func() *grpcclient.JobStatus {
+		s.jobMu.RLock()
+		defer s.jobMu.RUnlock()
+		return s.currentJob
+	}
 }

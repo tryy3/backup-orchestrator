@@ -10,6 +10,7 @@ import (
 
 	"github.com/tryy3/backup-orchestrator/server/internal/configpush"
 	"github.com/tryy3/backup-orchestrator/server/internal/database"
+	"github.com/tryy3/backup-orchestrator/server/internal/events"
 )
 
 func listPlansHandler(db *database.DB) http.HandlerFunc {
@@ -118,7 +119,7 @@ func deletePlanHandler(db *database.DB, resolver *configpush.Resolver) http.Hand
 	}
 }
 
-func triggerPlanHandler(db *database.DB, cmdr AgentCommander) http.HandlerFunc {
+func triggerPlanHandler(db *database.DB, cmdr AgentCommander, hub *events.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
@@ -137,6 +138,19 @@ func triggerPlanHandler(db *database.DB, cmdr AgentCommander) http.HandlerFunc {
 			return
 		}
 
+		// Create a planned job immediately so it's visible in the UI.
+		plannedJob, err := db.CreatePlannedJob(plan.AgentID, id, plan.Name, "manual")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		// Broadcast job.created event.
+		hub.Broadcast(events.Event{
+			Type:    "job.created",
+			Payload: plannedJob,
+		})
+
 		cmd := &backupv1.Command{
 			Action: &backupv1.Command_TriggerBackup{
 				TriggerBackup: &backupv1.TriggerBackup{
@@ -153,6 +167,7 @@ func triggerPlanHandler(db *database.DB, cmdr AgentCommander) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": result.Success,
 			"error":   result.Error,
+			"job_id":  plannedJob.ID,
 		})
 	}
 }
