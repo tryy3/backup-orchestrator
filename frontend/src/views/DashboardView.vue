@@ -76,7 +76,7 @@ function reliabilityColor(agentId: string): string {
   const rate = jobs.filter((j) => j.status === 'success').length / jobs.length
   if (rate >= 0.99) return 'text-green-400'
   if (rate >= 0.9) return 'text-amber-400'
-  return 'text-red-400'
+  return 'text-orange-400'
 }
 
 const pendingAgents = computed(() => agentsStore.list.filter((a) => a.status === 'pending'))
@@ -113,15 +113,14 @@ const maxJobsPerDay = computed(() => {
 function cardBorderClass(status: ReturnType<typeof agentHealthStatus>) {
   if (status === 'healthy') return 'border-green-500/20 hover:border-green-500/50'
   if (status === 'warning') return 'border-amber-500/30 hover:border-amber-500/60'
-  if (status === 'failing') return 'border-red-500/40 hover:border-red-500/70'
+  if (status === 'failing') return 'border-orange-500/30 hover:border-orange-500/60'
   return 'border-surface-600 hover:border-surface-500'
 }
 
-function statusDotClass(status: ReturnType<typeof agentHealthStatus>) {
-  if (status === 'healthy') return 'bg-green-400'
-  if (status === 'warning') return 'bg-amber-400'
-  if (status === 'failing') return 'bg-red-400 animate-pulse'
-  return 'bg-slate-600'
+// The dot next to the agent name reflects connectivity only, not job history.
+function connectivityDotClass(agent: Agent) {
+  if (agent.status !== 'approved') return 'bg-slate-600'
+  return isOnline(agent) ? 'bg-green-400' : 'bg-slate-600'
 }
 </script>
 
@@ -145,7 +144,7 @@ function statusDotClass(status: ReturnType<typeof agentHealthStatus>) {
               ? 'text-green-400'
               : Number(globalSuccessRate) >= 90
                 ? 'text-amber-400'
-                : 'text-red-400',
+                : 'text-orange-400',
           ]"
         >
           {{ globalSuccessRate }}%
@@ -173,7 +172,7 @@ function statusDotClass(status: ReturnType<typeof agentHealthStatus>) {
       <button
         v-for="f in ([
           { value: 'all', label: 'All', count: agentsStore.list.length, dot: '' },
-          { value: 'failing', label: 'Failing', count: healthCounts.failing, dot: 'bg-red-400' },
+          { value: 'failing', label: 'Job Issues', count: healthCounts.failing, dot: 'bg-orange-400' },
           { value: 'warning', label: 'Warning', count: healthCounts.warning, dot: 'bg-amber-400' },
           { value: 'healthy', label: 'Healthy', count: healthCounts.healthy, dot: 'bg-green-400' },
           { value: 'offline', label: 'Offline', count: healthCounts.offline, dot: 'bg-slate-600' },
@@ -246,7 +245,7 @@ function statusDotClass(status: ReturnType<typeof agentHealthStatus>) {
         <div class="mb-3 flex items-start justify-between gap-2">
           <div class="min-w-0">
             <div class="flex items-center gap-2">
-              <span :class="['h-2 w-2 shrink-0 rounded-full', statusDotClass(agentHealthStatus(agent))]" />
+              <span :class="['h-2 w-2 shrink-0 rounded-full', connectivityDotClass(agent)]" />
               <span class="truncate text-sm font-semibold text-slate-100">{{ agent.name }}</span>
             </div>
             <p class="mt-0.5 truncate pl-4 text-xs text-slate-500">{{ agent.hostname || agent.os || '—' }}</p>
@@ -267,7 +266,7 @@ function statusDotClass(status: ReturnType<typeof agentHealthStatus>) {
             :class="[
               'flex-1 rounded-[1px] transition-colors',
               day.failure > 0
-                ? 'bg-red-500/70'
+                ? 'bg-orange-500/70'
                 : day.success > 0
                   ? 'bg-green-500/50'
                   : 'bg-surface-700',
