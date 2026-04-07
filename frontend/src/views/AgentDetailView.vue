@@ -4,6 +4,9 @@ import { useRoute } from 'vue-router'
 import { useAgentsStore } from '../stores/agents'
 import { useJobsStore } from '../stores/jobs'
 import { usePlansStore } from '../stores/plans'
+import type { Job } from '../types/api'
+import RunHeatmap from '../components/common/RunHeatmap.vue'
+import type { HeatmapRun } from '../components/common/RunHeatmap.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import LoadingSpinner from '../components/common/LoadingSpinner.vue'
 import { relativeTime, formatDate } from '../utils/time'
@@ -43,29 +46,61 @@ const isOnline = computed(() => {
   return now.value - new Date(agent.value.last_heartbeat).getTime() < 5 * 60 * 1000
 })
 
-// Most recent job per plan
-const recentJobByPlan = computed(() => {
-  const map: Record<string, string> = {}
+// Most recent job per plan (returns the full Job, not just timestamp)
+const latestJobByPlan = computed(() => {
+  const map: Record<string, Job> = {}
   for (const job of jobsStore.list) {
     if (!job.plan_id) continue
-    if (!map[job.plan_id] || new Date(job.started_at) > new Date(map[job.plan_id])) {
-      map[job.plan_id] = job.started_at
+    if (!map[job.plan_id] || new Date(job.started_at) > new Date(map[job.plan_id].started_at)) {
+      map[job.plan_id] = job
     }
   }
   return map
 })
 
+// Legacy accessor for template backward compat (returns started_at string)
+const recentJobByPlan = computed(() => {
+  const map: Record<string, string> = {}
+  for (const [planId, job] of Object.entries(latestJobByPlan.value)) {
+    map[planId] = job.started_at
+  }
+  return map
+})
+
+// Plan IDs whose *latest* job failed or was partial (not any historical job)
 const failedPlanIds = computed(
   () =>
     new Set(
-      jobsStore.list
-        .filter((j) => j.status === 'failed' || j.status === 'partial')
-        .map((j) => j.plan_id)
-        .filter((id): id is string => id != null),
+      Object.entries(latestJobByPlan.value)
+        .filter(([, job]) => job.status === 'failed' || job.status === 'partial')
+        .map(([planId]) => planId),
     ),
 )
 
 const failingPlans = computed(() => plansStore.list.filter((p) => failedPlanIds.value.has(p.id)))
+
+// Heatmap runs for all agent jobs combined
+function getAllHeatmapRuns(): HeatmapRun[] {
+  return jobsStore.list.map((j) => ({
+    id: j.id,
+    status: j.status,
+    started_at: j.started_at,
+    finished_at: j.finished_at,
+    plan_name: j.plan_name,
+  }))
+}
+
+// Heatmap runs per plan
+function getPlanHeatmapRuns(planId: string): HeatmapRun[] {
+  return jobsStore.list
+    .filter((j) => j.plan_id === planId)
+    .map((j) => ({
+      id: j.id,
+      status: j.status,
+      started_at: j.started_at,
+      finished_at: j.finished_at,
+    }))
+}
 
 // Live-updating relative time that refreshes with the `now` tick.
 function liveRelativeTime(ts: string | null): string {
@@ -105,11 +140,11 @@ async function saveRclone() {
       <!-- Failing plan alert -->
       <div
         v-if="failingPlans.length > 0"
-        class="flex items-center gap-3 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3"
+        class="flex items-center gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3"
       >
-        <div class="h-2 w-2 animate-pulse rounded-full bg-red-400 shrink-0" />
-        <span class="text-sm text-red-300">
-          {{ failingPlans.length }} plan{{ failingPlans.length !== 1 ? 's' : '' }} with recent failures
+        <div class="h-2 w-2 animate-pulse rounded-full bg-amber-400 shrink-0" />
+        <span class="text-sm text-amber-300">
+          {{ failingPlans.length }} plan{{ failingPlans.length !== 1 ? 's' : '' }} with a failed latest run
         </span>
       </div>
 
@@ -134,6 +169,23 @@ async function saveRclone() {
         </div>
       </div>
 
+      <!-- Recent Runs Heatmap -->
+      <div v-if="jobsStore.list.length > 0" class="rounded-lg border border-surface-700 bg-surface-900 p-4">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-500">Recent Runs</h2>
+          <div class="flex items-center gap-3 text-[10px] text-slate-500">
+            <div class="flex items-center gap-1"><span class="inline-block h-2 w-2 rounded-[2px] bg-green-500" /> Success</div>
+            <div class="flex items-center gap-1"><span class="inline-block h-2 w-2 rounded-[2px] bg-amber-500" /> Partial</div>
+            <div class="flex items-center gap-1"><span class="inline-block h-2 w-2 rounded-[2px] bg-red-500" /> Failed</div>
+          </div>
+        </div>
+        <RunHeatmap :runs="getAllHeatmapRuns()" :max-runs="30" />
+        <div class="mt-1.5 flex justify-between text-[10px] text-slate-600">
+          <span>← older</span>
+          <span>latest →</span>
+        </div>
+      </div>
+
       <!-- Backup Plans section -->
       <div>
         <div class="mb-3 flex items-center justify-between">
@@ -149,59 +201,44 @@ async function saveRclone() {
         >
           No backup plans assigned to this agent.
         </div>
-        <div v-else class="overflow-hidden rounded-lg border border-surface-700">
-          <table class="min-w-full">
-            <thead class="bg-surface-800">
-              <tr>
-                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Plan</th>
-                <th class="hidden px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500 sm:table-cell">Schedule</th>
-                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Status</th>
-                <th class="hidden px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500 md:table-cell">Last Run</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-surface-700">
-              <tr
-                v-for="plan in plansStore.list"
-                :key="plan.id"
-                class="cursor-pointer transition-colors hover:bg-surface-800/60"
-                @click="$router.push(`/agents/${agentId}/plans/${plan.id}`)"
-              >
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-2">
-                    <span
-                      :class="[
-                        'h-1.5 w-1.5 shrink-0 rounded-full',
-                        failedPlanIds.has(plan.id)
-                          ? 'bg-red-400'
-                          : plan.enabled
-                            ? 'bg-green-400'
-                            : 'bg-slate-600',
-                      ]"
-                    />
-                    <span class="text-sm font-medium text-slate-200">{{ plan.name }}</span>
-                  </div>
-                </td>
-                <td class="hidden px-4 py-3 font-mono text-xs text-slate-400 sm:table-cell">
-                  {{ plan.schedule || '—' }}
-                </td>
-                <td class="px-4 py-3">
-                  <span
-                    :class="[
-                      'rounded-full px-2 py-0.5 text-xs font-medium',
-                      plan.enabled
-                        ? 'bg-green-500/10 text-green-400 ring-1 ring-green-500/20'
-                        : 'bg-slate-700/40 text-slate-500 ring-1 ring-slate-700',
-                    ]"
-                  >
-                    {{ plan.enabled ? 'Enabled' : 'Disabled' }}
-                  </span>
-                </td>
-                <td class="hidden px-4 py-3 text-xs text-slate-500 md:table-cell">
-                  {{ recentJobByPlan[plan.id] ? liveRelativeTime(recentJobByPlan[plan.id]) : '—' }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div v-else class="space-y-3">
+          <div
+            v-for="plan in plansStore.list"
+            :key="plan.id"
+            class="cursor-pointer rounded-lg border border-surface-700 bg-surface-900 p-4 transition-colors hover:border-surface-500"
+            @click="$router.push(`/agents/${agentId}/plans/${plan.id}`)"
+          >
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <span
+                  :class="[
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
+                    failedPlanIds.has(plan.id)
+                      ? 'bg-orange-400'
+                      : plan.enabled
+                        ? 'bg-green-400'
+                        : 'bg-slate-600',
+                  ]"
+                />
+                <span class="truncate text-sm font-medium text-slate-200">{{ plan.name }}</span>
+                <span
+                  :class="[
+                    'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
+                    plan.enabled
+                      ? 'bg-green-500/10 text-green-400 ring-1 ring-green-500/20'
+                      : 'bg-slate-700/40 text-slate-500 ring-1 ring-slate-700',
+                  ]"
+                >
+                  {{ plan.enabled ? 'Enabled' : 'Disabled' }}
+                </span>
+              </div>
+              <div class="flex items-center gap-3 shrink-0 text-xs text-slate-500">
+                <span v-if="plan.schedule" class="hidden font-mono sm:inline">{{ plan.schedule }}</span>
+                <span>{{ recentJobByPlan[plan.id] ? liveRelativeTime(recentJobByPlan[plan.id]) : '—' }}</span>
+              </div>
+            </div>
+            <RunHeatmap :runs="getPlanHeatmapRuns(plan.id)" :max-runs="30" />
+          </div>
         </div>
       </div>
 

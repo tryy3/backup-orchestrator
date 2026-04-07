@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useAgentsStore } from '../stores/agents'
 import { useJobsStore, jobProgress } from '../stores/jobs'
+import RunHeatmap from '../components/common/RunHeatmap.vue'
+import type { HeatmapRun } from '../components/common/RunHeatmap.vue'
 import type { Agent, Job } from '../types/api'
 
 const agentsStore = useAgentsStore()
@@ -26,27 +28,16 @@ const jobsByAgent = computed((): Record<string, Job[]> => {
   return map
 })
 
-// Returns 30-day sparkline data (oldest → newest)
-function getSparkline(agentId: string) {
+// Convert agent jobs to heatmap runs (last 30 runs across all plans)
+function getHeatmapRuns(agentId: string): HeatmapRun[] {
   const jobs = jobsByAgent.value[agentId] ?? []
-  const days: { success: number; failure: number; total: number }[] = []
-  for (let i = 29; i >= 0; i--) {
-    const dayStart = new Date()
-    dayStart.setHours(0, 0, 0, 0)
-    dayStart.setDate(dayStart.getDate() - i)
-    const dayEnd = new Date(dayStart)
-    dayEnd.setDate(dayEnd.getDate() + 1)
-    const dayJobs = jobs.filter((j) => {
-      const t = new Date(j.started_at).getTime()
-      return t >= dayStart.getTime() && t < dayEnd.getTime()
-    })
-    days.push({
-      success: dayJobs.filter((j) => j.status === 'success').length,
-      failure: dayJobs.filter((j) => j.status === 'failed' || j.status === 'partial').length,
-      total: dayJobs.length,
-    })
-  }
-  return days
+  return jobs.map((j) => ({
+    id: j.id,
+    status: j.status,
+    started_at: j.started_at,
+    finished_at: j.finished_at,
+    plan_name: j.plan_name,
+  }))
 }
 
 function isOnline(agent: Agent): boolean {
@@ -76,7 +67,7 @@ function reliabilityColor(agentId: string): string {
   const rate = jobs.filter((j) => j.status === 'success').length / jobs.length
   if (rate >= 0.99) return 'text-green-400'
   if (rate >= 0.9) return 'text-amber-400'
-  return 'text-red-400'
+  return 'text-orange-400'
 }
 
 const pendingAgents = computed(() => agentsStore.list.filter((a) => a.status === 'pending'))
@@ -100,28 +91,17 @@ const globalSuccessRate = computed(() => {
   return ((recent.filter((j) => j.status === 'success').length / recent.length) * 100).toFixed(1)
 })
 
-const maxJobsPerDay = computed(() => {
-  let max = 1
-  for (const agent of agentsStore.list) {
-    for (const d of getSparkline(agent.id)) {
-      if (d.total > max) max = d.total
-    }
-  }
-  return max
-})
-
 function cardBorderClass(status: ReturnType<typeof agentHealthStatus>) {
   if (status === 'healthy') return 'border-green-500/20 hover:border-green-500/50'
   if (status === 'warning') return 'border-amber-500/30 hover:border-amber-500/60'
-  if (status === 'failing') return 'border-red-500/40 hover:border-red-500/70'
+  if (status === 'failing') return 'border-orange-500/30 hover:border-orange-500/60'
   return 'border-surface-600 hover:border-surface-500'
 }
 
-function statusDotClass(status: ReturnType<typeof agentHealthStatus>) {
-  if (status === 'healthy') return 'bg-green-400'
-  if (status === 'warning') return 'bg-amber-400'
-  if (status === 'failing') return 'bg-red-400 animate-pulse'
-  return 'bg-slate-600'
+// The dot next to the agent name reflects connectivity only, not job history.
+function connectivityDotClass(agent: Agent) {
+  if (agent.status !== 'approved') return 'bg-slate-600'
+  return isOnline(agent) ? 'bg-green-400' : 'bg-slate-600'
 }
 </script>
 
@@ -145,7 +125,7 @@ function statusDotClass(status: ReturnType<typeof agentHealthStatus>) {
               ? 'text-green-400'
               : Number(globalSuccessRate) >= 90
                 ? 'text-amber-400'
-                : 'text-red-400',
+                : 'text-orange-400',
           ]"
         >
           {{ globalSuccessRate }}%
@@ -173,7 +153,7 @@ function statusDotClass(status: ReturnType<typeof agentHealthStatus>) {
       <button
         v-for="f in ([
           { value: 'all', label: 'All', count: agentsStore.list.length, dot: '' },
-          { value: 'failing', label: 'Failing', count: healthCounts.failing, dot: 'bg-red-400' },
+          { value: 'failing', label: 'Job Issues', count: healthCounts.failing, dot: 'bg-orange-400' },
           { value: 'warning', label: 'Warning', count: healthCounts.warning, dot: 'bg-amber-400' },
           { value: 'healthy', label: 'Healthy', count: healthCounts.healthy, dot: 'bg-green-400' },
           { value: 'offline', label: 'Offline', count: healthCounts.offline, dot: 'bg-slate-600' },
@@ -246,7 +226,7 @@ function statusDotClass(status: ReturnType<typeof agentHealthStatus>) {
         <div class="mb-3 flex items-start justify-between gap-2">
           <div class="min-w-0">
             <div class="flex items-center gap-2">
-              <span :class="['h-2 w-2 shrink-0 rounded-full', statusDotClass(agentHealthStatus(agent))]" />
+              <span :class="['h-2 w-2 shrink-0 rounded-full', connectivityDotClass(agent)]" />
               <span class="truncate text-sm font-semibold text-slate-100">{{ agent.name }}</span>
             </div>
             <p class="mt-0.5 truncate pl-4 text-xs text-slate-500">{{ agent.hostname || agent.os || '—' }}</p>
@@ -259,24 +239,9 @@ function statusDotClass(status: ReturnType<typeof agentHealthStatus>) {
           </span>
         </div>
 
-        <!-- 30-day sparkline histogram -->
-        <div class="mb-3 flex items-end gap-px" style="height: 28px">
-          <div
-            v-for="(day, i) in getSparkline(agent.id)"
-            :key="i"
-            :class="[
-              'flex-1 rounded-[1px] transition-colors',
-              day.failure > 0
-                ? 'bg-red-500/70'
-                : day.success > 0
-                  ? 'bg-green-500/50'
-                  : 'bg-surface-700',
-            ]"
-            :style="{
-              height: day.total === 0 ? '2px' : Math.max(3, (day.total / maxJobsPerDay) * 26) + 'px',
-            }"
-            :title="`${30 - i}d ago: ${day.success} ok, ${day.failure} failed`"
-          />
+        <!-- Last 30 runs heatmap -->
+        <div class="mb-3">
+          <RunHeatmap :runs="getHeatmapRuns(agent.id)" :max-runs="30" />
         </div>
 
         <!-- Reliability stat -->
