@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useAgentsStore } from '../stores/agents'
 import { useJobsStore, jobProgress } from '../stores/jobs'
+import RunHeatmap from '../components/common/RunHeatmap.vue'
+import type { HeatmapRun } from '../components/common/RunHeatmap.vue'
 import type { Agent, Job } from '../types/api'
 
 const agentsStore = useAgentsStore()
@@ -26,27 +28,16 @@ const jobsByAgent = computed((): Record<string, Job[]> => {
   return map
 })
 
-// Returns 30-day sparkline data (oldest → newest)
-function getSparkline(agentId: string) {
+// Convert agent jobs to heatmap runs (last 30 runs across all plans)
+function getHeatmapRuns(agentId: string): HeatmapRun[] {
   const jobs = jobsByAgent.value[agentId] ?? []
-  const days: { success: number; failure: number; total: number }[] = []
-  for (let i = 29; i >= 0; i--) {
-    const dayStart = new Date()
-    dayStart.setHours(0, 0, 0, 0)
-    dayStart.setDate(dayStart.getDate() - i)
-    const dayEnd = new Date(dayStart)
-    dayEnd.setDate(dayEnd.getDate() + 1)
-    const dayJobs = jobs.filter((j) => {
-      const t = new Date(j.started_at).getTime()
-      return t >= dayStart.getTime() && t < dayEnd.getTime()
-    })
-    days.push({
-      success: dayJobs.filter((j) => j.status === 'success').length,
-      failure: dayJobs.filter((j) => j.status === 'failed' || j.status === 'partial').length,
-      total: dayJobs.length,
-    })
-  }
-  return days
+  return jobs.map((j) => ({
+    id: j.id,
+    status: j.status,
+    started_at: j.started_at,
+    finished_at: j.finished_at,
+    plan_name: j.plan_name,
+  }))
 }
 
 function isOnline(agent: Agent): boolean {
@@ -98,16 +89,6 @@ const globalSuccessRate = computed(() => {
   )
   if (!recent.length) return null
   return ((recent.filter((j) => j.status === 'success').length / recent.length) * 100).toFixed(1)
-})
-
-const maxJobsPerDay = computed(() => {
-  let max = 1
-  for (const agent of agentsStore.list) {
-    for (const d of getSparkline(agent.id)) {
-      if (d.total > max) max = d.total
-    }
-  }
-  return max
 })
 
 function cardBorderClass(status: ReturnType<typeof agentHealthStatus>) {
@@ -258,24 +239,9 @@ function connectivityDotClass(agent: Agent) {
           </span>
         </div>
 
-        <!-- 30-day sparkline histogram -->
-        <div class="mb-3 flex items-end gap-px" style="height: 28px">
-          <div
-            v-for="(day, i) in getSparkline(agent.id)"
-            :key="i"
-            :class="[
-              'flex-1 rounded-[1px] transition-colors',
-              day.failure > 0
-                ? 'bg-orange-500/70'
-                : day.success > 0
-                  ? 'bg-green-500/50'
-                  : 'bg-surface-700',
-            ]"
-            :style="{
-              height: day.total === 0 ? '2px' : Math.max(3, (day.total / maxJobsPerDay) * 26) + 'px',
-            }"
-            :title="`${30 - i}d ago: ${day.success} ok, ${day.failure} failed`"
-          />
+        <!-- Last 30 runs heatmap -->
+        <div class="mb-3">
+          <RunHeatmap :runs="getHeatmapRuns(agent.id)" :max-runs="30" />
         </div>
 
         <!-- Reliability stat -->

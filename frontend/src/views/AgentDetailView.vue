@@ -5,6 +5,8 @@ import { useAgentsStore } from '../stores/agents'
 import { useJobsStore } from '../stores/jobs'
 import { usePlansStore } from '../stores/plans'
 import type { Job } from '../types/api'
+import RunHeatmap from '../components/common/RunHeatmap.vue'
+import type { HeatmapRun } from '../components/common/RunHeatmap.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import LoadingSpinner from '../components/common/LoadingSpinner.vue'
 import { relativeTime, formatDate } from '../utils/time'
@@ -77,57 +79,28 @@ const failedPlanIds = computed(
 
 const failingPlans = computed(() => plansStore.list.filter((p) => failedPlanIds.value.has(p.id)))
 
-// Historical job stats for this agent (7-day and 30-day)
-const jobStats = computed(() => {
-  const now = Date.now()
-  const d7 = now - 7 * 24 * 60 * 60 * 1000
-  const d30 = now - 30 * 24 * 60 * 60 * 1000
+// Heatmap runs for all agent jobs combined
+function getAllHeatmapRuns(): HeatmapRun[] {
+  return jobsStore.list.map((j) => ({
+    id: j.id,
+    status: j.status,
+    started_at: j.started_at,
+    finished_at: j.finished_at,
+    plan_name: j.plan_name,
+  }))
+}
 
-  const stats = {
-    last7: { success: 0, partial: 0, failed: 0, total: 0 },
-    last30: { success: 0, partial: 0, failed: 0, total: 0 },
-  }
-
-  function tally(bucket: typeof stats.last7, status: string) {
-    bucket.total++
-    if (status === 'success') bucket.success++
-    else if (status === 'partial') bucket.partial++
-    else if (status === 'failed') bucket.failed++
-  }
-
-  for (const job of jobsStore.list) {
-    const t = new Date(job.started_at).getTime()
-    if (job.status === 'planned' || job.status === 'running') continue
-    if (t >= d30) tally(stats.last30, job.status)
-    if (t >= d7) tally(stats.last7, job.status)
-  }
-  return stats
-})
-
-// Mini sparkline of the last 14 days for the agent detail history summary
-const recentSparkline = computed(() => {
-  const days: { success: number; partial: number; failed: number; total: number }[] = []
-  for (let i = 13; i >= 0; i--) {
-    const dayStart = new Date()
-    dayStart.setHours(0, 0, 0, 0)
-    dayStart.setDate(dayStart.getDate() - i)
-    const dayEnd = new Date(dayStart)
-    dayEnd.setDate(dayEnd.getDate() + 1)
-    const dayJobs = jobsStore.list.filter((j) => {
-      const t = new Date(j.started_at).getTime()
-      return t >= dayStart.getTime() && t < dayEnd.getTime() && j.status !== 'planned' && j.status !== 'running'
-    })
-    days.push({
-      success: dayJobs.filter((j) => j.status === 'success').length,
-      partial: dayJobs.filter((j) => j.status === 'partial').length,
-      failed: dayJobs.filter((j) => j.status === 'failed').length,
-      total: dayJobs.length,
-    })
-  }
-  return days
-})
-
-const sparklineMax = computed(() => Math.max(1, ...recentSparkline.value.map((d) => d.total)))
+// Heatmap runs per plan
+function getPlanHeatmapRuns(planId: string): HeatmapRun[] {
+  return jobsStore.list
+    .filter((j) => j.plan_id === planId)
+    .map((j) => ({
+      id: j.id,
+      status: j.status,
+      started_at: j.started_at,
+      finished_at: j.finished_at,
+    }))
+}
 
 // Live-updating relative time that refreshes with the `now` tick.
 function liveRelativeTime(ts: string | null): string {
@@ -196,73 +169,20 @@ async function saveRclone() {
         </div>
       </div>
 
-      <!-- Job History Summary -->
-      <div v-if="jobStats.last30.total > 0" class="rounded-lg border border-surface-700 bg-surface-900 p-4">
-        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">Job History</h2>
-        <div class="grid grid-cols-2 gap-4">
-          <!-- 7-day stats -->
-          <div>
-            <div class="mb-2 text-xs font-medium text-slate-500">Last 7 days</div>
-            <div class="flex items-center gap-3">
-              <div class="flex items-center gap-1.5">
-                <span class="h-1.5 w-1.5 rounded-full bg-green-400" />
-                <span class="text-sm tabular-nums text-green-400">{{ jobStats.last7.success }}</span>
-              </div>
-              <div v-if="jobStats.last7.partial > 0" class="flex items-center gap-1.5">
-                <span class="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                <span class="text-sm tabular-nums text-amber-400">{{ jobStats.last7.partial }}</span>
-              </div>
-              <div v-if="jobStats.last7.failed > 0" class="flex items-center gap-1.5">
-                <span class="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                <span class="text-sm tabular-nums text-orange-400">{{ jobStats.last7.failed }}</span>
-              </div>
-              <span class="text-xs text-slate-600">of {{ jobStats.last7.total }}</span>
-            </div>
-          </div>
-          <!-- 30-day stats -->
-          <div>
-            <div class="mb-2 text-xs font-medium text-slate-500">Last 30 days</div>
-            <div class="flex items-center gap-3">
-              <div class="flex items-center gap-1.5">
-                <span class="h-1.5 w-1.5 rounded-full bg-green-400" />
-                <span class="text-sm tabular-nums text-green-400">{{ jobStats.last30.success }}</span>
-              </div>
-              <div v-if="jobStats.last30.partial > 0" class="flex items-center gap-1.5">
-                <span class="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                <span class="text-sm tabular-nums text-amber-400">{{ jobStats.last30.partial }}</span>
-              </div>
-              <div v-if="jobStats.last30.failed > 0" class="flex items-center gap-1.5">
-                <span class="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                <span class="text-sm tabular-nums text-orange-400">{{ jobStats.last30.failed }}</span>
-              </div>
-              <span class="text-xs text-slate-600">of {{ jobStats.last30.total }}</span>
-            </div>
+      <!-- Recent Runs Heatmap -->
+      <div v-if="jobsStore.list.length > 0" class="rounded-lg border border-surface-700 bg-surface-900 p-4">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-500">Recent Runs</h2>
+          <div class="flex items-center gap-3 text-[10px] text-slate-500">
+            <div class="flex items-center gap-1"><span class="inline-block h-2 w-2 rounded-[2px] bg-green-500" /> Success</div>
+            <div class="flex items-center gap-1"><span class="inline-block h-2 w-2 rounded-[2px] bg-amber-500" /> Partial</div>
+            <div class="flex items-center gap-1"><span class="inline-block h-2 w-2 rounded-[2px] bg-red-500" /> Failed</div>
           </div>
         </div>
-        <!-- 14-day sparkline -->
-        <div class="mt-3 flex items-end gap-px" style="height: 24px">
-          <div
-            v-for="(day, i) in recentSparkline"
-            :key="'spark-' + (14 - i)"
-            :class="[
-              'flex-1 rounded-[1px] transition-colors',
-              day.failed > 0
-                ? 'bg-orange-500/70'
-                : day.partial > 0
-                  ? 'bg-amber-500/60'
-                  : day.success > 0
-                    ? 'bg-green-500/50'
-                    : 'bg-surface-700',
-            ]"
-            :style="{
-              height: day.total === 0 ? '2px' : Math.max(3, (day.total / sparklineMax) * 22) + 'px',
-            }"
-            :title="`${14 - i}d ago: ${day.success} ok, ${day.partial} partial, ${day.failed} failed`"
-          />
-        </div>
-        <div class="mt-1 flex justify-between text-[10px] text-slate-600">
-          <span>14d ago</span>
-          <span>today</span>
+        <RunHeatmap :runs="getAllHeatmapRuns()" :max-runs="30" />
+        <div class="mt-1.5 flex justify-between text-[10px] text-slate-600">
+          <span>← older</span>
+          <span>latest →</span>
         </div>
       </div>
 
@@ -281,59 +201,44 @@ async function saveRclone() {
         >
           No backup plans assigned to this agent.
         </div>
-        <div v-else class="overflow-hidden rounded-lg border border-surface-700">
-          <table class="min-w-full">
-            <thead class="bg-surface-800">
-              <tr>
-                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Plan</th>
-                <th class="hidden px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500 sm:table-cell">Schedule</th>
-                <th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Status</th>
-                <th class="hidden px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-slate-500 md:table-cell">Last Run</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-surface-700">
-              <tr
-                v-for="plan in plansStore.list"
-                :key="plan.id"
-                class="cursor-pointer transition-colors hover:bg-surface-800/60"
-                @click="$router.push(`/agents/${agentId}/plans/${plan.id}`)"
-              >
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-2">
-                    <span
-                      :class="[
-                        'h-1.5 w-1.5 shrink-0 rounded-full',
-                        failedPlanIds.has(plan.id)
-                          ? 'bg-orange-400'
-                          : plan.enabled
-                            ? 'bg-green-400'
-                            : 'bg-slate-600',
-                      ]"
-                    />
-                    <span class="text-sm font-medium text-slate-200">{{ plan.name }}</span>
-                  </div>
-                </td>
-                <td class="hidden px-4 py-3 font-mono text-xs text-slate-400 sm:table-cell">
-                  {{ plan.schedule || '—' }}
-                </td>
-                <td class="px-4 py-3">
-                  <span
-                    :class="[
-                      'rounded-full px-2 py-0.5 text-xs font-medium',
-                      plan.enabled
-                        ? 'bg-green-500/10 text-green-400 ring-1 ring-green-500/20'
-                        : 'bg-slate-700/40 text-slate-500 ring-1 ring-slate-700',
-                    ]"
-                  >
-                    {{ plan.enabled ? 'Enabled' : 'Disabled' }}
-                  </span>
-                </td>
-                <td class="hidden px-4 py-3 text-xs text-slate-500 md:table-cell">
-                  {{ recentJobByPlan[plan.id] ? liveRelativeTime(recentJobByPlan[plan.id]) : '—' }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div v-else class="space-y-3">
+          <div
+            v-for="plan in plansStore.list"
+            :key="plan.id"
+            class="cursor-pointer rounded-lg border border-surface-700 bg-surface-900 p-4 transition-colors hover:border-surface-500"
+            @click="$router.push(`/agents/${agentId}/plans/${plan.id}`)"
+          >
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <span
+                  :class="[
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
+                    failedPlanIds.has(plan.id)
+                      ? 'bg-orange-400'
+                      : plan.enabled
+                        ? 'bg-green-400'
+                        : 'bg-slate-600',
+                  ]"
+                />
+                <span class="truncate text-sm font-medium text-slate-200">{{ plan.name }}</span>
+                <span
+                  :class="[
+                    'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
+                    plan.enabled
+                      ? 'bg-green-500/10 text-green-400 ring-1 ring-green-500/20'
+                      : 'bg-slate-700/40 text-slate-500 ring-1 ring-slate-700',
+                  ]"
+                >
+                  {{ plan.enabled ? 'Enabled' : 'Disabled' }}
+                </span>
+              </div>
+              <div class="flex items-center gap-3 shrink-0 text-xs text-slate-500">
+                <span v-if="plan.schedule" class="hidden font-mono sm:inline">{{ plan.schedule }}</span>
+                <span>{{ recentJobByPlan[plan.id] ? liveRelativeTime(recentJobByPlan[plan.id]) : '—' }}</span>
+              </div>
+            </div>
+            <RunHeatmap :runs="getPlanHeatmapRuns(plan.id)" :max-runs="30" />
+          </div>
         </div>
       </div>
 
