@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -14,7 +15,24 @@ func listJobsHandler(db *database.DB) http.HandlerFunc {
 		planID := r.URL.Query().Get("plan_id")
 		status := r.URL.Query().Get("status")
 
-		jobs, err := db.ListJobs(agentID, planID, status)
+		limit := 50
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				limit = n
+			}
+		}
+		if limit > 200 {
+			limit = 200
+		}
+
+		offset := 0
+		if v := r.URL.Query().Get("offset"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+
+		jobs, err := db.ListJobs(r.Context(), agentID, planID, status, limit, offset)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -29,7 +47,7 @@ func listJobsHandler(db *database.DB) http.HandlerFunc {
 func getJobHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
-		job, err := db.GetJob(id)
+		job, err := db.GetJob(r.Context(), id)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return

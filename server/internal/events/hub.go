@@ -18,12 +18,15 @@ type Event struct {
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[string]chan []byte // clientID -> JSON-encoded event channel
+	closed  chan struct{}
+	once    sync.Once
 }
 
 // NewHub creates a new event hub.
 func NewHub() *Hub {
 	return &Hub{
 		clients: make(map[string]chan []byte),
+		closed:  make(chan struct{}),
 	}
 }
 
@@ -54,7 +57,14 @@ func (h *Hub) Unregister(clientID string) {
 
 // Broadcast sends an event to all connected clients.
 // Events are dropped for clients whose buffers are full (non-blocking).
+// No-op after Close() has been called.
 func (h *Hub) Broadcast(event Event) {
+	select {
+	case <-h.closed:
+		return
+	default:
+	}
+
 	data, err := json.Marshal(event)
 	if err != nil {
 		log.Printf("Failed to marshal event %s: %v", event.Type, err)
@@ -71,6 +81,20 @@ func (h *Hub) Broadcast(event Event) {
 			log.Printf("WebSocket client %s buffer full, dropping event %s", id, event.Type)
 		}
 	}
+}
+
+// Close shuts down the hub, closing all client channels.
+func (h *Hub) Close() {
+	h.once.Do(func() {
+		close(h.closed)
+
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		for id, ch := range h.clients {
+			close(ch)
+			delete(h.clients, id)
+		}
+	})
 }
 
 // ClientCount returns the number of connected clients.

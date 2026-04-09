@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -65,19 +66,19 @@ type JobHookResult struct {
 }
 
 // CreateJob inserts a job along with its repository results and hook results.
-func (db *DB) CreateJob(j *Job) error {
+func (db *DB) CreateJob(ctx context.Context, j *Job) error {
 	if j.ID == "" {
 		j.ID = uuid.New().String()
 	}
 	j.CreatedAt = time.Now().UTC()
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec(`
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO jobs (id, agent_id, plan_id, plan_name, type, trigger, status, started_at, finished_at, log_tail, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		j.ID, j.AgentID, j.PlanID, j.PlanName, j.Type, j.Trigger, j.Status, j.StartedAt, j.FinishedAt, j.LogTail, j.CreatedAt,
@@ -90,7 +91,7 @@ func (db *DB) CreateJob(j *Job) error {
 		if rr.ID == "" {
 			rr.ID = uuid.New().String()
 		}
-		_, err = tx.Exec(`
+		_, err = tx.ExecContext(ctx, `
 			INSERT INTO job_repository_results (id, job_id, repository_id, repository_name, status, snapshot_id, error,
 				files_new, files_changed, files_unmodified, bytes_added, total_bytes, duration_ms)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -106,7 +107,7 @@ func (db *DB) CreateJob(j *Job) error {
 		if hr.ID == "" {
 			hr.ID = uuid.New().String()
 		}
-		_, err = tx.Exec(`
+		_, err = tx.ExecContext(ctx, `
 			INSERT INTO job_hook_results (id, job_id, hook_name, phase, status, error, duration_ms)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			hr.ID, j.ID, hr.HookName, hr.Phase, hr.Status, hr.Error, hr.DurationMs,
@@ -120,9 +121,9 @@ func (db *DB) CreateJob(j *Job) error {
 }
 
 // GetJob retrieves a job by ID with its repository and hook results.
-func (db *DB) GetJob(id string) (*Job, error) {
+func (db *DB) GetJob(ctx context.Context, id string) (*Job, error) {
 	j := &Job{}
-	err := db.QueryRow(`
+	err := db.QueryRowContext(ctx, `
 		SELECT id, agent_id, plan_id, plan_name, type, trigger, status, started_at, finished_at, log_tail, created_at
 		FROM jobs WHERE id = ?`, id,
 	).Scan(&j.ID, &j.AgentID, &j.PlanID, &j.PlanName, &j.Type, &j.Trigger, &j.Status, &j.StartedAt, &j.FinishedAt, &j.LogTail, &j.CreatedAt)
@@ -134,7 +135,7 @@ func (db *DB) GetJob(id string) (*Job, error) {
 	}
 
 	// Load repository results
-	repoRows, err := db.Query(`
+	repoRows, err := db.QueryContext(ctx, `
 		SELECT id, job_id, repository_id, repository_name, status, snapshot_id, error,
 			files_new, files_changed, files_unmodified, bytes_added, total_bytes, duration_ms
 		FROM job_repository_results WHERE job_id = ?`, id)
@@ -156,7 +157,7 @@ func (db *DB) GetJob(id string) (*Job, error) {
 	}
 
 	// Load hook results
-	hookRows, err := db.Query(`
+	hookRows, err := db.QueryContext(ctx, `
 		SELECT id, job_id, hook_name, phase, status, error, duration_ms
 		FROM job_hook_results WHERE job_id = ?`, id)
 	if err != nil {
@@ -198,8 +199,8 @@ func (j *Job) parseLogEntries() {
 }
 
 // ListJobs returns jobs filtered by agent ID, plan ID, and/or status.
-// Pass empty strings to skip a filter.
-func (db *DB) ListJobs(agentID, planID, status string) ([]Job, error) {
+// Pass empty strings to skip a filter. Results are paginated with limit and offset.
+func (db *DB) ListJobs(ctx context.Context, agentID, planID, status string, limit, offset int) ([]Job, error) {
 	query := `SELECT id, agent_id, plan_id, plan_name, type, trigger, status, started_at, finished_at, log_tail, created_at
 		FROM jobs WHERE 1=1`
 	args := []interface{}{}
@@ -216,9 +217,10 @@ func (db *DB) ListJobs(agentID, planID, status string) ([]Job, error) {
 		query += " AND status = ?"
 		args = append(args, status)
 	}
-	query += " ORDER BY started_at DESC"
+	query += " ORDER BY started_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
 
-	rows, err := db.Query(query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list jobs: %w", err)
 	}
@@ -237,8 +239,8 @@ func (db *DB) ListJobs(agentID, planID, status string) ([]Job, error) {
 }
 
 // UpdateJobStatus updates the status and optional finished_at and log_tail of a job.
-func (db *DB) UpdateJobStatus(id, status string, finishedAt *time.Time, logTail *string) error {
-	result, err := db.Exec(`
+func (db *DB) UpdateJobStatus(ctx context.Context, id, status string, finishedAt *time.Time, logTail *string) error {
+	result, err := db.ExecContext(ctx, `
 		UPDATE jobs SET status=?, finished_at=?, log_tail=? WHERE id=?`,
 		status, finishedAt, logTail, id,
 	)
@@ -254,7 +256,7 @@ func (db *DB) UpdateJobStatus(id, status string, finishedAt *time.Time, logTail 
 
 // CreatePlannedJob inserts a placeholder job with status "planned" when a backup is triggered.
 // The job is updated later when the agent reports it as started/completed.
-func (db *DB) CreatePlannedJob(agentID, planID, planName, trigger string) (*Job, error) {
+func (db *DB) CreatePlannedJob(ctx context.Context, agentID, planID, planName, trigger string) (*Job, error) {
 	j := &Job{
 		ID:        uuid.New().String(),
 		AgentID:   agentID,
@@ -267,7 +269,7 @@ func (db *DB) CreatePlannedJob(agentID, planID, planName, trigger string) (*Job,
 		CreatedAt: time.Now().UTC(),
 	}
 
-	_, err := db.Exec(`
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO jobs (id, agent_id, plan_id, plan_name, type, trigger, status, started_at, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		j.ID, j.AgentID, j.PlanID, j.PlanName, j.Type, j.Trigger, j.Status, j.StartedAt, j.CreatedAt,
@@ -279,9 +281,9 @@ func (db *DB) CreatePlannedJob(agentID, planID, planName, trigger string) (*Job,
 }
 
 // FindPlannedJob finds a planned/running job for a given agent and plan.
-func (db *DB) FindPlannedJob(agentID, planID string) (*Job, error) {
+func (db *DB) FindPlannedJob(ctx context.Context, agentID, planID string) (*Job, error) {
 	j := &Job{}
-	err := db.QueryRow(`
+	err := db.QueryRowContext(ctx, `
 		SELECT id, agent_id, plan_id, plan_name, type, trigger, status, started_at, finished_at, log_tail, created_at
 		FROM jobs WHERE agent_id = ? AND plan_id = ? AND status IN ('planned', 'running')
 		ORDER BY created_at DESC LIMIT 1`,
@@ -297,14 +299,14 @@ func (db *DB) FindPlannedJob(agentID, planID string) (*Job, error) {
 }
 
 // CompleteJob updates a planned/running job with final results (status, timestamps, logs, results).
-func (db *DB) CompleteJob(j *Job) error {
-	tx, err := db.Begin()
+func (db *DB) CompleteJob(ctx context.Context, j *Job) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec(`
+	_, err = tx.ExecContext(ctx, `
 		UPDATE jobs SET status=?, started_at=?, finished_at=?, log_tail=? WHERE id=?`,
 		j.Status, j.StartedAt, j.FinishedAt, j.LogTail, j.ID,
 	)
@@ -316,7 +318,7 @@ func (db *DB) CompleteJob(j *Job) error {
 		if rr.ID == "" {
 			rr.ID = uuid.New().String()
 		}
-		_, err = tx.Exec(`
+		_, err = tx.ExecContext(ctx, `
 			INSERT INTO job_repository_results (id, job_id, repository_id, repository_name, status, snapshot_id, error,
 				files_new, files_changed, files_unmodified, bytes_added, total_bytes, duration_ms)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -332,7 +334,7 @@ func (db *DB) CompleteJob(j *Job) error {
 		if hr.ID == "" {
 			hr.ID = uuid.New().String()
 		}
-		_, err = tx.Exec(`
+		_, err = tx.ExecContext(ctx, `
 			INSERT INTO job_hook_results (id, job_id, hook_name, phase, status, error, duration_ms)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			hr.ID, j.ID, hr.HookName, hr.Phase, hr.Status, hr.Error, hr.DurationMs,

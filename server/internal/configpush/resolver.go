@@ -1,6 +1,7 @@
 package configpush
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -23,12 +24,12 @@ func New(db *database.DB, mgr *agentmgr.Manager) *Resolver {
 }
 
 // PushConfigToAgent builds a complete config for the given agent and sends it.
-func (r *Resolver) PushConfigToAgent(agentID string) error {
+func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error {
 	if !r.mgr.IsOnline(agentID) {
 		return nil // Agent not connected, skip.
 	}
 
-	agent, err := r.db.GetAgent(agentID)
+	agent, err := r.db.GetAgent(ctx, agentID)
 	if err != nil {
 		return fmt.Errorf("get agent: %w", err)
 	}
@@ -37,7 +38,7 @@ func (r *Resolver) PushConfigToAgent(agentID string) error {
 	}
 
 	// Load all plans for this agent.
-	plans, err := r.db.ListPlans(agentID)
+	plans, err := r.db.ListPlans(ctx, agentID)
 	if err != nil {
 		return fmt.Errorf("list plans: %w", err)
 	}
@@ -50,21 +51,19 @@ func (r *Resolver) PushConfigToAgent(agentID string) error {
 		}
 	}
 
-	// Load repositories.
-	repoMap := make(map[string]*database.Repository)
+	// Batch-load all referenced repositories in a single query.
+	repoIDs := make([]string, 0, len(repoIDSet))
 	for rid := range repoIDSet {
-		repo, err := r.db.GetRepository(rid)
-		if err != nil {
-			return fmt.Errorf("get repository %s: %w", rid, err)
-		}
-		if repo != nil {
-			repoMap[rid] = repo
-		}
+		repoIDs = append(repoIDs, rid)
+	}
+	repoMap, err := r.db.GetRepositoriesByIDs(ctx, repoIDs)
+	if err != nil {
+		return fmt.Errorf("get repositories: %w", err)
 	}
 
 	// Load default retention from settings.
 	var defaultRetention *backupv1.RetentionPolicy
-	retVal, err := r.db.GetSetting("default_retention")
+	retVal, err := r.db.GetSetting(ctx, "default_retention")
 	if err != nil {
 		return fmt.Errorf("get default retention: %w", err)
 	}
@@ -124,7 +123,7 @@ func (r *Resolver) PushConfigToAgent(agentID string) error {
 		}
 
 		// Resolve hooks for this plan.
-		hooks, err := r.db.ListHooks(p.ID)
+		hooks, err := r.db.ListHooks(ctx, p.ID)
 		if err != nil {
 			log.Printf("Failed to load hooks for plan %s: %v", p.ID, err)
 			continue
@@ -139,7 +138,7 @@ func (r *Resolver) PushConfigToAgent(agentID string) error {
 
 			if h.ScriptID != nil {
 				// Resolve from script.
-				script, err := r.db.GetScript(*h.ScriptID)
+				script, err := r.db.GetScript(ctx, *h.ScriptID)
 				if err != nil || script == nil {
 					log.Printf("Failed to resolve script %s for hook %s: %v", *h.ScriptID, h.ID, err)
 					continue
@@ -184,7 +183,7 @@ func (r *Resolver) PushConfigToAgent(agentID string) error {
 	}
 
 	// Increment config version.
-	version, err := r.db.UpdateConfigVersion(agentID)
+	version, err := r.db.UpdateConfigVersion(ctx, agentID)
 	if err != nil {
 		return fmt.Errorf("update config version: %w", err)
 	}
@@ -216,8 +215,8 @@ func (r *Resolver) PushConfigToAgent(agentID string) error {
 }
 
 // PushConfigToAllAgents pushes config to every connected and approved agent.
-func (r *Resolver) PushConfigToAllAgents() {
-	agents, err := r.db.ListAgents()
+func (r *Resolver) PushConfigToAllAgents(ctx context.Context) {
+	agents, err := r.db.ListAgents(ctx)
 	if err != nil {
 		log.Printf("Failed to list agents for config push: %v", err)
 		return
@@ -225,7 +224,7 @@ func (r *Resolver) PushConfigToAllAgents() {
 
 	for _, a := range agents {
 		if a.Status == "approved" && r.mgr.IsOnline(a.ID) {
-			if err := r.PushConfigToAgent(a.ID); err != nil {
+			if err := r.PushConfigToAgent(ctx, a.ID); err != nil {
 				log.Printf("Failed to push config to agent %s: %v", a.ID, err)
 			}
 		}

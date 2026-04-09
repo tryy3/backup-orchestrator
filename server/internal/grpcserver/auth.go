@@ -57,7 +57,7 @@ func (s *GRPCServer) unaryAuthInterceptor() grpc.UnaryServerInterceptor {
 			return nil, status.Error(codes.Unauthenticated, "missing api_key")
 		}
 
-		agent, err := s.db.GetAgentByAPIKey(apiKey)
+		agent, err := s.db.GetAgentByAPIKey(ctx, apiKey)
 		if err != nil {
 			return nil, status.Error(codes.Internal, "failed to validate api_key")
 		}
@@ -91,7 +91,7 @@ func (s *GRPCServer) streamAuthInterceptor() grpc.StreamServerInterceptor {
 			return status.Error(codes.Unauthenticated, "missing api_key")
 		}
 
-		agent, err := s.db.GetAgentByAPIKey(keys[0])
+		agent, err := s.db.GetAgentByAPIKey(ss.Context(), keys[0])
 		if err != nil {
 			return status.Error(codes.Internal, "failed to validate api_key")
 		}
@@ -99,6 +99,20 @@ func (s *GRPCServer) streamAuthInterceptor() grpc.StreamServerInterceptor {
 			return status.Error(codes.Unauthenticated, "invalid api_key")
 		}
 
-		return handler(srv, ss)
+		wrapped := &wrappedServerStream{
+			ServerStream: ss,
+			ctx:          context.WithValue(ss.Context(), agentIDKey, agent.ID),
+		}
+		return handler(srv, wrapped)
 	}
+}
+
+// wrappedServerStream overrides Context() to return an enriched context.
+type wrappedServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (w *wrappedServerStream) Context() context.Context {
+	return w.ctx
 }

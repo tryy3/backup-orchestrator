@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -16,7 +17,7 @@ import (
 func listPlansHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		agentID := r.URL.Query().Get("agent_id")
-		plans, err := db.ListPlans(agentID)
+		plans, err := db.ListPlans(r.Context(), agentID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -41,13 +42,23 @@ func createPlanHandler(db *database.DB, resolver *configpush.Resolver) http.Hand
 			return
 		}
 
-		if err := db.CreatePlan(&p); err != nil {
+		if !isValidCronSchedule(p.Schedule) {
+			writeError(w, http.StatusBadRequest, "schedule must be a valid cron expression (5 or 6 fields)")
+			return
+		}
+
+		if len(p.RepositoryIDs) == 0 {
+			writeError(w, http.StatusBadRequest, "at least one repository_id is required")
+			return
+		}
+
+		if err := db.CreatePlan(r.Context(), &p); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
 		// Push updated config to agent.
-		go resolver.PushConfigToAgent(p.AgentID)
+		go resolver.PushConfigToAgent(context.Background(), p.AgentID)
 
 		writeJSON(w, http.StatusCreated, p)
 	}
@@ -56,7 +67,7 @@ func createPlanHandler(db *database.DB, resolver *configpush.Resolver) http.Hand
 func getPlanHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
-		p, err := db.GetPlan(id)
+		p, err := db.GetPlan(r.Context(), id)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -80,13 +91,13 @@ func updatePlanHandler(db *database.DB, resolver *configpush.Resolver) http.Hand
 		}
 		p.ID = id
 
-		if err := db.UpdatePlan(&p); err != nil {
+		if err := db.UpdatePlan(r.Context(), &p); err != nil {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
 
 		// Push updated config to agent.
-		go resolver.PushConfigToAgent(p.AgentID)
+		go resolver.PushConfigToAgent(context.Background(), p.AgentID)
 
 		writeJSON(w, http.StatusOK, p)
 	}
@@ -97,7 +108,7 @@ func deletePlanHandler(db *database.DB, resolver *configpush.Resolver) http.Hand
 		id := chi.URLParam(r, "id")
 
 		// Get the plan first to know which agent to notify.
-		plan, err := db.GetPlan(id)
+		plan, err := db.GetPlan(r.Context(), id)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -107,13 +118,13 @@ func deletePlanHandler(db *database.DB, resolver *configpush.Resolver) http.Hand
 			return
 		}
 
-		if err := db.DeletePlan(id); err != nil {
+		if err := db.DeletePlan(r.Context(), id); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
 		// Push updated config to agent (plan removed).
-		go resolver.PushConfigToAgent(plan.AgentID)
+		go resolver.PushConfigToAgent(context.Background(), plan.AgentID)
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 	}
@@ -123,7 +134,7 @@ func triggerPlanHandler(db *database.DB, cmdr AgentCommander, hub *events.Hub) h
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
-		plan, err := db.GetPlan(id)
+		plan, err := db.GetPlan(r.Context(), id)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -134,12 +145,12 @@ func triggerPlanHandler(db *database.DB, cmdr AgentCommander, hub *events.Hub) h
 		}
 
 		if !cmdr.IsOnline(plan.AgentID) {
-			writeError(w, http.StatusNotFound, "agent not connected")
+			writeError(w, http.StatusBadGateway, "agent not connected")
 			return
 		}
 
 		// Create a planned job immediately so it's visible in the UI.
-		plannedJob, err := db.CreatePlannedJob(plan.AgentID, id, plan.Name, "manual")
+		plannedJob, err := db.CreatePlannedJob(r.Context(), plan.AgentID, id, plan.Name, "manual")
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return

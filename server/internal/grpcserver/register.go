@@ -2,9 +2,10 @@ package grpcserver
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	backupv1 "github.com/tryy3/backup-orchestrator/server/internal/gen/backup/v1"
 	"github.com/tryy3/backup-orchestrator/server/internal/database"
@@ -35,8 +36,8 @@ func (s *GRPCServer) Register(ctx context.Context, req *backupv1.RegisterRequest
 		agent.RcloneVersion = &req.RcloneVersion
 	}
 
-	if err := s.db.CreateAgent(agent); err != nil {
-		return nil, fmt.Errorf("create agent: %w", err)
+	if err := s.db.CreateAgent(ctx, agent); err != nil {
+		return nil, status.Errorf(codes.Internal, "create agent: %v", err)
 	}
 
 	// Broadcast agent.registered event.

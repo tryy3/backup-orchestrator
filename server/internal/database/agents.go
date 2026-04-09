@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -29,7 +30,7 @@ type Agent struct {
 }
 
 // CreateAgent inserts a new agent record.
-func (db *DB) CreateAgent(a *Agent) error {
+func (db *DB) CreateAgent(ctx context.Context, a *Agent) error {
 	if a.ID == "" {
 		a.ID = uuid.New().String()
 	}
@@ -37,7 +38,7 @@ func (db *DB) CreateAgent(a *Agent) error {
 	a.CreatedAt = now
 	a.UpdatedAt = now
 
-	_, err := db.Exec(`
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO agents (id, name, hostname, os, status, api_key, agent_version, restic_version, rclone_version,
 			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -51,9 +52,9 @@ func (db *DB) CreateAgent(a *Agent) error {
 }
 
 // GetAgent retrieves an agent by ID.
-func (db *DB) GetAgent(id string) (*Agent, error) {
+func (db *DB) GetAgent(ctx context.Context, id string) (*Agent, error) {
 	a := &Agent{}
-	err := db.QueryRow(`
+	err := db.QueryRowContext(ctx, `
 		SELECT id, name, hostname, os, status, api_key, agent_version, restic_version, rclone_version,
 			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, created_at, updated_at
 		FROM agents WHERE id = ?`, id,
@@ -70,9 +71,9 @@ func (db *DB) GetAgent(id string) (*Agent, error) {
 }
 
 // GetAgentByAPIKey retrieves an agent by its API key.
-func (db *DB) GetAgentByAPIKey(apiKey string) (*Agent, error) {
+func (db *DB) GetAgentByAPIKey(ctx context.Context, apiKey string) (*Agent, error) {
 	a := &Agent{}
-	err := db.QueryRow(`
+	err := db.QueryRowContext(ctx, `
 		SELECT id, name, hostname, os, status, api_key, agent_version, restic_version, rclone_version,
 			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, created_at, updated_at
 		FROM agents WHERE api_key = ?`, apiKey,
@@ -89,8 +90,8 @@ func (db *DB) GetAgentByAPIKey(apiKey string) (*Agent, error) {
 }
 
 // ListAgents returns all agents.
-func (db *DB) ListAgents() ([]Agent, error) {
-	rows, err := db.Query(`
+func (db *DB) ListAgents(ctx context.Context) ([]Agent, error) {
+	rows, err := db.QueryContext(ctx, `
 		SELECT id, name, hostname, os, status, api_key, agent_version, restic_version, rclone_version,
 			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, created_at, updated_at
 		FROM agents ORDER BY name`)
@@ -113,9 +114,9 @@ func (db *DB) ListAgents() ([]Agent, error) {
 }
 
 // ApproveAgent sets an agent's status to approved and stores the API key.
-func (db *DB) ApproveAgent(id, apiKey string) error {
+func (db *DB) ApproveAgent(ctx context.Context, id, apiKey string) error {
 	now := time.Now().UTC()
-	result, err := db.Exec(`
+	result, err := db.ExecContext(ctx, `
 		UPDATE agents SET status='approved', api_key=?, updated_at=? WHERE id=? AND status='pending'`,
 		apiKey, now, id,
 	)
@@ -130,9 +131,9 @@ func (db *DB) ApproveAgent(id, apiKey string) error {
 }
 
 // RejectAgent sets an agent's status to rejected.
-func (db *DB) RejectAgent(id string) error {
+func (db *DB) RejectAgent(ctx context.Context, id string) error {
 	now := time.Now().UTC()
-	result, err := db.Exec(`
+	result, err := db.ExecContext(ctx, `
 		UPDATE agents SET status='rejected', updated_at=? WHERE id=? AND status='pending'`,
 		now, id,
 	)
@@ -147,8 +148,8 @@ func (db *DB) RejectAgent(id string) error {
 }
 
 // DeleteAgent removes an agent by ID.
-func (db *DB) DeleteAgent(id string) error {
-	result, err := db.Exec("DELETE FROM agents WHERE id = ?", id)
+func (db *DB) DeleteAgent(ctx context.Context, id string) error {
+	result, err := db.ExecContext(ctx, "DELETE FROM agents WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete agent: %w", err)
 	}
@@ -160,9 +161,9 @@ func (db *DB) DeleteAgent(id string) error {
 }
 
 // UpdateHeartbeat updates the agent's last heartbeat time and version info.
-func (db *DB) UpdateHeartbeat(id string, agentVersion, resticVersion, rcloneVersion string) error {
+func (db *DB) UpdateHeartbeat(ctx context.Context, id string, agentVersion, resticVersion, rcloneVersion string) error {
 	now := time.Now().UTC()
-	_, err := db.Exec(`
+	_, err := db.ExecContext(ctx, `
 		UPDATE agents SET last_heartbeat=?, agent_version=?, restic_version=?, rclone_version=?, updated_at=?
 		WHERE id=?`,
 		now, agentVersion, resticVersion, rcloneVersion, now, id,
@@ -174,9 +175,9 @@ func (db *DB) UpdateHeartbeat(id string, agentVersion, resticVersion, rcloneVers
 }
 
 // UpdateRcloneConfig updates the agent's rclone configuration.
-func (db *DB) UpdateRcloneConfig(id, config string) error {
+func (db *DB) UpdateRcloneConfig(ctx context.Context, id, config string) error {
 	now := time.Now().UTC()
-	result, err := db.Exec(`UPDATE agents SET rclone_config=?, updated_at=? WHERE id=?`, config, now, id)
+	result, err := db.ExecContext(ctx, `UPDATE agents SET rclone_config=?, updated_at=? WHERE id=?`, config, now, id)
 	if err != nil {
 		return fmt.Errorf("update rclone config: %w", err)
 	}
@@ -187,26 +188,36 @@ func (db *DB) UpdateRcloneConfig(id, config string) error {
 	return nil
 }
 
-// UpdateConfigVersion increments the agent's config version and returns the new value.
-func (db *DB) UpdateConfigVersion(id string) (int, error) {
+// UpdateConfigVersion atomically increments the agent's config version and returns the new value.
+func (db *DB) UpdateConfigVersion(ctx context.Context, id string) (int, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	now := time.Now().UTC()
-	_, err := db.Exec(`UPDATE agents SET config_version = config_version + 1, updated_at=? WHERE id=?`, now, id)
+	_, err = tx.ExecContext(ctx, `UPDATE agents SET config_version = config_version + 1, updated_at=? WHERE id=?`, now, id)
 	if err != nil {
 		return 0, fmt.Errorf("update config version: %w", err)
 	}
 
 	var version int
-	err = db.QueryRow(`SELECT config_version FROM agents WHERE id=?`, id).Scan(&version)
+	err = tx.QueryRowContext(ctx, `SELECT config_version FROM agents WHERE id=?`, id).Scan(&version)
 	if err != nil {
 		return 0, fmt.Errorf("read config version: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit config version: %w", err)
 	}
 	return version, nil
 }
 
 // UpdateConfigApplied records when an agent last confirmed applying its config.
-func (db *DB) UpdateConfigApplied(id string, appliedAt time.Time) error {
+func (db *DB) UpdateConfigApplied(ctx context.Context, id string, appliedAt time.Time) error {
 	now := time.Now().UTC()
-	_, err := db.Exec(`UPDATE agents SET config_applied_at=?, updated_at=? WHERE id=?`, appliedAt, now, id)
+	_, err := db.ExecContext(ctx, `UPDATE agents SET config_applied_at=?, updated_at=? WHERE id=?`, appliedAt, now, id)
 	if err != nil {
 		return fmt.Errorf("update config applied: %w", err)
 	}

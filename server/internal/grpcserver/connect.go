@@ -1,6 +1,7 @@
 package grpcserver
 
 import (
+	"context"
 	"io"
 	"log"
 	"time"
@@ -28,7 +29,7 @@ func (s *GRPCServer) Connect(stream backupv1.BackupService_ConnectServer) error 
 	}
 
 	// Look up the agent.
-	agent, err := s.db.GetAgent(agentID)
+	agent, err := s.db.GetAgent(stream.Context(), agentID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to get agent: %v", err)
 	}
@@ -62,7 +63,7 @@ func (s *GRPCServer) Connect(stream backupv1.BackupService_ConnectServer) error 
 	})
 
 	// Process the first message.
-	s.handleAgentMessage(agentID, agent.Status, firstMsg)
+	s.handleAgentMessage(stream.Context(), agentID, agent.Status, firstMsg)
 
 	// Error channel to coordinate goroutine shutdown.
 	errCh := make(chan error, 2)
@@ -80,6 +81,9 @@ func (s *GRPCServer) Connect(stream backupv1.BackupService_ConnectServer) error 
 
 	// Receive goroutine: reads from the stream and processes agent messages.
 	go func() {
+		cachedStatus := agent.Status
+		var lastStatusCheck time.Time
+
 		for {
 			msg, err := stream.Recv()
 			if err == io.EOF {
@@ -91,14 +95,16 @@ func (s *GRPCServer) Connect(stream backupv1.BackupService_ConnectServer) error 
 				return
 			}
 
-			// Re-check the agent status from DB (agent might have been approved/rejected).
-			currentAgent, dbErr := s.db.GetAgent(agentID)
-			currentStatus := agent.Status
-			if dbErr == nil && currentAgent != nil {
-				currentStatus = currentAgent.Status
+			// Re-check the agent status from DB periodically (not every message).
+			if time.Since(lastStatusCheck) > 60*time.Second {
+				currentAgent, dbErr := s.db.GetAgent(stream.Context(), agentID)
+				if dbErr == nil && currentAgent != nil {
+					cachedStatus = currentAgent.Status
+				}
+				lastStatusCheck = time.Now()
 			}
 
-			s.handleAgentMessage(agentID, currentStatus, msg)
+			s.handleAgentMessage(stream.Context(), agentID, cachedStatus, msg)
 		}
 	}()
 
@@ -126,7 +132,7 @@ func (s *GRPCServer) Connect(stream backupv1.BackupService_ConnectServer) error 
 }
 
 // handleAgentMessage processes a single message from an agent.
-func (s *GRPCServer) handleAgentMessage(agentID, agentStatus string, msg *backupv1.AgentMessage) {
+func (s *GRPCServer) handleAgentMessage(ctx context.Context, agentID, agentStatus string, msg *backupv1.AgentMessage) {
 	switch payload := msg.Payload.(type) {
 	case *backupv1.AgentMessage_Heartbeat:
 		hb := payload.Heartbeat
@@ -154,7 +160,7 @@ func (s *GRPCServer) handleAgentMessage(agentID, agentStatus string, msg *backup
 		switch transition {
 		case agentmgr.JobStarted:
 			// Try to find and update the planned job in the DB.
-			s.handleJobStarted(agentID, currentJob)
+			s.handleJobStarted(ctx, agentID, currentJob)
 		case agentmgr.JobProgress:
 			if currentJob != nil {
 				s.hub.Broadcast(events.Event{
@@ -170,7 +176,7 @@ func (s *GRPCServer) handleAgentMessage(agentID, agentStatus string, msg *backup
 		}
 
 		// Update database.
-		if err := s.db.UpdateHeartbeat(agentID, hb.AgentVersion, hb.ResticVersion, hb.RcloneVersion); err != nil {
+		if err := s.db.UpdateHeartbeat(ctx, agentID, hb.AgentVersion, hb.ResticVersion, hb.RcloneVersion); err != nil {
 			log.Printf("Failed to update heartbeat for agent %s: %v", agentID, err)
 		}
 
@@ -187,7 +193,7 @@ func (s *GRPCServer) handleAgentMessage(agentID, agentStatus string, msg *backup
 		ack := payload.ConfigAck
 		if ack.Success {
 			now := time.Now().UTC()
-			if err := s.db.UpdateConfigApplied(agentID, now); err != nil {
+			if err := s.db.UpdateConfigApplied(ctx, agentID, now); err != nil {
 				log.Printf("Failed to update config applied for agent %s: %v", agentID, err)
 			}
 		} else {
@@ -204,13 +210,13 @@ func (s *GRPCServer) handleAgentMessage(agentID, agentStatus string, msg *backup
 
 // handleJobStarted processes a job-started transition detected from heartbeats.
 // It finds any planned job for this agent's plan and updates it to "running".
-func (s *GRPCServer) handleJobStarted(agentID string, currentJob *agentmgr.CurrentJobInfo) {
+func (s *GRPCServer) handleJobStarted(ctx context.Context, agentID string, currentJob *agentmgr.CurrentJobInfo) {
 	if currentJob == nil {
 		return
 	}
 
 	// Look up plans for this agent to find the plan ID from the plan name.
-	plans, err := s.db.ListPlans(agentID)
+	plans, err := s.db.ListPlans(ctx, agentID)
 	if err != nil {
 		log.Printf("Failed to list plans for agent %s: %v", agentID, err)
 		return
@@ -230,7 +236,7 @@ func (s *GRPCServer) handleJobStarted(agentID string, currentJob *agentmgr.Curre
 	}
 
 	// Find planned job and update to running.
-	planned, err := s.db.FindPlannedJob(agentID, planID)
+	planned, err := s.db.FindPlannedJob(ctx, agentID, planID)
 	if err != nil {
 		log.Printf("Failed to find planned job for agent %s plan %s: %v", agentID, planID, err)
 		return
@@ -239,7 +245,7 @@ func (s *GRPCServer) handleJobStarted(agentID string, currentJob *agentmgr.Curre
 	var jobID string
 	if planned != nil {
 		jobID = planned.ID
-		if err := s.db.UpdateJobStatus(planned.ID, "running", nil, nil); err != nil {
+		if err := s.db.UpdateJobStatus(ctx, planned.ID, "running", nil, nil); err != nil {
 			log.Printf("Failed to update planned job %s to running: %v", planned.ID, err)
 		}
 	}

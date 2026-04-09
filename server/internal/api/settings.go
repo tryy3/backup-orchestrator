@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -12,7 +13,7 @@ func getSettingsHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		settings := make(map[string]json.RawMessage)
 
-		retentionVal, err := db.GetSetting("default_retention")
+		retentionVal, err := db.GetSetting(r.Context(), "default_retention")
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -34,14 +35,14 @@ func updateSettingsHandler(db *database.DB, resolver *configpush.Resolver) http.
 		}
 
 		for key, value := range input {
-			if err := db.SetSetting(key, string(value)); err != nil {
+			if err := db.SetSetting(r.Context(), key, string(value)); err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 		}
 
 		// Global settings change affects all agents.
-		go resolver.PushConfigToAllAgents()
+		go resolver.PushConfigToAllAgents(context.Background())
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 	}

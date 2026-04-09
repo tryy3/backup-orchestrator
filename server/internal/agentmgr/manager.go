@@ -33,12 +33,15 @@ type CurrentJobInfo struct {
 type Manager struct {
 	mu     sync.RWMutex
 	agents map[string]*ConnectedAgent
+	done   chan struct{}
+	once   sync.Once
 }
 
 // New creates a new agent manager.
 func New() *Manager {
 	return &Manager{
 		agents: make(map[string]*ConnectedAgent),
+		done:   make(chan struct{}),
 	}
 }
 
@@ -236,4 +239,24 @@ func (m *Manager) GetCurrentJob(agentID string) *CurrentJobInfo {
 	agent.mu.Lock()
 	defer agent.mu.Unlock()
 	return agent.CurrentJob
+}
+
+// Close unregisters all connected agents and releases resources.
+func (m *Manager) Close() {
+	m.once.Do(func() {
+		close(m.done)
+
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		for id, agent := range m.agents {
+			agent.mu.Lock()
+			for cmdID, ch := range agent.PendingCmds {
+				close(ch)
+				delete(agent.PendingCmds, cmdID)
+			}
+			agent.mu.Unlock()
+			close(agent.SendCh)
+			delete(m.agents, id)
+		}
+	})
 }

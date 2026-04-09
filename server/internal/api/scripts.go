@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -14,7 +15,7 @@ import (
 
 func listScriptsHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		scripts, err := db.ListScripts()
+		scripts, err := db.ListScripts(r.Context())
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -39,7 +40,7 @@ func createScriptHandler(db *database.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := db.CreateScript(&s); err != nil {
+		if err := db.CreateScript(r.Context(), &s); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -51,7 +52,7 @@ func createScriptHandler(db *database.DB) http.HandlerFunc {
 func getScriptHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
-		s, err := db.GetScript(id)
+		s, err := db.GetScript(r.Context(), id)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -75,13 +76,13 @@ func updateScriptHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 		}
 		s.ID = id
 
-		if err := db.UpdateScript(&s); err != nil {
+		if err := db.UpdateScript(r.Context(), &s); err != nil {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
 
 		// Push config to all agents whose plans reference this script.
-		go pushConfigToAgentsUsingScript(db, resolver, id)
+		go pushConfigToAgentsUsingScript(context.Background(), db, resolver, id)
 
 		writeJSON(w, http.StatusOK, s)
 	}
@@ -90,7 +91,7 @@ func updateScriptHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 func deleteScriptHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
-		if err := db.DeleteScript(id); err != nil {
+		if err := db.DeleteScript(r.Context(), id); err != nil {
 			// Check if the error is about references.
 			if strings.Contains(err.Error(), "referenced by") {
 				writeError(w, http.StatusConflict, err.Error())
@@ -104,13 +105,13 @@ func deleteScriptHandler(db *database.DB) http.HandlerFunc {
 	}
 }
 
-func pushConfigToAgentsUsingScript(db *database.DB, resolver *configpush.Resolver, scriptID string) {
-	agentIDs, err := db.AgentIDsUsingScript(scriptID)
+func pushConfigToAgentsUsingScript(ctx context.Context, db *database.DB, resolver *configpush.Resolver, scriptID string) {
+	agentIDs, err := db.AgentIDsUsingScript(ctx, scriptID)
 	if err != nil {
 		log.Printf("error finding agents for script %s: %v", scriptID, err)
 		return
 	}
 	for _, agentID := range agentIDs {
-		resolver.PushConfigToAgent(agentID)
+		resolver.PushConfigToAgent(ctx, agentID)
 	}
 }
