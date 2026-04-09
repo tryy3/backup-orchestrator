@@ -8,8 +8,8 @@ import (
 
 	"github.com/robfig/cron/v3"
 	"github.com/tryy3/backup-orchestrator/agent/internal/executor"
-	"github.com/tryy3/backup-orchestrator/agent/internal/grpcclient"
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
+	"github.com/tryy3/backup-orchestrator/agent/internal/grpcclient"
 )
 
 // ReportFunc is called after a backup job completes to report the result.

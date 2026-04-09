@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tryy3/backup-orchestrator/agent/internal/identity"
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
+	"github.com/tryy3/backup-orchestrator/agent/internal/identity"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
