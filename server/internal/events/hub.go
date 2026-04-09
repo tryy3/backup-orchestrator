@@ -31,7 +31,7 @@ func NewHub() *Hub {
 }
 
 // Register adds a new client and returns its ID and event channel.
-func (h *Hub) Register() (string, <-chan []byte) {
+func (h *Hub) Register() (clientID string, events <-chan []byte) {
 	id := uuid.New().String()
 	ch := make(chan []byte, 64)
 
