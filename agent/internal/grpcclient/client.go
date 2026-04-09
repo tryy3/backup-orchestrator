@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// AgentVersion returns the agent binary version from build-time metadata.
+// AgentVersion holds the agent binary version from build-time metadata.
 // ResticVersion and RcloneVersion report installed tool versions; they default
 // to "unknown" until runtime detection is implemented.
 var (
