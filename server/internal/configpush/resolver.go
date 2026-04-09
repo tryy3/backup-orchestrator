@@ -69,7 +69,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 	}
 	if retVal != nil {
 		var rp database.RetentionPolicy
-		if err := json.Unmarshal([]byte(*retVal), &rp); err == nil {
+		if parseErr := json.Unmarshal([]byte(*retVal), &rp); parseErr == nil {
 			defaultRetention = &backupv1.RetentionPolicy{
 				KeepLast:    int32(rp.KeepLast),
 				KeepHourly:  int32(rp.KeepHourly),
@@ -123,9 +123,9 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		}
 
 		// Resolve hooks for this plan.
-		hooks, err := r.db.ListHooks(ctx, p.ID)
-		if err != nil {
-			log.Printf("Failed to load hooks for plan %s: %v", p.ID, err)
+		hooks, hookErr := r.db.ListHooks(ctx, p.ID)
+		if hookErr != nil {
+			log.Printf("Failed to load hooks for plan %s: %v", p.ID, hookErr)
 			continue
 		}
 
