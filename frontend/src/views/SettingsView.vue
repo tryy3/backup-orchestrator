@@ -3,7 +3,8 @@ import { onMounted, ref } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import RetentionEditor from '../components/plans/RetentionEditor.vue'
 import LoadingSpinner from '../components/common/LoadingSpinner.vue'
-import type { RetentionPolicy } from '../types/api'
+import type { RetentionPolicy, ServerVersion } from '../types/api'
+import * as api from '../api/client'
 
 const store = useSettingsStore()
 
@@ -19,10 +20,18 @@ const retention = ref<RetentionPolicy>({
 const saving = ref(false)
 const saved = ref(false)
 
+const serverVersion = ref<ServerVersion | null>(null)
+const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
+
 onMounted(async () => {
   await store.fetch()
   if (store.settings) {
     retention.value = { ...store.settings.default_retention }
+  }
+  try {
+    serverVersion.value = await api.version.get()
+  } catch {
+    // non-fatal: version info is best-effort
   }
 })
 
@@ -68,6 +77,31 @@ async function handleSave() {
           {{ saving ? 'Saving...' : 'Save Settings' }}
         </button>
       </div>
+    </div>
+
+    <!-- Version info -->
+    <div class="rounded border border-surface-700 bg-surface-900 p-6">
+      <h3 class="mb-4 text-lg font-semibold text-slate-100">About</h3>
+      <dl class="space-y-2 text-sm">
+        <div class="flex justify-between">
+          <dt class="text-slate-400">Frontend</dt>
+          <dd class="font-mono text-slate-300">{{ appVersion }}</dd>
+        </div>
+        <template v-if="serverVersion">
+          <div class="flex justify-between">
+            <dt class="text-slate-400">Server</dt>
+            <dd class="font-mono text-slate-300">{{ serverVersion.version }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-slate-400">Commit</dt>
+            <dd class="font-mono text-slate-300">{{ serverVersion.commit }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-slate-400">Build Date</dt>
+            <dd class="font-mono text-slate-300">{{ serverVersion.build_date }}</dd>
+          </div>
+        </template>
+      </dl>
     </div>
   </div>
 </template>

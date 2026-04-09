@@ -39,6 +39,9 @@ func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolv
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
+	// Version info
+	r.Get("/api/version", versionHandler())
+
 	// WebSocket endpoint (before JSON content-type middleware).
 	r.Get("/api/ws", websocketHandler(hub))
 

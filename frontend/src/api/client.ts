@@ -12,6 +12,7 @@ import type {
   JobDetail,
   SnapshotInfo,
   Settings,
+  ServerVersion,
   BrowseRequest,
   RestoreRequest,
   TriggerResponse,
@@ -139,4 +140,9 @@ export const settings = {
   get: () => request<Settings>('/settings'),
   update: (data: Settings) =>
     request<Settings>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+}
+
+// Version
+export const version = {
+  get: () => request<ServerVersion>('/version'),
 }

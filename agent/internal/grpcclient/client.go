@@ -5,14 +5,16 @@ import (
 
 	"github.com/tryy3/backup-orchestrator/agent/internal/config"
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
+	"github.com/tryy3/backup-orchestrator/agent/internal/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// Version variables are set at build time via -ldflags. Defaults are
-// placeholder values for development.
+// AgentVersion returns the agent binary version from build-time metadata.
+// ResticVersion and RcloneVersion report installed tool versions; they default
+// to "unknown" until runtime detection is implemented.
 var (
-	AgentVersion  = "0.1.0-dev"
+	AgentVersion  = version.Version
 	ResticVersion = "unknown"
 	RcloneVersion = "unknown"
 )
