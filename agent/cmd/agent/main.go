@@ -21,6 +21,7 @@ import (
 	"github.com/tryy3/backup-orchestrator/agent/internal/localconfig"
 	"github.com/tryy3/backup-orchestrator/agent/internal/reporter"
 	"github.com/tryy3/backup-orchestrator/agent/internal/scheduler"
+	"github.com/tryy3/backup-orchestrator/agent/internal/versions"
 )
 
 func main() {
@@ -48,14 +49,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Step 3: Load or create identity.
+	// Step 3: Detect required tool versions (restic, rclone).
+	// The agent cannot operate without both binaries present.
+	toolVersions, err := versions.Detect(context.Background())
+	if err != nil {
+		slog.Error("required tool not found", "source", "agent", "error", err)
+		os.Exit(1)
+	}
+	grpcclient.ResticVersion = toolVersions.Restic
+	grpcclient.RcloneVersion = toolVersions.Rclone
+	slog.Info("detected tool versions",
+		"source", "agent",
+		"restic", toolVersions.Restic,
+		"rclone", toolVersions.Rclone,
+	)
+
+	// Step 4: Load or create identity.
 	id, err := identity.Load(cfg.DataDir)
 	if err != nil {
 		slog.Error("loading identity", "error", err)
 		os.Exit(1)
 	}
 
-	// Step 4: Open agent SQLite DB, run migrations.
+	// Step 5: Open agent SQLite DB, run migrations.
 	db, err := database.Open(cfg.DataDir)
 	if err != nil {
 		slog.Error("opening database", "error", err)
