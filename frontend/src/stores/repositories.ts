@@ -7,6 +7,7 @@ export const useRepositoriesStore = defineStore('repositories', () => {
   const list = ref<Repository[]>([])
   const current = ref<Repository | null>(null)
   const loading = ref(false)
+  const saving = ref(false)
   const error = ref<string | null>(null)
 
   async function fetchAll(params?: { scope?: string; agent_id?: string }) {
@@ -34,6 +35,7 @@ export const useRepositoriesStore = defineStore('repositories', () => {
   }
 
   async function create(data: RepositoryCreate) {
+    saving.value = true
     error.value = null
     try {
       const repo = await api.create(data)
@@ -42,10 +44,13 @@ export const useRepositoriesStore = defineStore('repositories', () => {
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       return null
+    } finally {
+      saving.value = false
     }
   }
 
   async function update(id: string, data: Partial<RepositoryCreate>) {
+    saving.value = true
     error.value = null
     try {
       const repo = await api.update(id, data)
@@ -56,18 +61,23 @@ export const useRepositoriesStore = defineStore('repositories', () => {
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       return null
+    } finally {
+      saving.value = false
     }
   }
 
   async function remove(id: string) {
+    saving.value = true
     error.value = null
     try {
       await api.remove(id)
       list.value = list.value.filter((r) => r.id !== id)
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving.value = false
     }
   }
 
-  return { list, current, loading, error, fetchAll, fetchOne, create, update, remove }
+  return { list, current, loading, saving, error, fetchAll, fetchOne, create, update, remove }
 })

@@ -251,3 +251,15 @@ export interface TriggerResponse {
   error: string
   job_id: string
 }
+
+// Typed mapping of WebSocket event names to their payload types.
+export interface WebSocketEventMap {
+  'agent.connected': { agent_id: string; hostname: string }
+  'agent.disconnected': { agent_id: string }
+  'agent.heartbeat': { agent_id: string; timestamp: string }
+  'agent.registered': Agent
+  'job.created': JobCreatedEvent
+  'job.started': JobStartedEvent
+  'job.progress': JobProgressEvent
+  'job.completed': JobCompletedEvent
+}

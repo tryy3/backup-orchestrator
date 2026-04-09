@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onMounted, computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { useJobsStore, jobProgress } from '../stores/jobs'
+import { useJobsStore } from '../stores/jobs'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import LoadingSpinner from '../components/common/LoadingSpinner.vue'
+import ErrorBanner from '../components/common/ErrorBanner.vue'
 import { formatDate, formatDuration, durationBetween, formatBytes } from '../utils/time'
 
 const route = useRoute()
@@ -15,7 +16,7 @@ const job = computed(() => jobsStore.current)
 
 const progress = computed(() => {
   if (!job.value || (job.value.status !== 'running' && job.value.status !== 'planned')) return null
-  const p = jobProgress.value.get(job.value.agent_id)
+  const p = jobsStore.jobProgress.get(job.value.agent_id)
   if (!p) return null
   return p.percent
 })
@@ -83,6 +84,8 @@ function levelClass(level: string): string {
 
 <template>
   <div class="space-y-6">
+    <ErrorBanner :message="jobsStore.error" @dismiss="jobsStore.error = null" />
+
     <LoadingSpinner v-if="jobsStore.loading && !job" />
 
     <template v-else-if="job">

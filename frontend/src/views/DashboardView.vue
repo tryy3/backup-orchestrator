@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useAgentsStore } from '../stores/agents'
-import { useJobsStore, jobProgress } from '../stores/jobs'
+import { useJobsStore } from '../stores/jobs'
 import RunHeatmap from '../components/common/RunHeatmap.vue'
+import ErrorBanner from '../components/common/ErrorBanner.vue'
 import type { HeatmapRun } from '../components/common/RunHeatmap.vue'
 import type { Agent, Job } from '../types/api'
 
 const agentsStore = useAgentsStore()
 const jobsStore = useJobsStore()
+const jobProgress = computed(() => jobsStore.jobProgress)
 
 const filterStatus = ref<'all' | 'failing' | 'warning' | 'healthy' | 'offline'>('all')
 
@@ -107,6 +109,9 @@ function connectivityDotClass(agent: Agent) {
 
 <template>
   <div class="space-y-6">
+    <!-- Error banner -->
+    <ErrorBanner :message="agentsStore.error || jobsStore.error" @dismiss="agentsStore.error = null; jobsStore.error = null" />
+
     <!-- Page header -->
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>

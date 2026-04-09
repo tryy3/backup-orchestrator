@@ -6,6 +6,7 @@ import type { SnapshotInfo, RestoreRequest, BrowseRequest } from '../types/api'
 export const useSnapshotsStore = defineStore('snapshots', () => {
   const list = ref<SnapshotInfo[]>([])
   const loading = ref(false)
+  const saving = ref(false)
   const error = ref<string | null>(null)
 
   async function fetchList(agentId: string, repoId: string) {
@@ -31,6 +32,7 @@ export const useSnapshotsStore = defineStore('snapshots', () => {
   }
 
   async function restore(agentId: string, data: RestoreRequest) {
+    saving.value = true
     error.value = null
     try {
       await api.restore(agentId, data)
@@ -38,8 +40,10 @@ export const useSnapshotsStore = defineStore('snapshots', () => {
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       return false
+    } finally {
+      saving.value = false
     }
   }
 
-  return { list, loading, error, fetchList, browse, restore }
+  return { list, loading, saving, error, fetchList, browse, restore }
 })

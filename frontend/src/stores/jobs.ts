@@ -1,18 +1,18 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, onScopeDispose } from 'vue'
 import { jobs as api } from '../api/client'
 import { subscribe } from '../api/websocket'
-import type { Job, JobDetail, JobCreatedEvent, JobStartedEvent, JobProgressEvent, JobCompletedEvent } from '../types/api'
-
-// Active job progress tracked from WebSocket events.
-// Keyed by agent_id (since only one job runs at a time per agent).
-export const jobProgress = ref<Map<string, { planName: string; percent: number }>>(new Map())
+import type { Job, JobDetail } from '../types/api'
 
 export const useJobsStore = defineStore('jobs', () => {
   const list = ref<Job[]>([])
   const current = ref<JobDetail | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
+
+  // Active job progress tracked from WebSocket events.
+  // Keyed by agent_id (since only one job runs at a time per agent).
+  const jobProgress = ref<Map<string, { planName: string; percent: number }>>(new Map())
 
   async function fetchAll(params?: { agent_id?: string; plan_id?: string; status?: string }) {
     loading.value = true
@@ -39,9 +39,9 @@ export const useJobsStore = defineStore('jobs', () => {
   }
 
   // Subscribe to WebSocket events for live job updates.
-  subscribe('job.created', (payload) => {
-    const event = payload as JobCreatedEvent
-    // Add to list if not already present.
+  const unsubs: (() => void)[] = []
+
+  unsubs.push(subscribe('job.created', (event) => {
     if (!list.value.some((j) => j.id === event.id)) {
       list.value.unshift({
         id: event.id,
@@ -57,39 +57,32 @@ export const useJobsStore = defineStore('jobs', () => {
         created_at: event.created_at,
       })
     }
-  })
+  }))
 
-  subscribe('job.started', (payload) => {
-    const event = payload as JobStartedEvent
-    // Update matching job in list.
+  unsubs.push(subscribe('job.started', (event) => {
     const job = list.value.find((j) => j.id === event.job_id)
     if (job) {
       job.status = 'running'
       if (event.started_at) job.started_at = event.started_at
     }
-    // Update current if viewing this job.
     if (current.value?.id === event.job_id) {
       current.value.status = 'running'
       if (event.started_at) current.value.started_at = event.started_at
     }
-    // Track progress.
     jobProgress.value.set(event.agent_id, {
       planName: event.plan_name,
       percent: event.progress_percent,
     })
-  })
+  }))
 
-  subscribe('job.progress', (payload) => {
-    const event = payload as JobProgressEvent
+  unsubs.push(subscribe('job.progress', (event) => {
     jobProgress.value.set(event.agent_id, {
       planName: event.plan_name,
       percent: event.progress_percent,
     })
-  })
+  }))
 
-  subscribe('job.completed', (payload) => {
-    const event = payload as JobCompletedEvent
-    // Update or add the job in the list.
+  unsubs.push(subscribe('job.completed', (event) => {
     const idx = list.value.findIndex((j) => j.id === event.id)
     const updatedJob: Job = {
       id: event.id,
@@ -109,13 +102,15 @@ export const useJobsStore = defineStore('jobs', () => {
     } else {
       list.value.unshift(updatedJob)
     }
-    // If currently viewing this job, refetch to get full detail (results, logs).
     if (current.value?.id === event.id) {
       fetchOne(event.id)
     }
-    // Clear progress tracking for this agent.
     jobProgress.value.delete(event.agent_id)
+  }))
+
+  onScopeDispose(() => {
+    unsubs.forEach((fn) => fn())
   })
 
-  return { list, current, loading, error, fetchAll, fetchOne }
+  return { list, current, loading, error, jobProgress, fetchAll, fetchOne }
 })

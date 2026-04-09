@@ -7,6 +7,7 @@ export const useScriptsStore = defineStore('scripts', () => {
   const list = ref<Script[]>([])
   const current = ref<Script | null>(null)
   const loading = ref(false)
+  const saving = ref(false)
   const error = ref<string | null>(null)
 
   async function fetchAll() {
@@ -34,6 +35,7 @@ export const useScriptsStore = defineStore('scripts', () => {
   }
 
   async function create(data: ScriptCreate) {
+    saving.value = true
     error.value = null
     try {
       const script = await api.create(data)
@@ -42,10 +44,13 @@ export const useScriptsStore = defineStore('scripts', () => {
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       return null
+    } finally {
+      saving.value = false
     }
   }
 
   async function update(id: string, data: Partial<ScriptCreate>) {
+    saving.value = true
     error.value = null
     try {
       const script = await api.update(id, data)
@@ -56,18 +61,23 @@ export const useScriptsStore = defineStore('scripts', () => {
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       return null
+    } finally {
+      saving.value = false
     }
   }
 
   async function remove(id: string) {
+    saving.value = true
     error.value = null
     try {
       await api.remove(id)
       list.value = list.value.filter((s) => s.id !== id)
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving.value = false
     }
   }
 
-  return { list, current, loading, error, fetchAll, fetchOne, create, update, remove }
+  return { list, current, loading, saving, error, fetchAll, fetchOne, create, update, remove }
 })

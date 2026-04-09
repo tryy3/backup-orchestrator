@@ -1,4 +1,5 @@
 import { ref, readonly } from 'vue'
+import type { WebSocketEventMap } from '../types/api'
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
 
@@ -102,13 +103,16 @@ function disconnect() {
  * Subscribe to a specific event type pushed from the server.
  * Returns an unsubscribe function.
  */
-export function subscribe(eventType: string, callback: EventCallback): () => void {
+export function subscribe<K extends keyof WebSocketEventMap>(
+  eventType: K,
+  callback: (payload: WebSocketEventMap[K]) => void,
+): () => void {
   if (!listeners.has(eventType)) {
     listeners.set(eventType, new Set())
   }
-  listeners.get(eventType)!.add(callback)
+  listeners.get(eventType)!.add(callback as EventCallback)
   return () => {
-    listeners.get(eventType)?.delete(callback)
+    listeners.get(eventType)?.delete(callback as EventCallback)
   }
 }
 
