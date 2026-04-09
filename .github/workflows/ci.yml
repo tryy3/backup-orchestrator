@@ -21,22 +21,6 @@ jobs:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
-      - name: Set up buf
-        uses: bufbuild/buf-action@v1
-        with:
-          setup_only: true
-
-      - name: Install protoc plugins
-        run: |
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
-          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
-
-      - name: Generate proto
-        run: cd proto && buf generate
-
-      - name: Stub frontend dist
-        run: mkdir -p server/internal/frontend/dist && echo "CI stub" > server/internal/frontend/dist/index.html
-
       - name: Run server tests
         run: cd server && go test -race ./...
 
@@ -51,19 +35,6 @@ jobs:
         with:
           go-version-file: agent/go.mod
           cache-dependency-path: agent/go.sum
-
-      - name: Set up buf
-        uses: bufbuild/buf-action@v1
-        with:
-          setup_only: true
-
-      - name: Install protoc plugins
-        run: |
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
-          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
-
-      - name: Generate proto
-        run: cd proto && buf generate
 
       - name: Run agent tests
         run: cd agent && go test -race ./...
@@ -218,15 +189,13 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           working-directory: server
-          version: v2.11.4
-          args: --config=../.golangci.yml
+          config-path: ../.golangci.yml
 
       - name: golangci-lint (agent)
         uses: golangci/golangci-lint-action@v9
         with:
           working-directory: agent
-          version: v2.11.4
-          args: --config=../.golangci.yml
+          config-path: ../.golangci.yml
 
   # ── Proto check (PRs only) ───────────────────────────────────────────────
   proto-check:
