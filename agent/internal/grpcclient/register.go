@@ -13,9 +13,9 @@ func (c *Client) Register(ctx context.Context, hostname string) (*backupv1.Regis
 	req := &backupv1.RegisterRequest{
 		Hostname:      hostname,
 		Os:            fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
-		AgentVersion:  "0.1.0",  // placeholder for MVP
-		ResticVersion: "0.17.3", // placeholder for MVP
-		RcloneVersion: "1.68.0", // placeholder for MVP
+		AgentVersion:  AgentVersion,
+		ResticVersion: ResticVersion,
+		RcloneVersion: RcloneVersion,
 	}
 
 	resp, err := c.client.Register(ctx, req)

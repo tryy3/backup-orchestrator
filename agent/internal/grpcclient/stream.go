@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"runtime"
 	"sync"
 	"time"
 
@@ -27,6 +26,7 @@ type JobStatusFunc func() *JobStatus
 type StreamHandler struct {
 	client      *Client
 	identity    *identity.Identity
+	identityMu  sync.RWMutex
 	onApproval  func(agentID, apiKey string)
 	onConfig    func(cfg *backupv1.AgentConfig)
 	onCommand   func(cmd *backupv1.Command) *backupv1.CommandResult
@@ -66,6 +66,10 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 		return fmt.Errorf("sending initial heartbeat: %w", err)
 	}
 
+	// Derived context so we can signal both goroutines to stop when Run exits.
+	runCtx, runCancel := context.WithCancel(ctx)
+	defer runCancel()
+
 	errCh := make(chan error, 2)
 	var wg sync.WaitGroup
 
@@ -78,7 +82,7 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-runCtx.Done():
 				// Close the send side of the stream.
 				stream.CloseSend()
 				return
@@ -119,21 +123,26 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 	}()
 
 	// Wait for either goroutine to exit with an error.
+	var retErr error
 	select {
-	case err := <-errCh:
-		return err
+	case retErr = <-errCh:
 	case <-ctx.Done():
-		return ctx.Err()
+		retErr = ctx.Err()
 	}
+
+	// Cancel derived context to signal the other goroutine, then wait.
+	runCancel()
+	wg.Wait()
+	return retErr
 }
 
 func (s *StreamHandler) sendHeartbeat(stream backupv1.BackupService_ConnectClient) error {
 	hb := &backupv1.Heartbeat{
 		Timestamp:     timestamppb.Now(),
 		Status:        "idle",
-		AgentVersion:  "0.1.0",
-		ResticVersion: fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
-		RcloneVersion: "1.68.0",
+		AgentVersion:  AgentVersion,
+		ResticVersion: ResticVersion,
+		RcloneVersion: RcloneVersion,
 	}
 
 	if s.jobStatusFn != nil {
@@ -147,9 +156,14 @@ func (s *StreamHandler) sendHeartbeat(stream backupv1.BackupService_ConnectClien
 		}
 	}
 
+	s.identityMu.RLock()
+	agentID := s.identity.AgentID
+	apiKey := s.identity.APIKey
+	s.identityMu.RUnlock()
+
 	msg := &backupv1.AgentMessage{
-		AgentId: s.identity.AgentID,
-		ApiKey:  s.identity.APIKey,
+		AgentId: agentID,
+		ApiKey:  apiKey,
 		Payload: &backupv1.AgentMessage_Heartbeat{
 			Heartbeat: hb,
 		},
@@ -160,9 +174,13 @@ func (s *StreamHandler) sendHeartbeat(stream backupv1.BackupService_ConnectClien
 func (s *StreamHandler) handleApproval(approval *backupv1.Approval) {
 	slog.Info("received approval", "source", "stream", "status", approval.GetStatus())
 	if approval.GetStatus() == backupv1.AgentStatus_AGENT_STATUS_APPROVED {
+		s.identityMu.Lock()
 		s.identity.APIKey = approval.GetApiKey()
+		agentID := s.identity.AgentID
+		s.identityMu.Unlock()
+
 		if s.onApproval != nil {
-			s.onApproval(s.identity.AgentID, approval.GetApiKey())
+			s.onApproval(agentID, approval.GetApiKey())
 		}
 	} else if approval.GetStatus() == backupv1.AgentStatus_AGENT_STATUS_REJECTED {
 		slog.Warn("agent rejected by server", "source", "stream")
@@ -176,10 +194,15 @@ func (s *StreamHandler) handleConfig(stream backupv1.BackupService_ConnectClient
 		s.onConfig(cfg)
 	}
 
+	s.identityMu.RLock()
+	agentID := s.identity.AgentID
+	apiKey := s.identity.APIKey
+	s.identityMu.RUnlock()
+
 	// Send config ack.
 	ack := &backupv1.AgentMessage{
-		AgentId: s.identity.AgentID,
-		ApiKey:  s.identity.APIKey,
+		AgentId: agentID,
+		ApiKey:  apiKey,
 		Payload: &backupv1.AgentMessage_ConfigAck{
 			ConfigAck: &backupv1.ConfigAck{
 				ConfigVersion: cfg.GetConfigVersion(),
@@ -206,10 +229,15 @@ func (s *StreamHandler) handleCommand(stream backupv1.BackupService_ConnectClien
 		}
 	}
 
+	s.identityMu.RLock()
+	agentID := s.identity.AgentID
+	apiKey := s.identity.APIKey
+	s.identityMu.RUnlock()
+
 	// Send command result.
 	msg := &backupv1.AgentMessage{
-		AgentId: s.identity.AgentID,
-		ApiKey:  s.identity.APIKey,
+		AgentId: agentID,
+		ApiKey:  apiKey,
 		Payload: &backupv1.AgentMessage_CommandResult{
 			CommandResult: result,
 		},

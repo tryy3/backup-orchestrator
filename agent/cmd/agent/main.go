@@ -96,6 +96,10 @@ func main() {
 		configMu      sync.RWMutex
 	)
 
+	// Root context for graceful shutdown.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// ReportFunc for scheduler: buffer the report and attempt delivery.
 	reportFn := func(report *backupv1.JobReport) {
 		configMu.RLock()
@@ -135,7 +139,7 @@ func main() {
 	}
 
 	// Step 9: Create Scheduler.
-	sched := scheduler.New(orchestrator, reportFn)
+	sched := scheduler.New(ctx, orchestrator, reportFn)
 
 	// Step 10: If no identity (first run): call Register, get agent_id, save identity.
 	if id == nil {
@@ -163,10 +167,6 @@ func main() {
 	} else {
 		slog.Info("loaded identity", "source", "agent", "agent_id", id.AgentID)
 	}
-
-	// Root context for graceful shutdown.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Step 11: Start StreamHandler in goroutine with reconnect loop.
 	go func() {
@@ -216,7 +216,7 @@ func main() {
 			},
 			// onCommand: dispatch to executor.
 			func(cmd *backupv1.Command) *backupv1.CommandResult {
-				return handleCommand(cmd, sched, resticExec, &configMu, &currentConfig, id)
+				return handleCommand(ctx, cmd, sched, resticExec, &configMu, &currentConfig, id)
 			},
 			// jobStatus: report current running job for heartbeats.
 			sched.JobStatusFunc(),
@@ -231,6 +231,9 @@ func main() {
 				return
 			default:
 			}
+
+			// Reset backoff before each connection attempt.
+			backoff = time.Second
 
 			slog.Info("connecting to server...", "source", "agent")
 			err := streamHandler.Run(ctx)
@@ -291,14 +294,13 @@ func main() {
 
 	cancel() // cancel context for all goroutines
 	sched.Stop()
-	grpcClient.Close()
-	db.Close()
 
 	slog.Info("shutdown complete", "source", "agent")
 }
 
 // handleCommand dispatches server commands to the appropriate executor.
 func handleCommand(
+	ctx context.Context,
 	cmd *backupv1.Command,
 	sched *scheduler.Scheduler,
 	resticExec *executor.ResticExecutor,
@@ -337,7 +339,7 @@ func handleCommand(
 			result.Error = fmt.Sprintf("repository %s not found", action.ListSnapshots.GetRepositoryId())
 			return result
 		}
-		snapshots, err := resticExec.Snapshots(context.Background(), executor.Repository{
+		snapshots, err := resticExec.Snapshots(ctx, executor.Repository{
 			ID:       repo.GetId(),
 			Name:     repo.GetName(),
 			Type:     repo.GetType(),
@@ -349,7 +351,12 @@ func handleCommand(
 			result.Error = err.Error()
 			return result
 		}
-		data, _ := json.Marshal(snapshots)
+		data, err := json.Marshal(snapshots)
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("marshaling snapshots: %v", err)
+			return result
+		}
 		result.Success = true
 		result.Data = data
 
@@ -360,7 +367,7 @@ func handleCommand(
 			result.Error = fmt.Sprintf("repository %s not found", action.BrowseSnapshot.GetRepositoryId())
 			return result
 		}
-		files, err := resticExec.ListFiles(context.Background(), executor.Repository{
+		files, err := resticExec.ListFiles(ctx, executor.Repository{
 			ID:       repo.GetId(),
 			Name:     repo.GetName(),
 			Type:     repo.GetType(),
@@ -372,7 +379,12 @@ func handleCommand(
 			result.Error = err.Error()
 			return result
 		}
-		data, _ := json.Marshal(files)
+		data, err := json.Marshal(files)
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("marshaling files: %v", err)
+			return result
+		}
 		result.Success = true
 		result.Data = data
 
@@ -383,7 +395,7 @@ func handleCommand(
 			result.Error = fmt.Sprintf("repository %s not found", action.TriggerRestore.GetRepositoryId())
 			return result
 		}
-		err := resticExec.Restore(context.Background(), executor.Repository{
+		err := resticExec.Restore(ctx, executor.Repository{
 			ID:       repo.GetId(),
 			Name:     repo.GetName(),
 			Type:     repo.GetType(),

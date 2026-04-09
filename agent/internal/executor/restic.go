@@ -251,23 +251,23 @@ func (r *ResticExecutor) Restore(ctx context.Context, repo Repository, snapshotI
 func (r *ResticExecutor) EnsureRepo(ctx context.Context, repo Repository, logger *slog.Logger) error {
 	// Try listing snapshots to see if the repo exists.
 	args := []string{"snapshots", "--repo", repo.Path, "--json"}
-	_, stderr, err := r.runRestic(ctx, repo, args, logger)
+	_, _, err := r.runRestic(ctx, repo, args, logger)
 	if err == nil {
 		return nil // repo already exists
 	}
 
-	// If the repo doesn't exist, try to initialize it.
-	if strings.Contains(stderr, "unable to open repository") ||
-		strings.Contains(stderr, "Is there a repository at the following location") {
-		initArgs := []string{"init", "--repo", repo.Path}
-		_, initStderr, initErr := r.runRestic(ctx, repo, initArgs, logger)
-		if initErr != nil {
-			return fmt.Errorf("restic init: %w\nstderr: %s", initErr, initStderr)
+	// Repo inaccessible — attempt init. If already initialized, restic
+	// exits non-zero with a recognizable message; treat that as success.
+	initArgs := []string{"init", "--repo", repo.Path}
+	_, initStderr, initErr := r.runRestic(ctx, repo, initArgs, logger)
+	if initErr != nil {
+		if strings.Contains(initStderr, "already initialized") ||
+			strings.Contains(initStderr, "already exists") {
+			return nil
 		}
-		return nil
+		return fmt.Errorf("restic init: %w\nstderr: %s", initErr, initStderr)
 	}
-
-	return fmt.Errorf("restic snapshots check failed: %w\nstderr: %s", err, stderr)
+	return nil
 }
 
 // runRestic executes a restic command with the correct environment variables.
