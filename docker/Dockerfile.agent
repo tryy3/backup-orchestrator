@@ -1,5 +1,5 @@
 # Stage 1: Generate proto files
-FROM docker.io/library/golang:1.26.1-alpine AS proto-gen
+FROM docker.io/library/golang:1.26.2-alpine AS proto-gen
 RUN apk add --no-cache git
 COPY --from=docker.io/bufbuild/buf:latest /usr/local/bin/buf /usr/local/bin/buf
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.0 \
@@ -9,7 +9,7 @@ COPY proto/ ./proto/
 RUN cd proto && buf generate
 
 # Stage 2: Build agent
-FROM docker.io/library/golang:1.26.1-alpine AS builder
+FROM docker.io/library/golang:1.26.2-alpine AS builder
 RUN apk add --no-cache git
 WORKDIR /app
 
