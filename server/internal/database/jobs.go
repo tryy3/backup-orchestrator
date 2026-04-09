@@ -145,14 +145,16 @@ func (db *DB) GetJob(ctx context.Context, id string) (*Job, error) {
 	defer func() { _ = repoRows.Close() }()
 	for repoRows.Next() {
 		var rr JobRepositoryResult
-		if err := repoRows.Scan(&rr.ID, &rr.JobID, &rr.RepositoryID, &rr.RepositoryName, &rr.Status,
+		err = repoRows.Scan(&rr.ID, &rr.JobID, &rr.RepositoryID, &rr.RepositoryName, &rr.Status,
 			&rr.SnapshotID, &rr.Error, &rr.FilesNew, &rr.FilesChanged, &rr.FilesUnmodified,
-			&rr.BytesAdded, &rr.TotalBytes, &rr.DurationMs); err != nil {
+			&rr.BytesAdded, &rr.TotalBytes, &rr.DurationMs)
+		if err != nil {
 			return nil, fmt.Errorf("scan repository result: %w", err)
 		}
 		j.RepositoryResults = append(j.RepositoryResults, rr)
 	}
-	if err := repoRows.Err(); err != nil {
+	err = repoRows.Err()
+	if err != nil {
 		return nil, fmt.Errorf("iterate repository results: %w", err)
 	}
 

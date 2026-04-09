@@ -161,7 +161,7 @@ func (db *DB) DeleteAgent(ctx context.Context, id string) error {
 }
 
 // UpdateHeartbeat updates the agent's last heartbeat time and version info.
-func (db *DB) UpdateHeartbeat(ctx context.Context, id string, agentVersion, resticVersion, rcloneVersion string) error {
+func (db *DB) UpdateHeartbeat(ctx context.Context, id, agentVersion, resticVersion, rcloneVersion string) error {
 	now := time.Now().UTC()
 	_, err := db.ExecContext(ctx, `
 		UPDATE agents SET last_heartbeat=?, agent_version=?, restic_version=?, rclone_version=?, updated_at=?
