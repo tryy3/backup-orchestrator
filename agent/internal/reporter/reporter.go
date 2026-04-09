@@ -71,6 +71,10 @@ func (r *Reporter) FlushNow() {
 	}
 }
 
+// maxFlushAttempts is the maximum number of delivery attempts before a
+// buffered report is discarded.
+const maxFlushAttempts = 10
+
 func (r *Reporter) flush(ctx context.Context) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -88,6 +92,15 @@ func (r *Reporter) flush(ctx context.Context) {
 	slog.Info("flushing buffered reports", "source", "reporter", "count", len(reports))
 
 	for _, br := range reports {
+		// Drop reports that have exceeded max attempts.
+		if br.Attempts >= maxFlushAttempts {
+			slog.Warn("dropping report after max attempts", "source", "reporter", "report_id", br.ID, "attempts", br.Attempts, "last_error", br.LastError)
+			if err := r.db.DeleteReport(br.ID); err != nil {
+				slog.Error("error deleting expired report", "source", "reporter", "report_id", br.ID, "error", err)
+			}
+			continue
+		}
+
 		var report backupv1.JobReport
 		if err := protojson.Unmarshal([]byte(br.Payload), &report); err != nil {
 			slog.Error("error unmarshaling report", "source", "reporter", "report_id", br.ID, "error", err)

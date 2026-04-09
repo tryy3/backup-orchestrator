@@ -9,6 +9,14 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// Version variables are set at build time via -ldflags. Defaults are
+// placeholder values for development.
+var (
+	AgentVersion  = "0.1.0-dev"
+	ResticVersion = "unknown"
+	RcloneVersion = "unknown"
+)
+
 // Client wraps the gRPC connection and service client.
 type Client struct {
 	conn   *grpc.ClientConn

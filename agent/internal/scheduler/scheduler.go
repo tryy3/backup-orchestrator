@@ -23,17 +23,24 @@ type Scheduler struct {
 	mu       sync.Mutex
 	entryIDs map[string]cron.EntryID // plan_id -> entry
 
+	ctxMu  sync.RWMutex
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	jobMu      sync.RWMutex
 	currentJob *grpcclient.JobStatus
 }
 
 // New creates a new Scheduler.
-func New(exec *executor.JobOrchestrator, reportFn ReportFunc) *Scheduler {
+func New(ctx context.Context, exec *executor.JobOrchestrator, reportFn ReportFunc) *Scheduler {
+	ctx, cancel := context.WithCancel(ctx)
 	return &Scheduler{
 		cron:     cron.New(),
 		executor: exec,
 		reporter: reportFn,
 		entryIDs: make(map[string]cron.EntryID),
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 }
 
@@ -42,8 +49,9 @@ func (s *Scheduler) Start() {
 	s.cron.Start()
 }
 
-// Stop stops the cron scheduler and waits for running jobs to finish.
+// Stop cancels running jobs and stops the cron scheduler.
 func (s *Scheduler) Stop() {
+	s.cancel()
 	ctx := s.cron.Stop()
 	<-ctx.Done()
 }
@@ -85,7 +93,7 @@ func (s *Scheduler) UpdateSchedule(
 		entryID, err := s.cron.AddFunc(schedule, func() {
 			slog.Info("triggered scheduled backup", "source", "scheduler", "plan", p.GetName())
 			s.setCurrentJob(p.GetName())
-			report := s.executor.ExecuteBackupJob(context.Background(), p, r, dr, "scheduled")
+			report := s.executor.ExecuteBackupJob(s.ctx, p, r, dr, "scheduled")
 			s.clearCurrentJob()
 			if s.reporter != nil {
 				s.reporter(report)
@@ -124,7 +132,7 @@ func (s *Scheduler) TriggerNow(
 	go func() {
 		slog.Info("manual trigger for plan", "source", "scheduler", "plan", targetPlan.GetName())
 		s.setCurrentJob(targetPlan.GetName())
-		report := s.executor.ExecuteBackupJob(context.Background(), targetPlan, repos, defaultRetention, "manual")
+		report := s.executor.ExecuteBackupJob(s.ctx, targetPlan, repos, defaultRetention, "manual")
 		s.clearCurrentJob()
 		if s.reporter != nil {
 			s.reporter(report)

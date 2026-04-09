@@ -23,9 +23,10 @@ type entryBuffer struct {
 // BufferHandler is a slog.Handler that captures log entries into a buffer
 // for later retrieval (e.g., attaching to a job report).
 type BufferHandler struct {
-	buf   *entryBuffer
-	level slog.Level
-	attrs []slog.Attr
+	buf    *entryBuffer
+	level  slog.Level
+	attrs  []slog.Attr
+	groups []string // active group names for key prefixing
 }
 
 // NewBufferHandler creates a BufferHandler that captures entries at or above the given level.
@@ -56,18 +57,27 @@ func (h *BufferHandler) Handle(_ context.Context, r slog.Record) error {
 
 	// Collect attributes: extract "source" separately, rest go into JSON.
 	attrs := make(map[string]string)
+	prefix := strings.Join(h.groups, ".")
 	for _, a := range h.attrs {
-		if a.Key == "source" {
+		key := a.Key
+		if prefix != "" {
+			key = prefix + "." + key
+		}
+		if key == "source" {
 			entry.Source = a.Value.String()
 		} else {
-			attrs[a.Key] = a.Value.String()
+			attrs[key] = a.Value.String()
 		}
 	}
 	r.Attrs(func(a slog.Attr) bool {
-		if a.Key == "source" {
+		key := a.Key
+		if prefix != "" {
+			key = prefix + "." + key
+		}
+		if key == "source" {
 			entry.Source = a.Value.String()
 		} else {
-			attrs[a.Key] = a.Value.String()
+			attrs[key] = a.Value.String()
 		}
 		return true
 	})
@@ -84,14 +94,23 @@ func (h *BufferHandler) Handle(_ context.Context, r slog.Record) error {
 
 func (h *BufferHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &BufferHandler{
-		buf:   h.buf, // share the same buffer
-		level: h.level,
-		attrs: append(cloneAttrs(h.attrs), attrs...),
+		buf:    h.buf, // share the same buffer
+		level:  h.level,
+		attrs:  append(cloneAttrs(h.attrs), attrs...),
+		groups: h.groups,
 	}
 }
 
-func (h *BufferHandler) WithGroup(_ string) slog.Handler {
-	return h
+func (h *BufferHandler) WithGroup(name string) slog.Handler {
+	if name == "" {
+		return h
+	}
+	return &BufferHandler{
+		buf:    h.buf,
+		level:  h.level,
+		attrs:  cloneAttrs(h.attrs),
+		groups: append(cloneStrings(h.groups), name),
+	}
 }
 
 // Entries returns the captured log entries.
@@ -138,5 +157,14 @@ func cloneAttrs(attrs []slog.Attr) []slog.Attr {
 	}
 	out := make([]slog.Attr, len(attrs))
 	copy(out, attrs)
+	return out
+}
+
+func cloneStrings(s []string) []string {
+	if s == nil {
+		return nil
+	}
+	out := make([]string, len(s))
+	copy(out, s)
 	return out
 }

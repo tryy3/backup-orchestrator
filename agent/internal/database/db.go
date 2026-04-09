@@ -30,6 +30,9 @@ func Open(dataDir string) (*DB, error) {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
 
+	// Limit to a single connection — SQLite only supports one writer.
+	sqlDB.SetMaxOpenConns(1)
+
 	// Enable WAL mode and foreign keys.
 	if _, err := sqlDB.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		sqlDB.Close()
