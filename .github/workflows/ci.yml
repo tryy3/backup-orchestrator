@@ -32,7 +32,7 @@ jobs:
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
       - name: Generate proto
-        run: buf generate proto
+        run: cd proto && buf generate
 
       - name: Stub frontend dist
         run: mkdir -p server/internal/frontend/dist && echo "CI stub" > server/internal/frontend/dist/index.html
@@ -63,7 +63,7 @@ jobs:
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
       - name: Generate proto
-        run: buf generate proto
+        run: cd proto && buf generate
 
       - name: Run agent tests
         run: cd agent && go test -race ./...
@@ -110,7 +110,7 @@ jobs:
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
       - name: Generate proto
-        run: buf generate proto
+        run: cd proto && buf generate
 
       - name: Stub frontend dist
         run: mkdir -p server/internal/frontend/dist && echo "CI stub" > server/internal/frontend/dist/index.html
@@ -162,7 +162,7 @@ jobs:
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
       - name: Generate proto
-        run: buf generate proto
+        run: cd proto && buf generate
 
       - uses: actions/setup-node@v4
         with:
@@ -206,7 +206,7 @@ jobs:
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
       - name: Generate proto
-        run: buf generate proto
+        run: cd proto && buf generate
 
       - name: Stub frontend dist
         run: mkdir -p server/internal/frontend/dist && echo "CI stub" > server/internal/frontend/dist/index.html
