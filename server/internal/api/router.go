@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -142,7 +143,9 @@ func maxBytesMiddleware(maxBytes int64) func(http.Handler) http.Handler {
 // writeJSON encodes a value as JSON and writes it to the response.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("writeJSON encode error: %v", err)
+	}
 }
 
 // writeError writes a JSON error response.
@@ -158,14 +161,14 @@ func isValidCronSchedule(s string) bool {
 
 // validHookEvents is the set of accepted on_event values for plan hooks.
 var validHookEvents = map[string]bool{
-	"pre_backup":  true,
-	"post_backup": true,
-	"on_success":  true,
-	"on_failure":  true,
-	"pre_restore": true,
+	"pre_backup":   true,
+	"post_backup":  true,
+	"on_success":   true,
+	"on_failure":   true,
+	"pre_restore":  true,
 	"post_restore": true,
-	"pre_forget":  true,
-	"post_forget": true,
+	"pre_forget":   true,
+	"post_forget":  true,
 }
 
 // validRepoScopes is the set of accepted scope values for repositories.

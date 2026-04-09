@@ -73,7 +73,7 @@ func (db *DB) ListScripts(ctx context.Context) ([]Script, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list scripts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var scripts []Script
 	for rows.Next() {
@@ -113,7 +113,7 @@ func (db *DB) AgentIDsUsingScript(ctx context.Context, scriptID string) ([]strin
 	if err != nil {
 		return nil, fmt.Errorf("agents using script: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ids []string
 	for rows.Next() {
 		var id string
@@ -131,7 +131,7 @@ func (db *DB) DeleteScript(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var count int
 	err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM plan_hooks WHERE script_id = ?", id).Scan(&count)

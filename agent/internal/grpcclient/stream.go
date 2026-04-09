@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tryy3/backup-orchestrator/agent/internal/identity"
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
+	"github.com/tryy3/backup-orchestrator/agent/internal/identity"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -84,7 +84,7 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 			select {
 			case <-runCtx.Done():
 				// Close the send side of the stream.
-				stream.CloseSend()
+				_ = stream.CloseSend()
 				return
 			case <-ticker.C:
 				if err := s.sendHeartbeat(stream); err != nil {

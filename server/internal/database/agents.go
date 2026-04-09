@@ -98,7 +98,7 @@ func (db *DB) ListAgents(ctx context.Context) ([]Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list agents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var agents []Agent
 	for rows.Next() {
@@ -161,7 +161,7 @@ func (db *DB) DeleteAgent(ctx context.Context, id string) error {
 }
 
 // UpdateHeartbeat updates the agent's last heartbeat time and version info.
-func (db *DB) UpdateHeartbeat(ctx context.Context, id string, agentVersion, resticVersion, rcloneVersion string) error {
+func (db *DB) UpdateHeartbeat(ctx context.Context, id, agentVersion, resticVersion, rcloneVersion string) error {
 	now := time.Now().UTC()
 	_, err := db.ExecContext(ctx, `
 		UPDATE agents SET last_heartbeat=?, agent_version=?, restic_version=?, rclone_version=?, updated_at=?
@@ -194,7 +194,7 @@ func (db *DB) UpdateConfigVersion(ctx context.Context, id string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UTC()
 	_, err = tx.ExecContext(ctx, `UPDATE agents SET config_version = config_version + 1, updated_at=? WHERE id=?`, now, id)

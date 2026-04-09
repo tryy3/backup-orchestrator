@@ -10,15 +10,15 @@ import (
 
 // Event represents a server-side event to be broadcast to connected WebSocket clients.
 type Event struct {
-	Type    string `json:"type"`
 	Payload any    `json:"payload"`
+	Type    string `json:"type"`
 }
 
 // Hub is a thread-safe pub/sub hub that broadcasts events to registered WebSocket clients.
 type Hub struct {
-	mu      sync.RWMutex
 	clients map[string]chan []byte // clientID -> JSON-encoded event channel
 	closed  chan struct{}
+	mu      sync.RWMutex
 	once    sync.Once
 }
 
@@ -31,7 +31,7 @@ func NewHub() *Hub {
 }
 
 // Register adds a new client and returns its ID and event channel.
-func (h *Hub) Register() (string, <-chan []byte) {
+func (h *Hub) Register() (clientID string, events <-chan []byte) {
 	id := uuid.New().String()
 	ch := make(chan []byte, 64)
 

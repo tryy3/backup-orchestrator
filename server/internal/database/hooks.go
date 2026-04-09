@@ -11,17 +11,17 @@ import (
 
 // PlanHook represents an ordered hook attached to a backup plan.
 type PlanHook struct {
-	ID         string  `json:"id"`
-	PlanID     string  `json:"backup_plan_id"`
-	OnEvent    string  `json:"on_event"`
-	SortOrder  int     `json:"sort_order"`
-	ScriptID   *string `json:"script_id,omitempty"`
-	Type       *string `json:"type,omitempty"`
-	Command    *string `json:"command,omitempty"`
-	Timeout    *int    `json:"timeout,omitempty"`
-	OnError    *string `json:"on_error,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID        string    `json:"id"`
+	PlanID    string    `json:"backup_plan_id"`
+	OnEvent   string    `json:"on_event"`
+	SortOrder int       `json:"sort_order"`
+	ScriptID  *string   `json:"script_id,omitempty"`
+	Type      *string   `json:"type,omitempty"`
+	Command   *string   `json:"command,omitempty"`
+	Timeout   *int      `json:"timeout,omitempty"`
+	OnError   *string   `json:"on_error,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // CreateHook inserts a new plan hook.
@@ -66,7 +66,7 @@ func (db *DB) ListHooks(ctx context.Context, planID string) ([]PlanHook, error) 
 	if err != nil {
 		return nil, fmt.Errorf("list hooks: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var hooks []PlanHook
 	for rows.Next() {
@@ -117,7 +117,7 @@ func (db *DB) ReorderHooks(ctx context.Context, planID string, hookIDs []string)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UTC()
 	for i, hookID := range hookIDs {

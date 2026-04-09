@@ -1,49 +1,49 @@
 syntax = "proto3";
 package backup.v1;
 
-option go_package = "backup/v1;backupv1";
-
 import "google/protobuf/timestamp.proto";
+
+option go_package = "backup/v1;backupv1";
 
 // ============================================================
 // Main service
 // ============================================================
 service BackupService {
-    // Agent registers itself (before approval)
-    rpc Register(RegisterRequest) returns (RegisterResponse);
+  // Agent registers itself (before approval)
+  rpc Register(RegisterRequest) returns (RegisterResponse);
 
-    // Bidirectional stream — agent's persistent connection
-    // Agent sends heartbeats & status, server sends commands & config
-    rpc Connect(stream AgentMessage) returns (stream ServerMessage);
+  // Bidirectional stream — agent's persistent connection
+  // Agent sends heartbeats & status, server sends commands & config
+  rpc Connect(stream AgentMessage) returns (stream ServerMessage);
 
-    // Agent reports a completed job
-    rpc ReportJob(JobReport) returns (JobReportAck);
+  // Agent reports a completed job
+  rpc ReportJob(JobReport) returns (JobReportAck);
 
-    // Agent reports current snapshots for its repos
-    rpc ReportSnapshots(SnapshotReport) returns (SnapshotReportAck);
+  // Agent reports current snapshots for its repos
+  rpc ReportSnapshots(SnapshotReport) returns (SnapshotReportAck);
 }
 
 // ============================================================
 // Enrollment
 // ============================================================
 message RegisterRequest {
-    string hostname = 1;
-    string os = 2;                    // e.g. "linux/amd64"
-    string agent_version = 3;
-    string restic_version = 4;
-    string rclone_version = 5;
+  string hostname = 1;
+  string os = 2; // e.g. "linux/amd64"
+  string agent_version = 3;
+  string restic_version = 4;
+  string rclone_version = 5;
 }
 
 message RegisterResponse {
-    string agent_id = 1;
-    AgentStatus status = 2;           // PENDING on first registration
+  string agent_id = 1;
+  AgentStatus status = 2; // PENDING on first registration
 }
 
 enum AgentStatus {
-    AGENT_STATUS_UNSPECIFIED = 0;
-    AGENT_STATUS_PENDING = 1;
-    AGENT_STATUS_APPROVED = 2;
-    AGENT_STATUS_REJECTED = 3;
+  AGENT_STATUS_UNSPECIFIED = 0;
+  AGENT_STATUS_PENDING = 1;
+  AGENT_STATUS_APPROVED = 2;
+  AGENT_STATUS_REJECTED = 3;
 }
 
 // ============================================================
@@ -52,224 +52,224 @@ enum AgentStatus {
 
 // Agent -> Server messages
 message AgentMessage {
-    string agent_id = 1;
-    string api_key = 2;               // auth (empty during pending state)
+  string agent_id = 1;
+  string api_key = 2; // auth (empty during pending state)
 
-    oneof payload {
-        Heartbeat heartbeat = 10;
-        ConfigAck config_ack = 11;
-        CommandResult command_result = 12;
-    }
+  oneof payload {
+    Heartbeat heartbeat = 10;
+    ConfigAck config_ack = 11;
+    CommandResult command_result = 12;
+  }
 }
 
 message Heartbeat {
-    google.protobuf.Timestamp timestamp = 1;
-    string status = 2;                // "idle", "running", "degraded"
-    RunningJob current_job = 3;       // null if idle
-    string agent_version = 4;
-    string restic_version = 5;
-    string rclone_version = 6;
+  google.protobuf.Timestamp timestamp = 1;
+  string status = 2; // "idle", "running", "degraded"
+  RunningJob current_job = 3; // null if idle
+  string agent_version = 4;
+  string restic_version = 5;
+  string rclone_version = 6;
 }
 
 message RunningJob {
-    string plan_name = 1;
-    google.protobuf.Timestamp started_at = 2;
-    float progress_percent = 3;       // 0-100 if available, -1 if unknown
+  string plan_name = 1;
+  google.protobuf.Timestamp started_at = 2;
+  float progress_percent = 3; // 0-100 if available, -1 if unknown
 }
 
 message ConfigAck {
-    int32 config_version = 1;
-    bool success = 2;
-    string error = 3;                 // set if success=false
+  int32 config_version = 1;
+  bool success = 2;
+  string error = 3; // set if success=false
 }
 
 message CommandResult {
-    string command_id = 1;            // echoes the command ID from server
-    bool success = 2;
-    string error = 3;
-    bytes data = 4;                   // JSON payload for queries (snapshots, file listings)
+  string command_id = 1; // echoes the command ID from server
+  bool success = 2;
+  string error = 3;
+  bytes data = 4; // JSON payload for queries (snapshots, file listings)
 }
 
 // Server -> Agent messages
 message ServerMessage {
-    oneof payload {
-        Approval approval = 10;
-        AgentConfig config = 11;
-        Command command = 12;
-    }
+  oneof payload {
+    Approval approval = 10;
+    AgentConfig config = 11;
+    Command command = 12;
+  }
 }
 
 message Approval {
-    AgentStatus status = 1;           // APPROVED or REJECTED
-    string api_key = 2;              // set on approval
+  AgentStatus status = 1; // APPROVED or REJECTED
+  string api_key = 2; // set on approval
 }
 
 message AgentConfig {
-    int32 config_version = 1;
-    repeated Repository repositories = 2;
-    repeated BackupPlan backup_plans = 3;
-    RetentionPolicy default_retention = 4;
-    string rclone_config = 5;         // raw INI text
+  int32 config_version = 1;
+  repeated Repository repositories = 2;
+  repeated BackupPlan backup_plans = 3;
+  RetentionPolicy default_retention = 4;
+  string rclone_config = 5; // raw INI text
 }
 
 message Command {
-    string command_id = 1;            // unique ID for correlating results
+  string command_id = 1; // unique ID for correlating results
 
-    oneof action {
-        TriggerBackup trigger_backup = 10;
-        TriggerRestore trigger_restore = 11;
-        ListSnapshots list_snapshots = 12;
-        BrowseSnapshot browse_snapshot = 13;
-    }
+  oneof action {
+    TriggerBackup trigger_backup = 10;
+    TriggerRestore trigger_restore = 11;
+    ListSnapshots list_snapshots = 12;
+    BrowseSnapshot browse_snapshot = 13;
+  }
 }
 
 message TriggerBackup {
-    string plan_id = 1;
+  string plan_id = 1;
 }
 
 message TriggerRestore {
-    string repository_id = 1;
-    string snapshot_id = 2;
-    repeated string paths = 3;        // specific paths to restore, empty = all
-    string target = 4;                // restore target dir (e.g. "/mnt/restore")
+  string repository_id = 1;
+  string snapshot_id = 2;
+  repeated string paths = 3; // specific paths to restore, empty = all
+  string target = 4; // restore target dir (e.g. "/mnt/restore")
 }
 
 message ListSnapshots {
-    string repository_id = 1;
+  string repository_id = 1;
 }
 
 message BrowseSnapshot {
-    string repository_id = 1;
-    string snapshot_id = 2;
-    string path = 3;                  // directory to list within snapshot
+  string repository_id = 1;
+  string snapshot_id = 2;
+  string path = 3; // directory to list within snapshot
 }
 
 // ============================================================
 // Shared types
 // ============================================================
 message Repository {
-    string id = 1;
-    string name = 2;
-    string type = 3;
-    string path = 4;
-    string password = 5;
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string path = 4;
+  string password = 5;
 }
 
 message BackupPlan {
-    string id = 1;
-    string name = 2;
-    repeated string paths = 3;
-    repeated string excludes = 4;
-    repeated string tags = 5;
-    repeated string repository_ids = 6;
-    string schedule = 7;
-    bool forget_after_backup = 8;
-    bool prune_after_forget = 9;
-    string prune_schedule = 10;
-    RetentionPolicy retention = 11;   // null = use default
-    repeated ResolvedHook hooks = 12; // scripts resolved to commands by server
-    bool enabled = 13;
+  string id = 1;
+  string name = 2;
+  repeated string paths = 3;
+  repeated string excludes = 4;
+  repeated string tags = 5;
+  repeated string repository_ids = 6;
+  string schedule = 7;
+  bool forget_after_backup = 8;
+  bool prune_after_forget = 9;
+  string prune_schedule = 10;
+  RetentionPolicy retention = 11; // null = use default
+  repeated ResolvedHook hooks = 12; // scripts resolved to commands by server
+  bool enabled = 13;
 }
 
 message RetentionPolicy {
-    int32 keep_last = 1;
-    int32 keep_hourly = 2;
-    int32 keep_daily = 3;
-    int32 keep_weekly = 4;
-    int32 keep_monthly = 5;
-    int32 keep_yearly = 6;
+  int32 keep_last = 1;
+  int32 keep_hourly = 2;
+  int32 keep_daily = 3;
+  int32 keep_weekly = 4;
+  int32 keep_monthly = 5;
+  int32 keep_yearly = 6;
 }
 
 // Hook as seen by the agent — scripts are resolved to commands by the server.
 message ResolvedHook {
-    string name = 1;                  // for logging/reporting
-    string on_event = 2;             // "pre_backup", "post_backup", "on_success", "on_failure"
-    int32 sort_order = 3;
-    string type = 4;                  // "command"
-    string command = 5;               // resolved command to execute
-    int32 timeout_seconds = 6;        // resolved timeout
-    string on_error = 7;              // "abort", "continue"
+  string name = 1; // for logging/reporting
+  string on_event = 2; // "pre_backup", "post_backup", "on_success", "on_failure"
+  int32 sort_order = 3;
+  string type = 4; // "command"
+  string command = 5; // resolved command to execute
+  int32 timeout_seconds = 6; // resolved timeout
+  string on_error = 7; // "abort", "continue"
 }
 
 // ============================================================
 // Job reporting
 // ============================================================
 message JobReport {
-    string agent_id = 1;
-    string api_key = 2;
+  string agent_id = 1;
+  string api_key = 2;
 
-    string job_id = 3;
-    string plan_id = 4;
-    string plan_name = 5;
-    string type = 6;                  // "backup", "forget", "prune", "restore"
-    string trigger = 7;               // "scheduled", "manual"
-    string status = 8;                // "success", "partial", "failed"
+  string job_id = 3;
+  string plan_id = 4;
+  string plan_name = 5;
+  string type = 6; // "backup", "forget", "prune", "restore"
+  string trigger = 7; // "scheduled", "manual"
+  string status = 8; // "success", "partial", "failed"
 
-    google.protobuf.Timestamp started_at = 9;
-    google.protobuf.Timestamp finished_at = 10;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp finished_at = 10;
 
-    repeated RepositoryResult repository_results = 11;
-    repeated HookResult hook_results = 12;
+  repeated RepositoryResult repository_results = 11;
+  repeated HookResult hook_results = 12;
 
-    string log_tail = 13;
-    repeated LogEntry log_entries = 14;
+  string log_tail = 13;
+  repeated LogEntry log_entries = 14;
 }
 
 message LogEntry {
-    string timestamp = 1;             // RFC3339 timestamp
-    string level = 2;                 // "info", "warn", "error", "debug"
-    string source = 3;                // "orchestrator", "restic", "hook"
-    string message = 4;
-    string attributes = 5;            // JSON-encoded key-value pairs (extra slog attrs)
+  string timestamp = 1; // RFC3339 timestamp
+  string level = 2; // "info", "warn", "error", "debug"
+  string source = 3; // "orchestrator", "restic", "hook"
+  string message = 4;
+  string attributes = 5; // JSON-encoded key-value pairs (extra slog attrs)
 }
 
 message RepositoryResult {
-    string repository_id = 1;
-    string repository_name = 2;
-    string status = 3;                // "success", "failed", "skipped"
-    string snapshot_id = 4;
-    string error = 5;
+  string repository_id = 1;
+  string repository_name = 2;
+  string status = 3; // "success", "failed", "skipped"
+  string snapshot_id = 4;
+  string error = 5;
 
-    int64 files_new = 6;
-    int64 files_changed = 7;
-    int64 files_unmodified = 8;
-    int64 bytes_added = 9;
-    int64 total_bytes = 10;
-    int64 duration_ms = 11;
+  int64 files_new = 6;
+  int64 files_changed = 7;
+  int64 files_unmodified = 8;
+  int64 bytes_added = 9;
+  int64 total_bytes = 10;
+  int64 duration_ms = 11;
 }
 
 message HookResult {
-    string hook_name = 1;
-    string phase = 2;
-    string status = 3;
-    string error = 4;
-    int64 duration_ms = 5;
+  string hook_name = 1;
+  string phase = 2;
+  string status = 3;
+  string error = 4;
+  int64 duration_ms = 5;
 }
 
 message JobReportAck {
-    bool success = 1;
-    string error = 2;
+  bool success = 1;
+  string error = 2;
 }
 
 // ============================================================
 // Snapshot reporting
 // ============================================================
 message SnapshotReport {
-    string agent_id = 1;
-    string api_key = 2;
-    string repository_id = 3;
-    repeated SnapshotInfo snapshots = 4;
+  string agent_id = 1;
+  string api_key = 2;
+  string repository_id = 3;
+  repeated SnapshotInfo snapshots = 4;
 }
 
 message SnapshotInfo {
-    string id = 1;                    // short ID
-    string long_id = 2;              // full ID
-    google.protobuf.Timestamp time = 3;
-    string hostname = 4;
-    repeated string tags = 5;
-    repeated string paths = 6;
+  string id = 1; // short ID
+  string long_id = 2; // full ID
+  google.protobuf.Timestamp time = 3;
+  string hostname = 4;
+  repeated string tags = 5;
+  repeated string paths = 6;
 }
 
 message SnapshotReportAck {
-    bool success = 1;
+  bool success = 1;
 }

@@ -8,8 +8,8 @@ import (
 
 	"github.com/robfig/cron/v3"
 	"github.com/tryy3/backup-orchestrator/agent/internal/executor"
-	"github.com/tryy3/backup-orchestrator/agent/internal/grpcclient"
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
+	"github.com/tryy3/backup-orchestrator/agent/internal/grpcclient"
 )
 
 // ReportFunc is called after a backup job completes to report the result.
@@ -23,7 +23,6 @@ type Scheduler struct {
 	mu       sync.Mutex
 	entryIDs map[string]cron.EntryID // plan_id -> entry
 
-	ctxMu  sync.RWMutex
 	ctx    context.Context
 	cancel context.CancelFunc
 

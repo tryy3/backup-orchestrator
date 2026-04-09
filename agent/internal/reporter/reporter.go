@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tryy3/backup-orchestrator/agent/internal/database"
-	"github.com/tryy3/backup-orchestrator/agent/internal/grpcclient"
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
+	"github.com/tryy3/backup-orchestrator/agent/internal/grpcclient"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -104,13 +104,13 @@ func (r *Reporter) flush(ctx context.Context) {
 		var report backupv1.JobReport
 		if err := protojson.Unmarshal([]byte(br.Payload), &report); err != nil {
 			slog.Error("error unmarshaling report", "source", "reporter", "report_id", br.ID, "error", err)
-			r.db.IncrementAttempts(br.ID, err.Error())
+			_ = r.db.IncrementAttempts(br.ID, err.Error())
 			continue
 		}
 
 		if err := r.grpc.ReportJob(ctx, &report); err != nil {
 			slog.Error("error sending report", "source", "reporter", "report_id", br.ID, "error", err)
-			r.db.IncrementAttempts(br.ID, err.Error())
+			_ = r.db.IncrementAttempts(br.ID, err.Error())
 			continue
 		}
 

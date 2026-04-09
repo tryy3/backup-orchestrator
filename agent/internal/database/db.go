@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"path/filepath"
@@ -34,18 +35,18 @@ func Open(dataDir string) (*DB, error) {
 	sqlDB.SetMaxOpenConns(1)
 
 	// Enable WAL mode and foreign keys.
-	if _, err := sqlDB.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		sqlDB.Close()
+	if _, err := sqlDB.ExecContext(context.Background(), "PRAGMA journal_mode=WAL"); err != nil {
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("setting WAL mode: %w", err)
 	}
-	if _, err := sqlDB.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		sqlDB.Close()
+	if _, err := sqlDB.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); err != nil {
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("enabling foreign keys: %w", err)
 	}
 
 	d := &DB{db: sqlDB}
 	if err := d.migrate(); err != nil {
-		sqlDB.Close()
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("running migrations: %w", err)
 	}
 
@@ -80,7 +81,7 @@ func (d *DB) migrate() error {
 	}
 
 	for _, m := range migrations {
-		if _, err := d.db.Exec(m); err != nil {
+		if _, err := d.db.ExecContext(context.Background(), m); err != nil {
 			return fmt.Errorf("executing migration: %w", err)
 		}
 	}
@@ -89,7 +90,7 @@ func (d *DB) migrate() error {
 
 // InsertBufferedReport stores a job report for later delivery.
 func (d *DB) InsertBufferedReport(id, payload string) error {
-	_, err := d.db.Exec(
+	_, err := d.db.ExecContext(context.Background(),
 		"INSERT INTO buffered_reports (id, payload) VALUES (?, ?)",
 		id, payload,
 	)
@@ -101,13 +102,13 @@ func (d *DB) InsertBufferedReport(id, payload string) error {
 
 // ListPendingReports returns all unsent buffered reports.
 func (d *DB) ListPendingReports() ([]BufferedReport, error) {
-	rows, err := d.db.Query(
+	rows, err := d.db.QueryContext(context.Background(),
 		"SELECT id, payload, attempts, COALESCE(last_error, '') FROM buffered_reports ORDER BY created_at ASC",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("querying buffered reports: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var reports []BufferedReport
 	for rows.Next() {
@@ -122,7 +123,7 @@ func (d *DB) ListPendingReports() ([]BufferedReport, error) {
 
 // DeleteReport removes a successfully sent report.
 func (d *DB) DeleteReport(id string) error {
-	_, err := d.db.Exec("DELETE FROM buffered_reports WHERE id = ?", id)
+	_, err := d.db.ExecContext(context.Background(), "DELETE FROM buffered_reports WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("deleting report: %w", err)
 	}
@@ -131,7 +132,7 @@ func (d *DB) DeleteReport(id string) error {
 
 // IncrementAttempts increments the attempt count and records the last error.
 func (d *DB) IncrementAttempts(id, lastError string) error {
-	_, err := d.db.Exec(
+	_, err := d.db.ExecContext(context.Background(),
 		"UPDATE buffered_reports SET attempts = attempts + 1, last_error = ? WHERE id = ?",
 		lastError, id,
 	)
@@ -143,7 +144,7 @@ func (d *DB) IncrementAttempts(id, lastError string) error {
 
 // InsertLocalJob records a job execution in local history.
 func (d *DB) InsertLocalJob(id, planName, jobType, status, startedAt, finishedAt, logTail string) error {
-	_, err := d.db.Exec(
+	_, err := d.db.ExecContext(context.Background(),
 		`INSERT INTO local_jobs (id, plan_name, type, status, started_at, finished_at, log_tail)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id, planName, jobType, status, startedAt, finishedAt, logTail,
@@ -167,7 +168,7 @@ type LocalJob struct {
 
 // ListLocalJobs returns recent local job records.
 func (d *DB) ListLocalJobs(limit, offset int) ([]LocalJob, error) {
-	rows, err := d.db.Query(
+	rows, err := d.db.QueryContext(context.Background(),
 		`SELECT id, plan_name, type, status, started_at, COALESCE(finished_at, ''), COALESCE(log_tail, '')
 		 FROM local_jobs ORDER BY started_at DESC LIMIT ? OFFSET ?`,
 		limit, offset,
@@ -175,7 +176,7 @@ func (d *DB) ListLocalJobs(limit, offset int) ([]LocalJob, error) {
 	if err != nil {
 		return nil, fmt.Errorf("querying local jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var jobs []LocalJob
 	for rows.Next() {

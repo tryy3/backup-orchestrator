@@ -21,17 +21,17 @@ type LogEntry struct {
 
 // Job represents a single execution of a backup plan or manual operation.
 type Job struct {
-	ID                string              `json:"id"`
-	AgentID           string              `json:"agent_id"`
-	PlanID            *string             `json:"plan_id,omitempty"`
-	PlanName          string              `json:"plan_name"`
-	Type              string              `json:"type"`
-	Trigger           string              `json:"trigger"`
-	Status            string              `json:"status"`
-	StartedAt         time.Time           `json:"started_at"`
-	FinishedAt        *time.Time          `json:"finished_at,omitempty"`
-	LogTail           *string             `json:"-"`
-	CreatedAt         time.Time           `json:"created_at"`
+	ID                string                `json:"id"`
+	AgentID           string                `json:"agent_id"`
+	PlanID            *string               `json:"plan_id,omitempty"`
+	PlanName          string                `json:"plan_name"`
+	Type              string                `json:"type"`
+	Trigger           string                `json:"trigger"`
+	Status            string                `json:"status"`
+	StartedAt         time.Time             `json:"started_at"`
+	FinishedAt        *time.Time            `json:"finished_at,omitempty"`
+	LogTail           *string               `json:"-"`
+	CreatedAt         time.Time             `json:"created_at"`
 	RepositoryResults []JobRepositoryResult `json:"repository_results,omitempty"`
 	HookResults       []JobHookResult       `json:"hook_results,omitempty"`
 	LogEntries        []LogEntry            `json:"log_entries,omitempty"`
@@ -76,7 +76,7 @@ func (db *DB) CreateJob(ctx context.Context, j *Job) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO jobs (id, agent_id, plan_id, plan_name, type, trigger, status, started_at, finished_at, log_tail, created_at)
@@ -142,17 +142,19 @@ func (db *DB) GetJob(ctx context.Context, id string) (*Job, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load repository results: %w", err)
 	}
-	defer repoRows.Close()
+	defer func() { _ = repoRows.Close() }()
 	for repoRows.Next() {
 		var rr JobRepositoryResult
-		if err := repoRows.Scan(&rr.ID, &rr.JobID, &rr.RepositoryID, &rr.RepositoryName, &rr.Status,
+		err = repoRows.Scan(&rr.ID, &rr.JobID, &rr.RepositoryID, &rr.RepositoryName, &rr.Status,
 			&rr.SnapshotID, &rr.Error, &rr.FilesNew, &rr.FilesChanged, &rr.FilesUnmodified,
-			&rr.BytesAdded, &rr.TotalBytes, &rr.DurationMs); err != nil {
+			&rr.BytesAdded, &rr.TotalBytes, &rr.DurationMs)
+		if err != nil {
 			return nil, fmt.Errorf("scan repository result: %w", err)
 		}
 		j.RepositoryResults = append(j.RepositoryResults, rr)
 	}
-	if err := repoRows.Err(); err != nil {
+	err = repoRows.Err()
+	if err != nil {
 		return nil, fmt.Errorf("iterate repository results: %w", err)
 	}
 
@@ -163,7 +165,7 @@ func (db *DB) GetJob(ctx context.Context, id string) (*Job, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load hook results: %w", err)
 	}
-	defer hookRows.Close()
+	defer func() { _ = hookRows.Close() }()
 	for hookRows.Next() {
 		var hr JobHookResult
 		if err := hookRows.Scan(&hr.ID, &hr.JobID, &hr.HookName, &hr.Phase, &hr.Status, &hr.Error, &hr.DurationMs); err != nil {
@@ -224,7 +226,7 @@ func (db *DB) ListJobs(ctx context.Context, agentID, planID, status string, limi
 	if err != nil {
 		return nil, fmt.Errorf("list jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var jobs []Job
 	for rows.Next() {
@@ -304,7 +306,7 @@ func (db *DB) CompleteJob(ctx context.Context, j *Job) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.ExecContext(ctx, `
 		UPDATE jobs SET status=?, started_at=?, finished_at=?, log_tail=? WHERE id=?`,

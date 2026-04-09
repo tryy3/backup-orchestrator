@@ -1,0 +1,245 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Go: server tests ────────────────────────────────────────────────────────
+  test-server:
+    name: Test (server)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - name: Generate proto
+        run: cd proto && buf generate
+
+      - name: Stub frontend dist
+        run: mkdir -p server/internal/frontend/dist && echo "CI stub" > server/internal/frontend/dist/index.html
+
+      - name: Run server tests
+        run: cd server && go test -race ./...
+
+  # ── Go: agent tests ─────────────────────────────────────────────────────────
+  test-agent:
+    name: Test (agent)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - name: Generate proto
+        run: cd proto && buf generate
+
+      - name: Run agent tests
+        run: cd agent && go test -race ./...
+
+  # ── Frontend tests ──────────────────────────────────────────────────────────
+  test-frontend:
+    name: Test (frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: cd frontend && npm ci
+
+      - name: Run frontend tests
+        run: cd frontend && npm test
+
+  # ── Go: fmt + vet ───────────────────────────────────────────────────────────
+  fmt-vet:
+    name: fmt + vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - name: Generate proto
+        run: cd proto && buf generate
+
+      - name: Stub frontend dist
+        run: mkdir -p server/internal/frontend/dist && echo "CI stub" > server/internal/frontend/dist/index.html
+
+      - name: Check server gofmt
+        run: |
+          unformatted=$(gofmt -l ./server)
+          if [ -n "$unformatted" ]; then
+            echo "The following server files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Check agent gofmt
+        run: |
+          unformatted=$(gofmt -l ./agent)
+          if [ -n "$unformatted" ]; then
+            echo "The following agent files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet (server)
+        run: cd server && go vet ./...
+
+      - name: go vet (agent)
+        run: cd agent && go vet ./...
+
+  # ── Build ───────────────────────────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - name: Generate proto
+        run: cd proto && buf generate
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Copy frontend dist to server
+        run: cp -r frontend/dist server/internal/frontend/dist
+
+      - name: Build server
+        run: cd server && go build ./...
+
+      - name: Build agent
+        run: cd agent && go build ./...
+
+  # ── golangci-lint (PRs only) ─────────────────────────────────────────────
+  lint:
+    name: Lint (golangci-lint)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - name: Generate proto
+        run: cd proto && buf generate
+
+      - name: Stub frontend dist
+        run: mkdir -p server/internal/frontend/dist && echo "CI stub" > server/internal/frontend/dist/index.html
+
+      - name: golangci-lint (server)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          working-directory: server
+          version: v2.11.4
+          args: --config=../.golangci.yml
+
+      - name: golangci-lint (agent)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          working-directory: agent
+          version: v2.11.4
+          args: --config=../.golangci.yml
+
+  # ── Proto check (PRs only) ───────────────────────────────────────────────
+  proto-check:
+    name: Proto (lint + breaking)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bufbuild/buf-action@v1
+        with:
+          input: proto
+          breaking_against: "https://github.com/${{ github.repository }}.git#branch=${{ github.base_ref }},subdir=proto"
