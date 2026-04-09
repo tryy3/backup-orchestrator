@@ -45,7 +45,7 @@ func New(cfg *config.Config) (*Client, error) {
 // Close closes the gRPC connection.
 func (c *Client) Close() {
 	if c.conn != nil {
-		c.conn.Close()
+		_ = c.conn.Close()
 	}
 }
 

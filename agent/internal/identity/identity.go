@@ -40,7 +40,7 @@ func Save(dataDir string, id *Identity) error {
 	if err != nil {
 		return fmt.Errorf("marshaling identity: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("writing identity file: %w", err)
 	}
 	return nil
