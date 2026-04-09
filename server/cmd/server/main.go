@@ -29,6 +29,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
+	defer func() { _ = db.Close() }()
 	log.Printf("Database opened at %s", cfg.DBPath)
 
 	grpcLis, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", ":"+cfg.GRPCPort)
@@ -49,6 +50,10 @@ func main() {
 
 	// Create gRPC server.
 	grpcSrv := grpcserver.NewGRPCServer(db, mgr, resolver, hub)
+	grpcLis, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", ":"+cfg.GRPCPort)
+	if err != nil {
+		log.Fatalf("Failed to listen on gRPC port %s: %v", cfg.GRPCPort, err)
+	}
 
 	// Create HTTP server.
 	router := api.NewRouter(db, mgr, resolver, hub)
