@@ -138,9 +138,9 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 
 			if h.ScriptID != nil {
 				// Resolve from script.
-				script, err := r.db.GetScript(ctx, *h.ScriptID)
-				if err != nil || script == nil {
-					log.Printf("Failed to resolve script %s for hook %s: %v", *h.ScriptID, h.ID, err)
+				script, scriptErr := r.db.GetScript(ctx, *h.ScriptID)
+				if scriptErr != nil || script == nil {
+					log.Printf("Failed to resolve script %s for hook %s: %v", *h.ScriptID, h.ID, scriptErr)
 					continue
 				}
 				resolved.Name = script.Name
