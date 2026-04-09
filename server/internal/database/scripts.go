@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -21,7 +22,7 @@ type Script struct {
 }
 
 // CreateScript inserts a new script.
-func (db *DB) CreateScript(s *Script) error {
+func (db *DB) CreateScript(ctx context.Context, s *Script) error {
 	s.ID = uuid.New().String()
 	now := time.Now().UTC()
 	s.CreatedAt = now
@@ -37,7 +38,7 @@ func (db *DB) CreateScript(s *Script) error {
 		s.OnError = "continue"
 	}
 
-	_, err := db.Exec(`
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO scripts (id, name, type, command, timeout, on_error, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Name, s.Type, s.Command, s.Timeout, s.OnError, s.CreatedAt, s.UpdatedAt,
@@ -49,9 +50,9 @@ func (db *DB) CreateScript(s *Script) error {
 }
 
 // GetScript retrieves a script by ID.
-func (db *DB) GetScript(id string) (*Script, error) {
+func (db *DB) GetScript(ctx context.Context, id string) (*Script, error) {
 	s := &Script{}
-	err := db.QueryRow(`
+	err := db.QueryRowContext(ctx, `
 		SELECT id, name, type, command, timeout, on_error, created_at, updated_at
 		FROM scripts WHERE id = ?`, id,
 	).Scan(&s.ID, &s.Name, &s.Type, &s.Command, &s.Timeout, &s.OnError, &s.CreatedAt, &s.UpdatedAt)
@@ -65,8 +66,8 @@ func (db *DB) GetScript(id string) (*Script, error) {
 }
 
 // ListScripts returns all scripts ordered by name.
-func (db *DB) ListScripts() ([]Script, error) {
-	rows, err := db.Query(`
+func (db *DB) ListScripts(ctx context.Context) ([]Script, error) {
+	rows, err := db.QueryContext(ctx, `
 		SELECT id, name, type, command, timeout, on_error, created_at, updated_at
 		FROM scripts ORDER BY name`)
 	if err != nil {
@@ -86,9 +87,9 @@ func (db *DB) ListScripts() ([]Script, error) {
 }
 
 // UpdateScript updates an existing script.
-func (db *DB) UpdateScript(s *Script) error {
+func (db *DB) UpdateScript(ctx context.Context, s *Script) error {
 	s.UpdatedAt = time.Now().UTC()
-	result, err := db.Exec(`
+	result, err := db.ExecContext(ctx, `
 		UPDATE scripts SET name=?, type=?, command=?, timeout=?, on_error=?, updated_at=?
 		WHERE id=?`,
 		s.Name, s.Type, s.Command, s.Timeout, s.OnError, s.UpdatedAt, s.ID,
@@ -104,8 +105,8 @@ func (db *DB) UpdateScript(s *Script) error {
 }
 
 // AgentIDsUsingScript returns the distinct agent IDs whose plans have hooks referencing the given script.
-func (db *DB) AgentIDsUsingScript(scriptID string) ([]string, error) {
-	rows, err := db.Query(`
+func (db *DB) AgentIDsUsingScript(ctx context.Context, scriptID string) ([]string, error) {
+	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT bp.agent_id FROM backup_plans bp
 		JOIN plan_hooks ph ON ph.backup_plan_id = bp.id
 		WHERE ph.script_id = ?`, scriptID)
@@ -125,9 +126,15 @@ func (db *DB) AgentIDsUsingScript(scriptID string) ([]string, error) {
 }
 
 // DeleteScript deletes a script by ID, returning an error if it is referenced by plan hooks.
-func (db *DB) DeleteScript(id string) error {
+func (db *DB) DeleteScript(ctx context.Context, id string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM plan_hooks WHERE script_id = ?", id).Scan(&count)
+	err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM plan_hooks WHERE script_id = ?", id).Scan(&count)
 	if err != nil {
 		return fmt.Errorf("check script references: %w", err)
 	}
@@ -135,7 +142,7 @@ func (db *DB) DeleteScript(id string) error {
 		return fmt.Errorf("script is referenced by %d hook(s)", count)
 	}
 
-	result, err := db.Exec("DELETE FROM scripts WHERE id = ?", id)
+	result, err := tx.ExecContext(ctx, "DELETE FROM scripts WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete script: %w", err)
 	}
@@ -143,5 +150,6 @@ func (db *DB) DeleteScript(id string) error {
 	if n == 0 {
 		return fmt.Errorf("delete script: not found")
 	}
-	return nil
+
+	return tx.Commit()
 }

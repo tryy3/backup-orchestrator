@@ -1,8 +1,10 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,13 +24,13 @@ type Repository struct {
 }
 
 // CreateRepository inserts a new repository and returns the created record.
-func (db *DB) CreateRepository(r *Repository) error {
+func (db *DB) CreateRepository(ctx context.Context, r *Repository) error {
 	r.ID = uuid.New().String()
 	now := time.Now().UTC()
 	r.CreatedAt = now
 	r.UpdatedAt = now
 
-	_, err := db.Exec(`
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO repositories (id, name, scope, agent_id, type, path, password, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ID, r.Name, r.Scope, r.AgentID, r.Type, r.Path, r.Password, r.CreatedAt, r.UpdatedAt,
@@ -40,9 +42,9 @@ func (db *DB) CreateRepository(r *Repository) error {
 }
 
 // GetRepository retrieves a single repository by ID.
-func (db *DB) GetRepository(id string) (*Repository, error) {
+func (db *DB) GetRepository(ctx context.Context, id string) (*Repository, error) {
 	r := &Repository{}
-	err := db.QueryRow(`
+	err := db.QueryRowContext(ctx, `
 		SELECT id, name, scope, agent_id, type, path, password, created_at, updated_at
 		FROM repositories WHERE id = ?`, id,
 	).Scan(&r.ID, &r.Name, &r.Scope, &r.AgentID, &r.Type, &r.Path, &r.Password, &r.CreatedAt, &r.UpdatedAt)
@@ -57,7 +59,7 @@ func (db *DB) GetRepository(id string) (*Repository, error) {
 
 // ListRepositories returns repositories filtered by scope and/or agent ID.
 // Pass empty strings to skip a filter.
-func (db *DB) ListRepositories(scope, agentID string) ([]Repository, error) {
+func (db *DB) ListRepositories(ctx context.Context, scope, agentID string) ([]Repository, error) {
 	query := "SELECT id, name, scope, agent_id, type, path, password, created_at, updated_at FROM repositories WHERE 1=1"
 	args := []interface{}{}
 
@@ -71,7 +73,7 @@ func (db *DB) ListRepositories(scope, agentID string) ([]Repository, error) {
 	}
 	query += " ORDER BY name"
 
-	rows, err := db.Query(query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list repositories: %w", err)
 	}
@@ -89,9 +91,9 @@ func (db *DB) ListRepositories(scope, agentID string) ([]Repository, error) {
 }
 
 // UpdateRepository updates an existing repository.
-func (db *DB) UpdateRepository(r *Repository) error {
+func (db *DB) UpdateRepository(ctx context.Context, r *Repository) error {
 	r.UpdatedAt = time.Now().UTC()
-	result, err := db.Exec(`
+	result, err := db.ExecContext(ctx, `
 		UPDATE repositories SET name=?, scope=?, agent_id=?, type=?, path=?, password=?, updated_at=?
 		WHERE id=?`,
 		r.Name, r.Scope, r.AgentID, r.Type, r.Path, r.Password, r.UpdatedAt, r.ID,
@@ -107,8 +109,8 @@ func (db *DB) UpdateRepository(r *Repository) error {
 }
 
 // AgentIDsUsingRepository returns the distinct agent IDs whose plans reference the given repository.
-func (db *DB) AgentIDsUsingRepository(repoID string) ([]string, error) {
-	rows, err := db.Query(`
+func (db *DB) AgentIDsUsingRepository(ctx context.Context, repoID string) ([]string, error) {
+	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT bp.agent_id FROM backup_plans bp
 		JOIN backup_plan_repositories bpr ON bpr.backup_plan_id = bp.id
 		WHERE bpr.repository_id = ?`, repoID)
@@ -128,8 +130,8 @@ func (db *DB) AgentIDsUsingRepository(repoID string) ([]string, error) {
 }
 
 // DeleteRepository deletes a repository by ID.
-func (db *DB) DeleteRepository(id string) error {
-	result, err := db.Exec("DELETE FROM repositories WHERE id = ?", id)
+func (db *DB) DeleteRepository(ctx context.Context, id string) error {
+	result, err := db.ExecContext(ctx, "DELETE FROM repositories WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete repository: %w", err)
 	}
@@ -138,4 +140,39 @@ func (db *DB) DeleteRepository(id string) error {
 		return fmt.Errorf("delete repository: not found")
 	}
 	return nil
+}
+
+// GetRepositoriesByIDs returns repositories matching the given IDs in a single query.
+func (db *DB) GetRepositoriesByIDs(ctx context.Context, ids []string) (map[string]*Repository, error) {
+	if len(ids) == 0 {
+		return make(map[string]*Repository), nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(
+		"SELECT id, name, scope, agent_id, type, path, password, created_at, updated_at FROM repositories WHERE id IN (%s)",
+		strings.Join(placeholders, ","),
+	)
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get repositories by ids: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]*Repository, len(ids))
+	for rows.Next() {
+		var r Repository
+		if err := rows.Scan(&r.ID, &r.Name, &r.Scope, &r.AgentID, &r.Type, &r.Path, &r.Password, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan repository: %w", err)
+		}
+		result[r.ID] = &r
+	}
+	return result, rows.Err()
 }

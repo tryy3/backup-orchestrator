@@ -51,8 +51,11 @@ func main() {
 	// Create HTTP server.
 	router := api.NewRouter(db, mgr, resolver, hub)
 	httpSrv := &http.Server{
-		Addr:    ":" + cfg.HTTPPort,
-		Handler: router,
+		Addr:         ":" + cfg.HTTPPort,
+		Handler:      router,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	// Start gRPC server.
@@ -78,7 +81,17 @@ func main() {
 	log.Printf("Received signal %v, shutting down...", sig)
 
 	// Graceful shutdown.
-	grpcSrv.GracefulStop()
+	grpcDone := make(chan struct{})
+	go func() {
+		grpcSrv.GracefulStop()
+		close(grpcDone)
+	}()
+	select {
+	case <-grpcDone:
+	case <-time.After(15 * time.Second):
+		log.Println("gRPC graceful stop timed out, forcing stop")
+		grpcSrv.Stop()
+	}
 	log.Println("gRPC server stopped")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -87,6 +100,14 @@ func main() {
 		log.Printf("HTTP server shutdown error: %v", err)
 	}
 	log.Println("HTTP server stopped")
+
+	// Shut down agent manager (closes all agent send channels).
+	mgr.Close()
+	log.Println("Agent manager stopped")
+
+	// Shut down event hub (closes all WebSocket client channels).
+	hub.Close()
+	log.Println("Event hub stopped")
 
 	log.Println("Server shutdown complete")
 }

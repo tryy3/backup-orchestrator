@@ -21,7 +21,7 @@ func listSnapshotsHandler(cmdr AgentCommander) http.HandlerFunc {
 		}
 
 		if !cmdr.IsOnline(agentID) {
-			writeError(w, http.StatusNotFound, "agent not connected")
+			writeError(w, http.StatusBadGateway, "agent not connected")
 			return
 		}
 
@@ -47,9 +47,9 @@ func listSnapshotsHandler(cmdr AgentCommander) http.HandlerFunc {
 		// Return the raw JSON data from the agent.
 		w.WriteHeader(http.StatusOK)
 		if len(result.Data) > 0 {
-			w.Write(result.Data)
+			_, _ = w.Write(result.Data)
 		} else {
-			w.Write([]byte("[]"))
+			_, _ = w.Write([]byte("[]"))
 		}
 	}
 }
@@ -69,7 +69,7 @@ func browseSnapshotHandler(cmdr AgentCommander) http.HandlerFunc {
 		}
 
 		if !cmdr.IsOnline(agentID) {
-			writeError(w, http.StatusNotFound, "agent not connected")
+			writeError(w, http.StatusBadGateway, "agent not connected")
 			return
 		}
 
@@ -96,9 +96,9 @@ func browseSnapshotHandler(cmdr AgentCommander) http.HandlerFunc {
 
 		w.WriteHeader(http.StatusOK)
 		if len(result.Data) > 0 {
-			w.Write(result.Data)
+			_, _ = w.Write(result.Data)
 		} else {
-			w.Write([]byte("[]"))
+			_, _ = w.Write([]byte("[]"))
 		}
 	}
 }
@@ -119,7 +119,7 @@ func triggerRestoreHandler(cmdr AgentCommander) http.HandlerFunc {
 		}
 
 		if !cmdr.IsOnline(agentID) {
-			writeError(w, http.StatusNotFound, "agent not connected")
+			writeError(w, http.StatusBadGateway, "agent not connected")
 			return
 		}
 

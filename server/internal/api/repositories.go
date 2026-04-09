@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -16,7 +17,7 @@ func listRepositoriesHandler(db *database.DB) http.HandlerFunc {
 		scope := r.URL.Query().Get("scope")
 		agentID := r.URL.Query().Get("agent_id")
 
-		repos, err := db.ListRepositories(scope, agentID)
+		repos, err := db.ListRepositories(r.Context(), scope, agentID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -41,14 +42,24 @@ func createRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 			return
 		}
 
-		if err := db.CreateRepository(&repo); err != nil {
+		if !validRepoScopes[repo.Scope] {
+			writeError(w, http.StatusBadRequest, "scope must be 'global' or 'local'")
+			return
+		}
+
+		if repo.Scope == "local" && repo.AgentID == nil {
+			writeError(w, http.StatusBadRequest, "agent_id is required for local-scoped repositories")
+			return
+		}
+
+		if err := db.CreateRepository(r.Context(), &repo); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
 		// New repos don't affect existing plans yet, but if local-scoped the agent might need to know.
 		if repo.Scope == "local" && repo.AgentID != nil {
-			go resolver.PushConfigToAgent(*repo.AgentID)
+			go resolver.PushConfigToAgent(context.Background(), *repo.AgentID)
 		}
 
 		writeJSON(w, http.StatusCreated, repo)
@@ -58,7 +69,7 @@ func createRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 func getRepositoryHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
-		repo, err := db.GetRepository(id)
+		repo, err := db.GetRepository(r.Context(), id)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -82,13 +93,13 @@ func updateRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 		}
 		repo.ID = id
 
-		if err := db.UpdateRepository(&repo); err != nil {
+		if err := db.UpdateRepository(r.Context(), &repo); err != nil {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
 
 		// Push config to all agents whose plans reference this repo.
-		go pushConfigToAgentsUsingRepo(db, resolver, id)
+		go pushConfigToAgentsUsingRepo(context.Background(), db, resolver, id)
 
 		writeJSON(w, http.StatusOK, repo)
 	}
@@ -99,29 +110,32 @@ func deleteRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 		id := chi.URLParam(r, "id")
 
 		// Find affected agents before deleting.
-		agentIDs, _ := db.AgentIDsUsingRepository(id)
+		agentIDs, err := db.AgentIDsUsingRepository(r.Context(), id)
+		if err != nil {
+			log.Printf("Failed to find agents using repository %s: %v", id, err)
+		}
 
-		if err := db.DeleteRepository(id); err != nil {
+		if err := db.DeleteRepository(r.Context(), id); err != nil {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
 
 		// Push config to affected agents (repo removed from their config).
 		for _, agentID := range agentIDs {
-			go resolver.PushConfigToAgent(agentID)
+			go resolver.PushConfigToAgent(context.Background(), agentID)
 		}
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 	}
 }
 
-func pushConfigToAgentsUsingRepo(db *database.DB, resolver *configpush.Resolver, repoID string) {
-	agentIDs, err := db.AgentIDsUsingRepository(repoID)
+func pushConfigToAgentsUsingRepo(ctx context.Context, db *database.DB, resolver *configpush.Resolver, repoID string) {
+	agentIDs, err := db.AgentIDsUsingRepository(ctx, repoID)
 	if err != nil {
 		log.Printf("error finding agents for repo %s: %v", repoID, err)
 		return
 	}
 	for _, agentID := range agentIDs {
-		resolver.PushConfigToAgent(agentID)
+		resolver.PushConfigToAgent(ctx, agentID)
 	}
 }

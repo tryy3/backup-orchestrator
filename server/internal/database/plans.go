@@ -1,9 +1,11 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,7 +41,7 @@ type BackupPlan struct {
 }
 
 // CreatePlan inserts a new backup plan and its repository associations.
-func (db *DB) CreatePlan(p *BackupPlan) error {
+func (db *DB) CreatePlan(ctx context.Context, p *BackupPlan) error {
 	p.ID = uuid.New().String()
 	now := time.Now().UTC()
 	p.CreatedAt = now
@@ -67,13 +69,13 @@ func (db *DB) CreatePlan(p *BackupPlan) error {
 		retentionJSON = &s
 	}
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec(`
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO backup_plans (id, name, agent_id, paths, excludes, tags, schedule,
 			forget_after_backup, prune_after_forget, prune_schedule, retention, enabled, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -85,7 +87,7 @@ func (db *DB) CreatePlan(p *BackupPlan) error {
 	}
 
 	for _, repoID := range p.RepositoryIDs {
-		_, err = tx.Exec(`INSERT INTO backup_plan_repositories (backup_plan_id, repository_id) VALUES (?, ?)`,
+		_, err = tx.ExecContext(ctx, `INSERT INTO backup_plan_repositories (backup_plan_id, repository_id) VALUES (?, ?)`,
 			p.ID, repoID)
 		if err != nil {
 			return fmt.Errorf("insert plan repository %s: %w", repoID, err)
@@ -96,12 +98,12 @@ func (db *DB) CreatePlan(p *BackupPlan) error {
 }
 
 // GetPlan retrieves a backup plan by ID, including its repository IDs.
-func (db *DB) GetPlan(id string) (*BackupPlan, error) {
+func (db *DB) GetPlan(ctx context.Context, id string) (*BackupPlan, error) {
 	p := &BackupPlan{}
 	var pathsJSON string
 	var excludesJSON, tagsJSON, retentionJSON *string
 
-	err := db.QueryRow(`
+	err := db.QueryRowContext(ctx, `
 		SELECT id, name, agent_id, paths, excludes, tags, schedule,
 			forget_after_backup, prune_after_forget, prune_schedule, retention, enabled, created_at, updated_at
 		FROM backup_plans WHERE id = ?`, id,
@@ -136,7 +138,7 @@ func (db *DB) GetPlan(id string) (*BackupPlan, error) {
 	}
 
 	// Load repository IDs
-	rows, err := db.Query("SELECT repository_id FROM backup_plan_repositories WHERE backup_plan_id = ?", id)
+	rows, err := db.QueryContext(ctx, "SELECT repository_id FROM backup_plan_repositories WHERE backup_plan_id = ?", id)
 	if err != nil {
 		return nil, fmt.Errorf("load plan repositories: %w", err)
 	}
@@ -156,7 +158,7 @@ func (db *DB) GetPlan(id string) (*BackupPlan, error) {
 }
 
 // ListPlans returns backup plans optionally filtered by agent ID.
-func (db *DB) ListPlans(agentID string) ([]BackupPlan, error) {
+func (db *DB) ListPlans(ctx context.Context, agentID string) ([]BackupPlan, error) {
 	query := `SELECT id, name, agent_id, paths, excludes, tags, schedule,
 		forget_after_backup, prune_after_forget, prune_schedule, retention, enabled, created_at, updated_at
 		FROM backup_plans`
@@ -168,7 +170,7 @@ func (db *DB) ListPlans(agentID string) ([]BackupPlan, error) {
 	}
 	query += " ORDER BY name"
 
-	rows, err := db.Query(query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list plans: %w", err)
 	}
@@ -190,14 +192,20 @@ func (db *DB) ListPlans(agentID string) ([]BackupPlan, error) {
 			return nil, fmt.Errorf("unmarshal paths: %w", err)
 		}
 		if excludesJSON != nil {
-			json.Unmarshal([]byte(*excludesJSON), &p.Excludes)
+			if err := json.Unmarshal([]byte(*excludesJSON), &p.Excludes); err != nil {
+				return nil, fmt.Errorf("unmarshal excludes for plan %s: %w", p.ID, err)
+			}
 		}
 		if tagsJSON != nil {
-			json.Unmarshal([]byte(*tagsJSON), &p.Tags)
+			if err := json.Unmarshal([]byte(*tagsJSON), &p.Tags); err != nil {
+				return nil, fmt.Errorf("unmarshal tags for plan %s: %w", p.ID, err)
+			}
 		}
 		if retentionJSON != nil {
 			p.Retention = &RetentionPolicy{}
-			json.Unmarshal([]byte(*retentionJSON), p.Retention)
+			if err := json.Unmarshal([]byte(*retentionJSON), p.Retention); err != nil {
+				return nil, fmt.Errorf("unmarshal retention for plan %s: %w", p.ID, err)
+			}
 		}
 
 		plans = append(plans, p)
@@ -206,21 +214,36 @@ func (db *DB) ListPlans(agentID string) ([]BackupPlan, error) {
 		return nil, fmt.Errorf("iterate plans: %w", err)
 	}
 
-	// Load repository IDs for each plan
-	for i := range plans {
-		repoRows, err := db.Query("SELECT repository_id FROM backup_plan_repositories WHERE backup_plan_id = ?", plans[i].ID)
+	// Batch-load repository IDs for all plans in a single query.
+	if len(plans) > 0 {
+		planIndex := make(map[string]int, len(plans))
+		placeholders := make([]string, len(plans))
+		args := make([]interface{}, len(plans))
+		for i, p := range plans {
+			planIndex[p.ID] = i
+			placeholders[i] = "?"
+			args[i] = p.ID
+		}
+
+		repoQuery := fmt.Sprintf(
+			"SELECT backup_plan_id, repository_id FROM backup_plan_repositories WHERE backup_plan_id IN (%s)",
+			strings.Join(placeholders, ","),
+		)
+		repoRows, err := db.QueryContext(ctx, repoQuery, args...)
 		if err != nil {
 			return nil, fmt.Errorf("load plan repositories: %w", err)
 		}
+		defer repoRows.Close()
+
 		for repoRows.Next() {
-			var repoID string
-			if err := repoRows.Scan(&repoID); err != nil {
-				repoRows.Close()
+			var planID, repoID string
+			if err := repoRows.Scan(&planID, &repoID); err != nil {
 				return nil, fmt.Errorf("scan plan repository: %w", err)
 			}
-			plans[i].RepositoryIDs = append(plans[i].RepositoryIDs, repoID)
+			if idx, ok := planIndex[planID]; ok {
+				plans[idx].RepositoryIDs = append(plans[idx].RepositoryIDs, repoID)
+			}
 		}
-		repoRows.Close()
 		if err := repoRows.Err(); err != nil {
 			return nil, fmt.Errorf("iterate plan repositories: %w", err)
 		}
@@ -230,7 +253,7 @@ func (db *DB) ListPlans(agentID string) ([]BackupPlan, error) {
 }
 
 // UpdatePlan updates an existing backup plan and replaces its repository associations.
-func (db *DB) UpdatePlan(p *BackupPlan) error {
+func (db *DB) UpdatePlan(ctx context.Context, p *BackupPlan) error {
 	p.UpdatedAt = time.Now().UTC()
 
 	pathsJSON, err := json.Marshal(p.Paths)
@@ -255,13 +278,13 @@ func (db *DB) UpdatePlan(p *BackupPlan) error {
 		retentionJSON = &s
 	}
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	result, err := tx.Exec(`
+	result, err := tx.ExecContext(ctx, `
 		UPDATE backup_plans SET name=?, agent_id=?, paths=?, excludes=?, tags=?, schedule=?,
 			forget_after_backup=?, prune_after_forget=?, prune_schedule=?, retention=?, enabled=?, updated_at=?
 		WHERE id=?`,
@@ -277,12 +300,12 @@ func (db *DB) UpdatePlan(p *BackupPlan) error {
 	}
 
 	// Replace repository associations
-	_, err = tx.Exec("DELETE FROM backup_plan_repositories WHERE backup_plan_id = ?", p.ID)
+	_, err = tx.ExecContext(ctx, "DELETE FROM backup_plan_repositories WHERE backup_plan_id = ?", p.ID)
 	if err != nil {
 		return fmt.Errorf("delete plan repositories: %w", err)
 	}
 	for _, repoID := range p.RepositoryIDs {
-		_, err = tx.Exec("INSERT INTO backup_plan_repositories (backup_plan_id, repository_id) VALUES (?, ?)",
+		_, err = tx.ExecContext(ctx, "INSERT INTO backup_plan_repositories (backup_plan_id, repository_id) VALUES (?, ?)",
 			p.ID, repoID)
 		if err != nil {
 			return fmt.Errorf("insert plan repository %s: %w", repoID, err)
@@ -293,8 +316,8 @@ func (db *DB) UpdatePlan(p *BackupPlan) error {
 }
 
 // DeletePlan deletes a backup plan by ID.
-func (db *DB) DeletePlan(id string) error {
-	result, err := db.Exec("DELETE FROM backup_plans WHERE id = ?", id)
+func (db *DB) DeletePlan(ctx context.Context, id string) error {
+	result, err := db.ExecContext(ctx, "DELETE FROM backup_plans WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete plan: %w", err)
 	}

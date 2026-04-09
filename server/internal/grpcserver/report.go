@@ -133,7 +133,7 @@ func (s *GRPCServer) ReportJob(ctx context.Context, req *backupv1.JobReport) (*b
 		job.HookResults = append(job.HookResults, result)
 	}
 
-	if err := s.storeJobReport(job); err != nil {
+	if err := s.storeJobReport(ctx, job); err != nil {
 		log.Printf("Failed to create job from report: %v", err)
 		return &backupv1.JobReportAck{
 			Success: false,
@@ -151,10 +151,10 @@ func (s *GRPCServer) ReportJob(ctx context.Context, req *backupv1.JobReport) (*b
 }
 
 // storeJobReport either updates an existing planned/running job or creates a new one.
-func (s *GRPCServer) storeJobReport(job *database.Job) error {
+func (s *GRPCServer) storeJobReport(ctx context.Context, job *database.Job) error {
 	// Try to find a planned/running job to update.
 	if job.PlanID != nil && *job.PlanID != "" {
-		planned, err := s.db.FindPlannedJob(job.AgentID, *job.PlanID)
+		planned, err := s.db.FindPlannedJob(ctx, job.AgentID, *job.PlanID)
 		if err != nil {
 			log.Printf("Failed to find planned job: %v", err)
 			// Fall through to create a new job.
@@ -162,12 +162,12 @@ func (s *GRPCServer) storeJobReport(job *database.Job) error {
 		if planned != nil {
 			// Update the existing planned job with the final report data.
 			job.ID = planned.ID
-			return s.db.CompleteJob(job)
+			return s.db.CompleteJob(ctx, job)
 		}
 	}
 
 	// No planned job found — create a new one (e.g., scheduled jobs).
-	return s.db.CreateJob(job)
+	return s.db.CreateJob(ctx, job)
 }
 
 // ReportSnapshots stores snapshot data from an agent in an in-memory cache.

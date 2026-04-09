@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -30,6 +31,7 @@ func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolv
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
+	r.Use(maxBytesMiddleware(1 << 20)) // 1 MB request body limit
 	r.Use(jsonContentType)
 
 	// Health check
@@ -125,6 +127,18 @@ func jsonContentType(next http.Handler) http.Handler {
 	})
 }
 
+// maxBytesMiddleware limits the size of incoming request bodies.
+func maxBytesMiddleware(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // writeJSON encodes a value as JSON and writes it to the response.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.WriteHeader(status)
@@ -134,4 +148,28 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 // writeError writes a JSON error response.
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// isValidCronSchedule checks that s looks like a cron expression (5 or 6 space-separated fields).
+func isValidCronSchedule(s string) bool {
+	fields := strings.Fields(s)
+	return len(fields) == 5 || len(fields) == 6
+}
+
+// validHookEvents is the set of accepted on_event values for plan hooks.
+var validHookEvents = map[string]bool{
+	"pre_backup":  true,
+	"post_backup": true,
+	"on_success":  true,
+	"on_failure":  true,
+	"pre_restore": true,
+	"post_restore": true,
+	"pre_forget":  true,
+	"post_forget": true,
+}
+
+// validRepoScopes is the set of accepted scope values for repositories.
+var validRepoScopes = map[string]bool{
+	"global": true,
+	"local":  true,
 }

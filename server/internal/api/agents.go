@@ -1,10 +1,13 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -16,7 +19,7 @@ import (
 
 func listAgentsHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		agents, err := db.ListAgents()
+		agents, err := db.ListAgents(r.Context())
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -31,7 +34,7 @@ func listAgentsHandler(db *database.DB) http.HandlerFunc {
 func getAgentHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
-		agent, err := db.GetAgent(id)
+		agent, err := db.GetAgent(r.Context(), id)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -56,8 +59,12 @@ func approveAgentHandler(db *database.DB, cmdr AgentCommander, resolver *configp
 		}
 		apiKey := hex.EncodeToString(keyBytes)
 
-		if err := db.ApproveAgent(id, apiKey); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+		if err := db.ApproveAgent(r.Context(), id, apiKey); err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				writeError(w, http.StatusNotFound, "agent not found or not in pending status")
+			} else {
+				writeError(w, http.StatusInternalServerError, err.Error())
+			}
 			return
 		}
 
@@ -74,10 +81,13 @@ func approveAgentHandler(db *database.DB, cmdr AgentCommander, resolver *configp
 			_ = cmdr.Send(id, msg)
 
 			// Push initial config to the newly approved agent.
-			go resolver.PushConfigToAgent(id)
+			go resolver.PushConfigToAgent(context.Background(), id)
 		}
 
-		agent, _ := db.GetAgent(id)
+		agent, err := db.GetAgent(r.Context(), id)
+		if err != nil {
+			log.Printf("Failed to reload agent %s after approval: %v", id, err)
+		}
 		writeJSON(w, http.StatusOK, agent)
 	}
 }
@@ -86,8 +96,12 @@ func rejectAgentHandler(db *database.DB, cmdr AgentCommander) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
-		if err := db.RejectAgent(id); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+		if err := db.RejectAgent(r.Context(), id); err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				writeError(w, http.StatusNotFound, "agent not found or not in pending status")
+			} else {
+				writeError(w, http.StatusInternalServerError, err.Error())
+			}
 			return
 		}
 
@@ -103,7 +117,10 @@ func rejectAgentHandler(db *database.DB, cmdr AgentCommander) http.HandlerFunc {
 			_ = cmdr.Send(id, msg)
 		}
 
-		agent, _ := db.GetAgent(id)
+		agent, err := db.GetAgent(r.Context(), id)
+		if err != nil {
+			log.Printf("Failed to reload agent %s after rejection: %v", id, err)
+		}
 		writeJSON(w, http.StatusOK, agent)
 	}
 }
@@ -111,7 +128,7 @@ func rejectAgentHandler(db *database.DB, cmdr AgentCommander) http.HandlerFunc {
 func deleteAgentHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
-		if err := db.DeleteAgent(id); err != nil {
+		if err := db.DeleteAgent(r.Context(), id); err != nil {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
@@ -131,15 +148,18 @@ func updateRcloneHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 			return
 		}
 
-		if err := db.UpdateRcloneConfig(id, input.RcloneConfig); err != nil {
+		if err := db.UpdateRcloneConfig(r.Context(), id, input.RcloneConfig); err != nil {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
 
 		// Push updated config to agent.
-		go resolver.PushConfigToAgent(id)
+		go resolver.PushConfigToAgent(context.Background(), id)
 
-		agent, _ := db.GetAgent(id)
+		agent, err := db.GetAgent(r.Context(), id)
+		if err != nil {
+			log.Printf("Failed to reload agent %s after rclone update: %v", id, err)
+		}
 		writeJSON(w, http.StatusOK, agent)
 	}
 }
