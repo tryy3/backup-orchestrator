@@ -7,9 +7,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	backupv1 "github.com/tryy3/backup-orchestrator/server/internal/gen/backup/v1"
 	"github.com/tryy3/backup-orchestrator/server/internal/database"
 	"github.com/tryy3/backup-orchestrator/server/internal/events"
+	backupv1 "github.com/tryy3/backup-orchestrator/server/internal/gen/backup/v1"
 )
 
 // Register handles agent enrollment. Creates a new agent record with pending status.
@@ -17,10 +17,10 @@ func (s *GRPCServer) Register(ctx context.Context, req *backupv1.RegisterRequest
 	agentID := uuid.New().String()
 
 	agent := &database.Agent{
-		ID:            agentID,
-		Name:          req.Hostname, // Default name to hostname.
-		Hostname:      req.Hostname,
-		Status:        "pending",
+		ID:       agentID,
+		Name:     req.Hostname, // Default name to hostname.
+		Hostname: req.Hostname,
+		Status:   "pending",
 	}
 
 	if req.Os != "" {

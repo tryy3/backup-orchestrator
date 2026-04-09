@@ -161,14 +161,14 @@ func isValidCronSchedule(s string) bool {
 
 // validHookEvents is the set of accepted on_event values for plan hooks.
 var validHookEvents = map[string]bool{
-	"pre_backup":  true,
-	"post_backup": true,
-	"on_success":  true,
-	"on_failure":  true,
-	"pre_restore": true,
+	"pre_backup":   true,
+	"post_backup":  true,
+	"on_success":   true,
+	"on_failure":   true,
+	"pre_restore":  true,
 	"post_restore": true,
-	"pre_forget":  true,
-	"post_forget": true,
+	"pre_forget":   true,
+	"post_forget":  true,
 }
 
 // validRepoScopes is the set of accepted scope values for repositories.
