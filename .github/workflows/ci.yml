@@ -176,6 +176,9 @@ jobs:
       - name: Build frontend
         run: cd frontend && npm run build
 
+      - name: Copy frontend dist to server
+        run: cp -r frontend/dist server/internal/frontend/dist
+
       - name: Build server
         run: cd server && go build ./...
 
@@ -215,14 +218,14 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           working-directory: server
-          version: latest
+          version: v2.11.4
           args: --config=../.golangci.yml
 
       - name: golangci-lint (agent)
         uses: golangci/golangci-lint-action@v6
         with:
           working-directory: agent
-          version: latest
+          version: v2.11.4
           args: --config=../.golangci.yml
 
   # ── Proto check (PRs only) ───────────────────────────────────────────────
