@@ -9,7 +9,7 @@ import (
 // WriteRcloneConfig writes the rclone configuration text to {dataDir}/rclone.conf.
 func WriteRcloneConfig(dataDir, configText string) error {
 	path := RcloneConfigPath(dataDir)
-	if err := os.WriteFile(path, []byte(configText), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(configText), 0o600); err != nil {
 		return fmt.Errorf("writing rclone config: %w", err)
 	}
 	return nil

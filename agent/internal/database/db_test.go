@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"testing"
 )
 
@@ -18,10 +19,10 @@ func TestOpenAndMigrate(t *testing.T) {
 	db := openTestDB(t)
 	// Tables should exist after Open.
 	var count int
-	if err := db.db.QueryRow("SELECT count(*) FROM buffered_reports").Scan(&count); err != nil {
+	if err := db.db.QueryRowContext(context.Background(), "SELECT count(*) FROM buffered_reports").Scan(&count); err != nil {
 		t.Fatalf("buffered_reports table missing: %v", err)
 	}
-	if err := db.db.QueryRow("SELECT count(*) FROM local_jobs").Scan(&count); err != nil {
+	if err := db.db.QueryRowContext(context.Background(), "SELECT count(*) FROM local_jobs").Scan(&count); err != nil {
 		t.Fatalf("local_jobs table missing: %v", err)
 	}
 }
@@ -47,7 +48,7 @@ func TestBufferedReports_InsertListDelete(t *testing.T) {
 		t.Errorf("unexpected report order: %v", reports)
 	}
 
-	if err := db.DeleteReport("r1"); err != nil {
+	if err = db.DeleteReport("r1"); err != nil {
 		t.Fatalf("DeleteReport: %v", err)
 	}
 
