@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.80.0
-	modernc.org/sqlite v1.48.1
+	modernc.org/sqlite v1.48.2
 	nhooyr.io/websocket v1.8.17
 )
 
