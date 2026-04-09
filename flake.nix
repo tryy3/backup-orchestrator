@@ -32,6 +32,10 @@
             # SQLite (for CLI debugging)
             sqlite
 
+            # Task runner + pre-commit hooks
+            just
+            lefthook
+
             # Misc
             gnumake
             rclone

@@ -10,21 +10,55 @@ Backup orchestration system using restic. Go server + agent communicating via gR
 - `proto/` — Protobuf definitions, generates into both Go modules
 - `docs/` — Design documentation (architecture, API specs, data models)
 
-## Build Commands
+## Task Runner (just)
+
+The project uses [just](https://github.com/casey/just) as the task runner. Run `just` with no arguments to list all available recipes.
+
 ```bash
-# Proto generation
-make proto-gen
+# Tests
+just test              # run all tests (server + agent + frontend)
+just test-server       # go test -race ./... in server/
+just test-agent        # go test -race ./... in agent/
+just test-frontend     # vitest in frontend/
+just test-cover        # tests + HTML coverage reports
 
-# Server
-cd server && go build -o ../bin/server ./cmd/server
+# Formatting & vet
+just fmt               # gofmt -l -w on all Go modules
+just vet               # go vet ./... on all Go modules
 
-# Agent
-cd agent && go build -o ../bin/agent ./cmd/agent
+# Linting (requires golangci-lint)
+just lint              # golangci-lint run on all Go modules
 
-# Frontend
-cd frontend && npm run dev    # dev server with hot reload
-cd frontend && npm run build  # production build to dist/
+# Build
+just build             # build server + agent binaries (frontend first)
+just build-server      # build server (rebuilds frontend)
+just build-server-only # build server without rebuilding frontend
+just build-agent       # build agent binary
+just build-frontend    # build frontend (copies dist into server)
+
+# Proto
+just proto-gen         # regenerate proto files (buf generate)
+just proto-lint        # lint proto files (buf lint)
+just proto-breaking    # check for breaking changes against main
+
+# Cleanup
+just clean             # remove build artefacts
+
+# Docker
+just docker-build      # build images locally
+just docker-push       # push multi-arch images to ghcr.io (prompts for confirmation)
+just docker-login github-user=<user>  # log in to ghcr.io
 ```
+
+## Pre-commit Hooks (lefthook)
+
+The project uses [lefthook](https://github.com/evilmartians/lefthook) for fast pre-commit hooks.
+
+```bash
+lefthook install   # register hooks after first clone
+```
+
+Hooks run `gofmt` (format check) and `go vet` on staged Go files. They are intentionally lightweight — heavy checks live in CI.
 
 ## Go Conventions
 - **No ORM** — raw SQL with `database/sql`, methods on `*DB` receiver
