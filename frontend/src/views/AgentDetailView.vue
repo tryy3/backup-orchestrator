@@ -9,6 +9,7 @@ import RunHeatmap from '../components/common/RunHeatmap.vue'
 import type { HeatmapRun } from '../components/common/RunHeatmap.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import LoadingSpinner from '../components/common/LoadingSpinner.vue'
+import ErrorBanner from '../components/common/ErrorBanner.vue'
 import { relativeTime, formatDate } from '../utils/time'
 
 const route = useRoute()
@@ -118,6 +119,8 @@ async function saveRclone() {
 
 <template>
   <div class="space-y-6">
+    <ErrorBanner :message="agentsStore.error" @dismiss="agentsStore.error = null" />
+
     <LoadingSpinner v-if="agentsStore.loading && !agent" />
 
     <template v-else-if="agent">

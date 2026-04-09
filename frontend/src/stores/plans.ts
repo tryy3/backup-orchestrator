@@ -7,6 +7,7 @@ export const usePlansStore = defineStore('plans', () => {
   const list = ref<BackupPlan[]>([])
   const current = ref<BackupPlan | null>(null)
   const loading = ref(false)
+  const saving = ref(false)
   const error = ref<string | null>(null)
 
   async function fetchAll(params?: { agent_id?: string }) {
@@ -34,6 +35,7 @@ export const usePlansStore = defineStore('plans', () => {
   }
 
   async function create(data: BackupPlanCreate) {
+    saving.value = true
     error.value = null
     try {
       const plan = await api.create(data)
@@ -42,10 +44,13 @@ export const usePlansStore = defineStore('plans', () => {
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       return null
+    } finally {
+      saving.value = false
     }
   }
 
   async function update(id: string, data: Partial<BackupPlanCreate>) {
+    saving.value = true
     error.value = null
     try {
       const plan = await api.update(id, data)
@@ -56,20 +61,26 @@ export const usePlansStore = defineStore('plans', () => {
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       return null
+    } finally {
+      saving.value = false
     }
   }
 
   async function remove(id: string) {
+    saving.value = true
     error.value = null
     try {
       await api.remove(id)
       list.value = list.value.filter((p) => p.id !== id)
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving.value = false
     }
   }
 
   async function trigger(id: string): Promise<string | null> {
+    saving.value = true
     error.value = null
     try {
       const result = await api.trigger(id)
@@ -77,8 +88,10 @@ export const usePlansStore = defineStore('plans', () => {
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       return null
+    } finally {
+      saving.value = false
     }
   }
 
-  return { list, current, loading, error, fetchAll, fetchOne, create, update, remove, trigger }
+  return { list, current, loading, saving, error, fetchAll, fetchOne, create, update, remove, trigger }
 })

@@ -1,13 +1,17 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, onScopeDispose } from 'vue'
 import { agents as api } from '../api/client'
 import { subscribe } from '../api/websocket'
 import type { Agent } from '../types/api'
+
+/** Heartbeat age (ms) beyond which an agent is considered offline. */
+const OFFLINE_THRESHOLD_MS = 10 * 60 * 1000
 
 export const useAgentsStore = defineStore('agents', () => {
   const list = ref<Agent[]>([])
   const current = ref<Agent | null>(null)
   const loading = ref(false)
+  const saving = ref(false)
   const error = ref<string | null>(null)
 
   async function fetchAll() {
@@ -35,36 +39,46 @@ export const useAgentsStore = defineStore('agents', () => {
   }
 
   async function approve(id: string) {
+    saving.value = true
     error.value = null
     try {
       await api.approve(id)
       await fetchAll()
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving.value = false
     }
   }
 
   async function reject(id: string) {
+    saving.value = true
     error.value = null
     try {
       await api.reject(id)
       await fetchAll()
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving.value = false
     }
   }
 
   async function remove(id: string) {
+    saving.value = true
     error.value = null
     try {
       await api.remove(id)
       list.value = list.value.filter((a) => a.id !== id)
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving.value = false
     }
   }
 
   async function updateRclone(id: string, config: string) {
+    saving.value = true
     error.value = null
     try {
       await api.updateRclone(id, config)
@@ -73,13 +87,15 @@ export const useAgentsStore = defineStore('agents', () => {
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving.value = false
     }
   }
 
   // Subscribe to WebSocket events for live agent updates.
-  subscribe('agent.connected', (payload) => {
-    const event = payload as { agent_id: string; hostname: string }
-    // Update the agent's last_heartbeat to now (connected = alive).
+  const unsubs: (() => void)[] = []
+
+  unsubs.push(subscribe('agent.connected', (event) => {
     const agent = list.value.find((a) => a.id === event.agent_id)
     if (agent) {
       agent.last_heartbeat = new Date().toISOString()
@@ -87,14 +103,10 @@ export const useAgentsStore = defineStore('agents', () => {
     if (current.value?.id === event.agent_id) {
       current.value.last_heartbeat = new Date().toISOString()
     }
-  })
+  }))
 
-  subscribe('agent.disconnected', (payload) => {
-    const event = payload as { agent_id: string }
-    // The heartbeat timestamp stays as-is; the isOnline check will eventually flip to false.
-    // We could also set a flag, but for now the heartbeat age check handles it.
-    // Force the heartbeat to a stale value so "isOnline" immediately reflects offline.
-    const stale = new Date(Date.now() - 10 * 60 * 1000).toISOString() // 10 minutes ago
+  unsubs.push(subscribe('agent.disconnected', (event) => {
+    const stale = new Date(Date.now() - OFFLINE_THRESHOLD_MS).toISOString()
     const agent = list.value.find((a) => a.id === event.agent_id)
     if (agent) {
       agent.last_heartbeat = stale
@@ -102,10 +114,9 @@ export const useAgentsStore = defineStore('agents', () => {
     if (current.value?.id === event.agent_id) {
       current.value.last_heartbeat = stale
     }
-  })
+  }))
 
-  subscribe('agent.heartbeat', (payload) => {
-    const event = payload as { agent_id: string; timestamp: string }
+  unsubs.push(subscribe('agent.heartbeat', (event) => {
     const agent = list.value.find((a) => a.id === event.agent_id)
     if (agent) {
       agent.last_heartbeat = event.timestamp
@@ -113,14 +124,17 @@ export const useAgentsStore = defineStore('agents', () => {
     if (current.value?.id === event.agent_id) {
       current.value.last_heartbeat = event.timestamp
     }
-  })
+  }))
 
-  subscribe('agent.registered', (payload) => {
-    const agent = payload as Agent
+  unsubs.push(subscribe('agent.registered', (agent) => {
     if (!list.value.some((a) => a.id === agent.id)) {
       list.value.push(agent)
     }
+  }))
+
+  onScopeDispose(() => {
+    unsubs.forEach((fn) => fn())
   })
 
-  return { list, current, loading, error, fetchAll, fetchOne, approve, reject, remove, updateRclone }
+  return { list, current, loading, saving, error, fetchAll, fetchOne, approve, reject, remove, updateRclone }
 })

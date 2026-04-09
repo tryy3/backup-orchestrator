@@ -19,7 +19,7 @@ import type {
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+async function request<T>(path: string, options?: RequestInit & { signal?: AbortSignal }): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
@@ -30,6 +30,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
   if (res.status === 204) return undefined as T
   return res.json()
+}
+
+function buildQuery(params?: Record<string, string | undefined>): string {
+  if (!params) return ''
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.set(key, value)
+  }
+  const qs = query.toString()
+  return qs ? `?${qs}` : ''
 }
 
 // Agents
@@ -48,13 +58,8 @@ export const agents = {
 
 // Repositories
 export const repositories = {
-  list: (params?: { scope?: string; agent_id?: string }) => {
-    const query = new URLSearchParams()
-    if (params?.scope) query.set('scope', params.scope)
-    if (params?.agent_id) query.set('agent_id', params.agent_id)
-    const qs = query.toString()
-    return request<Repository[]>(`/repositories${qs ? `?${qs}` : ''}`)
-  },
+  list: (params?: { scope?: string; agent_id?: string }) =>
+    request<Repository[]>(`/repositories${buildQuery(params)}`),
   get: (id: string) => request<Repository>(`/repositories/${id}`),
   create: (data: RepositoryCreate) =>
     request<Repository>('/repositories', { method: 'POST', body: JSON.stringify(data) }),
@@ -76,12 +81,8 @@ export const scripts = {
 
 // Backup Plans
 export const plans = {
-  list: (params?: { agent_id?: string }) => {
-    const query = new URLSearchParams()
-    if (params?.agent_id) query.set('agent_id', params.agent_id)
-    const qs = query.toString()
-    return request<BackupPlan[]>(`/plans${qs ? `?${qs}` : ''}`)
-  },
+  list: (params?: { agent_id?: string }) =>
+    request<BackupPlan[]>(`/plans${buildQuery(params)}`),
   get: (id: string) => request<BackupPlan>(`/plans/${id}`),
   create: (data: BackupPlanCreate) =>
     request<BackupPlan>('/plans', { method: 'POST', body: JSON.stringify(data) }),
@@ -112,14 +113,8 @@ export const hooks = {
 
 // Jobs
 export const jobs = {
-  list: (params?: { agent_id?: string; plan_id?: string; status?: string }) => {
-    const query = new URLSearchParams()
-    if (params?.agent_id) query.set('agent_id', params.agent_id)
-    if (params?.plan_id) query.set('plan_id', params.plan_id)
-    if (params?.status) query.set('status', params.status)
-    const qs = query.toString()
-    return request<Job[]>(`/jobs${qs ? `?${qs}` : ''}`)
-  },
+  list: (params?: { agent_id?: string; plan_id?: string; status?: string }) =>
+    request<Job[]>(`/jobs${buildQuery(params)}`),
   get: (id: string) => request<JobDetail>(`/jobs/${id}`),
 }
 
