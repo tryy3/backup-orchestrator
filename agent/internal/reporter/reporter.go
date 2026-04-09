@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tryy3/backup-orchestrator/agent/internal/database"
-	"github.com/tryy3/backup-orchestrator/agent/internal/grpcclient"
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
+	"github.com/tryy3/backup-orchestrator/agent/internal/grpcclient"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
