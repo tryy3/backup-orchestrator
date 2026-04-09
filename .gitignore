@@ -35,7 +35,7 @@ frontend/dist/
 *.swo
 *~
 .claude/
-.agents/
+# .agents/ # Lets make this available for now
 .opencode/
 
 # OS
