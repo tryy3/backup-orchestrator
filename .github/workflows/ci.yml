@@ -21,6 +21,22 @@ jobs:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - name: Generate proto
+        run: buf generate proto
+
+      - name: Stub frontend dist
+        run: mkdir -p server/internal/frontend/dist && echo "CI stub" > server/internal/frontend/dist/index.html
+
       - name: Run server tests
         run: cd server && go test -race ./...
 
@@ -35,6 +51,19 @@ jobs:
         with:
           go-version-file: agent/go.mod
           cache-dependency-path: agent/go.sum
+
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - name: Generate proto
+        run: buf generate proto
 
       - name: Run agent tests
         run: cd agent && go test -race ./...
@@ -69,6 +98,22 @@ jobs:
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
+
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - name: Generate proto
+        run: buf generate proto
+
+      - name: Stub frontend dist
+        run: mkdir -p server/internal/frontend/dist && echo "CI stub" > server/internal/frontend/dist/index.html
 
       - name: Check server gofmt
         run: |
@@ -106,6 +151,19 @@ jobs:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - name: Generate proto
+        run: buf generate proto
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -137,17 +195,35 @@ jobs:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - name: Generate proto
+        run: buf generate proto
+
+      - name: Stub frontend dist
+        run: mkdir -p server/internal/frontend/dist && echo "CI stub" > server/internal/frontend/dist/index.html
+
       - name: golangci-lint (server)
         uses: golangci/golangci-lint-action@v6
         with:
           working-directory: server
-          config-path: ../.golangci.yml
+          version: latest
+          args: --config=../.golangci.yml
 
       - name: golangci-lint (agent)
         uses: golangci/golangci-lint-action@v6
         with:
           working-directory: agent
-          config-path: ../.golangci.yml
+          version: latest
+          args: --config=../.golangci.yml
 
   # ── Proto check (PRs only) ───────────────────────────────────────────────
   proto-check:

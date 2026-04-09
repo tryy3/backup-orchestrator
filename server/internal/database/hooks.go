@@ -11,17 +11,17 @@ import (
 
 // PlanHook represents an ordered hook attached to a backup plan.
 type PlanHook struct {
-	ID         string  `json:"id"`
-	PlanID     string  `json:"backup_plan_id"`
-	OnEvent    string  `json:"on_event"`
-	SortOrder  int     `json:"sort_order"`
-	ScriptID   *string `json:"script_id,omitempty"`
-	Type       *string `json:"type,omitempty"`
-	Command    *string `json:"command,omitempty"`
-	Timeout    *int    `json:"timeout,omitempty"`
-	OnError    *string `json:"on_error,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID        string    `json:"id"`
+	PlanID    string    `json:"backup_plan_id"`
+	OnEvent   string    `json:"on_event"`
+	SortOrder int       `json:"sort_order"`
+	ScriptID  *string   `json:"script_id,omitempty"`
+	Type      *string   `json:"type,omitempty"`
+	Command   *string   `json:"command,omitempty"`
+	Timeout   *int      `json:"timeout,omitempty"`
+	OnError   *string   `json:"on_error,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // CreateHook inserts a new plan hook.
