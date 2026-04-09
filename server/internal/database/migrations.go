@@ -1,6 +1,9 @@
 package database
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 const migrationSQL = `
 -- ============================================================
@@ -170,8 +173,8 @@ CREATE INDEX IF NOT EXISTS idx_job_hook_results_job_id ON job_hook_results(job_i
 `
 
 // migrate runs all DDL statements to create tables if they don't exist.
-func (db *DB) migrate() error {
-	if _, err := db.Exec(migrationSQL); err != nil {
+func (db *DB) migrate(ctx context.Context) error {
+	if _, err := db.ExecContext(ctx, migrationSQL); err != nil {
 		return fmt.Errorf("execute migration SQL: %w", err)
 	}
 	return nil

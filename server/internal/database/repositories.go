@@ -77,7 +77,7 @@ func (db *DB) ListRepositories(ctx context.Context, scope, agentID string) ([]Re
 	if err != nil {
 		return nil, fmt.Errorf("list repositories: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var repos []Repository
 	for rows.Next() {
@@ -117,7 +117,7 @@ func (db *DB) AgentIDsUsingRepository(ctx context.Context, repoID string) ([]str
 	if err != nil {
 		return nil, fmt.Errorf("agents using repository: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ids []string
 	for rows.Next() {
 		var id string
@@ -164,7 +164,7 @@ func (db *DB) GetRepositoriesByIDs(ctx context.Context, ids []string) (map[strin
 	if err != nil {
 		return nil, fmt.Errorf("get repositories by ids: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := make(map[string]*Repository, len(ids))
 	for rows.Next() {

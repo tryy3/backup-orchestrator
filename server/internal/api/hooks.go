@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -142,5 +143,9 @@ func pushConfigForPlan(ctx context.Context, db *database.DB, resolver *configpus
 	if err != nil || plan == nil {
 		return
 	}
-	go resolver.PushConfigToAgent(context.Background(), plan.AgentID)
+	go func() {
+		if err := resolver.PushConfigToAgent(context.Background(), plan.AgentID); err != nil {
+			log.Printf("failed to push config to agent %s for plan %s: %v", plan.AgentID, planID, err)
+		}
+	}()
 }

@@ -23,6 +23,8 @@ linters:
       check-type-assertions: true
     govet:
       enable-all: true
+      disable:
+        - fieldalignment # run `betteralign -fix ./...` for any remaining struct optimizations
     gocritic:
       enabled-tags:
         - diagnostic
