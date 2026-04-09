@@ -18,6 +18,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
+          cache: true
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
@@ -49,6 +50,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
+          cache: true
           go-version-file: agent/go.mod
           cache-dependency-path: agent/go.sum
 
@@ -77,8 +79,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          node-version: "24"
-          cache: npm
+          cache: true
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
@@ -96,6 +97,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
+          cache: true
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
@@ -148,6 +150,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
+          cache: true
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
@@ -166,8 +169,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          node-version: "24"
-          cache: npm
+          cache: true
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
@@ -195,6 +197,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
+          cache: true
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
