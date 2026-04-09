@@ -66,7 +66,7 @@ func (db *DB) ListHooks(ctx context.Context, planID string) ([]PlanHook, error) 
 	if err != nil {
 		return nil, fmt.Errorf("list hooks: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var hooks []PlanHook
 	for rows.Next() {
@@ -117,7 +117,7 @@ func (db *DB) ReorderHooks(ctx context.Context, planID string, hookIDs []string)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UTC()
 	for i, hookID := range hookIDs {

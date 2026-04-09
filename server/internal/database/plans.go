@@ -26,18 +26,18 @@ type BackupPlan struct {
 	ID                string           `json:"id"`
 	Name              string           `json:"name"`
 	AgentID           string           `json:"agent_id"`
+	Schedule          string           `json:"schedule"`
 	Paths             []string         `json:"paths"`
 	Excludes          []string         `json:"excludes,omitempty"`
 	Tags              []string         `json:"tags,omitempty"`
-	Schedule          string           `json:"schedule"`
-	ForgetAfterBackup bool             `json:"forget_after_backup"`
-	PruneAfterForget  bool             `json:"prune_after_forget"`
-	PruneSchedule     *string          `json:"prune_schedule,omitempty"`
-	Retention         *RetentionPolicy `json:"retention,omitempty"`
-	Enabled           bool             `json:"enabled"`
 	RepositoryIDs     []string         `json:"repository_ids"`
 	CreatedAt         time.Time        `json:"created_at"`
 	UpdatedAt         time.Time        `json:"updated_at"`
+	PruneSchedule     *string          `json:"prune_schedule,omitempty"`
+	Retention         *RetentionPolicy `json:"retention,omitempty"`
+	ForgetAfterBackup bool             `json:"forget_after_backup"`
+	PruneAfterForget  bool             `json:"prune_after_forget"`
+	Enabled           bool             `json:"enabled"`
 }
 
 // CreatePlan inserts a new backup plan and its repository associations.
@@ -73,7 +73,7 @@ func (db *DB) CreatePlan(ctx context.Context, p *BackupPlan) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO backup_plans (id, name, agent_id, paths, excludes, tags, schedule,
@@ -117,22 +117,22 @@ func (db *DB) GetPlan(ctx context.Context, id string) (*BackupPlan, error) {
 		return nil, fmt.Errorf("get plan: %w", err)
 	}
 
-	if err := json.Unmarshal([]byte(pathsJSON), &p.Paths); err != nil {
+	if err = json.Unmarshal([]byte(pathsJSON), &p.Paths); err != nil {
 		return nil, fmt.Errorf("unmarshal paths: %w", err)
 	}
 	if excludesJSON != nil {
-		if err := json.Unmarshal([]byte(*excludesJSON), &p.Excludes); err != nil {
+		if err = json.Unmarshal([]byte(*excludesJSON), &p.Excludes); err != nil {
 			return nil, fmt.Errorf("unmarshal excludes: %w", err)
 		}
 	}
 	if tagsJSON != nil {
-		if err := json.Unmarshal([]byte(*tagsJSON), &p.Tags); err != nil {
+		if err = json.Unmarshal([]byte(*tagsJSON), &p.Tags); err != nil {
 			return nil, fmt.Errorf("unmarshal tags: %w", err)
 		}
 	}
 	if retentionJSON != nil {
 		p.Retention = &RetentionPolicy{}
-		if err := json.Unmarshal([]byte(*retentionJSON), p.Retention); err != nil {
+		if err = json.Unmarshal([]byte(*retentionJSON), p.Retention); err != nil {
 			return nil, fmt.Errorf("unmarshal retention: %w", err)
 		}
 	}
@@ -142,7 +142,7 @@ func (db *DB) GetPlan(ctx context.Context, id string) (*BackupPlan, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load plan repositories: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var repoID string
 		if err := rows.Scan(&repoID); err != nil {
@@ -174,7 +174,7 @@ func (db *DB) ListPlans(ctx context.Context, agentID string) ([]BackupPlan, erro
 	if err != nil {
 		return nil, fmt.Errorf("list plans: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var plans []BackupPlan
 	for rows.Next() {
@@ -233,7 +233,7 @@ func (db *DB) ListPlans(ctx context.Context, agentID string) ([]BackupPlan, erro
 		if err != nil {
 			return nil, fmt.Errorf("load plan repositories: %w", err)
 		}
-		defer repoRows.Close()
+		defer func() { _ = repoRows.Close() }()
 
 		for repoRows.Next() {
 			var planID, repoID string
@@ -282,7 +282,7 @@ func (db *DB) UpdatePlan(ctx context.Context, p *BackupPlan) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	result, err := tx.ExecContext(ctx, `
 		UPDATE backup_plans SET name=?, agent_id=?, paths=?, excludes=?, tags=?, schedule=?,
