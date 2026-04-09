@@ -1,0 +1,40 @@
+# Lefthook pre-commit hooks
+# https://github.com/evilmartians/lefthook
+#
+# Keep this FAST (< 5 seconds) — slow hooks get skipped with --no-verify.
+# Heavy checks (golangci-lint, tests) belong in CI, not here.
+#
+# Install: lefthook install
+
+pre-commit:
+  parallel: true
+  commands:
+    gofmt-server:
+      glob: "server/**/*.go"
+      run: |
+        unformatted=$(gofmt -l {staged_files})
+        if [ -n "$unformatted" ]; then
+          echo "The following files are not gofmt-formatted:"
+          echo "$unformatted"
+          echo "Run: just fmt-server"
+          exit 1
+        fi
+
+    gofmt-agent:
+      glob: "agent/**/*.go"
+      run: |
+        unformatted=$(gofmt -l {staged_files})
+        if [ -n "$unformatted" ]; then
+          echo "The following files are not gofmt-formatted:"
+          echo "$unformatted"
+          echo "Run: just fmt-agent"
+          exit 1
+        fi
+
+    govet-server:
+      glob: "server/**/*.go"
+      run: cd server && go vet ./...
+
+    govet-agent:
+      glob: "agent/**/*.go"
+      run: cd agent && go vet ./...

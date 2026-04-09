@@ -1,0 +1,43 @@
+# golangci-lint configuration
+# https://golangci-lint.run/usage/configuration/
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck       # check for unchecked errors
+    - govet          # go vet equivalent
+    - ineffassign    # detect ineffectual assignments
+    - staticcheck    # staticcheck suite
+    - unused         # check for unused code
+    - gocritic       # opinionated checks
+    - gofmt          # formatting check
+    - misspell       # catch common spelling mistakes
+    - noctx          # http requests without context
+    - bodyclose      # HTTP response body close check
+    - gosimple       # simplification suggestions
+    - prealloc       # slice preallocation hints
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+  govet:
+    enable-all: true
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+    disabled-checks:
+      - hugeParam      # too noisy for this project size
+      - rangeValCopy   # too noisy for this project size
+
+issues:
+  exclude-rules:
+    # Test files get a relaxed ruleset
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gocritic
+  max-same-issues: 0
