@@ -59,11 +59,12 @@ func (o *JobOrchestrator) ExecuteBackupJob(
 	}
 
 	// Build automatic tags.
-	tags := []string{
+	tags := make([]string, 0, 3+len(plan.GetTags()))
+	tags = append(tags,
 		fmt.Sprintf("agent:%s", o.AgentName),
 		fmt.Sprintf("plan:%s", plan.GetName()),
 		fmt.Sprintf("trigger:%s", trigger),
-	}
+	)
 	tags = append(tags, plan.GetTags()...)
 
 	// Build hook context (pre-backup only has PlanName and Hostname).
@@ -326,7 +327,7 @@ func resolveRetention(planRetention, defaultRetention *backupv1.RetentionPolicy)
 
 // convertHookResults converts internal HookResult to protobuf HookResult.
 func convertHookResults(results []*HookResult) []*backupv1.HookResult {
-	var out []*backupv1.HookResult
+	out := make([]*backupv1.HookResult, 0, len(results))
 	for _, r := range results {
 		out = append(out, &backupv1.HookResult{
 			HookName:   r.HookName,

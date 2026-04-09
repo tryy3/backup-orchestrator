@@ -23,7 +23,6 @@ type Scheduler struct {
 	mu       sync.Mutex
 	entryIDs map[string]cron.EntryID // plan_id -> entry
 
-	ctxMu  sync.RWMutex
 	ctx    context.Context
 	cancel context.CancelFunc
 

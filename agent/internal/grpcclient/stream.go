@@ -84,7 +84,7 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 			select {
 			case <-runCtx.Done():
 				// Close the send side of the stream.
-				stream.CloseSend()
+				_ = stream.CloseSend()
 				return
 			case <-ticker.C:
 				if err := s.sendHeartbeat(stream); err != nil {

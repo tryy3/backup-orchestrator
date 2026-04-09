@@ -78,6 +78,17 @@ lint-agent:
 # Lint all Go code
 lint: lint-server lint-agent
 
+# Auto-fix lint issues in server
+lint-fix-server:
+    cd server && golangci-lint run --fix ./...
+
+# Auto-fix lint issues in agent
+lint-fix-agent:
+    cd agent && golangci-lint run --fix ./...
+
+# Auto-fix lint issues in all Go code
+lint-fix: lint-fix-server lint-fix-agent
+
 # ── Build ─────────────────────────────────────────────────────────────────────
 
 # Build frontend (outputs to frontend/dist and copies to server/internal/frontend/dist)

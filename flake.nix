@@ -32,6 +32,9 @@
             # SQLite (for CLI debugging)
             sqlite
 
+            # Linting
+            golangci-lint
+
             # Task runner + pre-commit hooks
             just
             lefthook

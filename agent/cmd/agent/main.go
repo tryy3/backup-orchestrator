@@ -24,16 +24,21 @@ import (
 )
 
 func main() {
-	// Set up structured logging.
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})))
 
+	if err := run(); err != nil {
+		slog.Error("agent failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	// Step 1: Load config from env vars.
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("loading config", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("loading config: %w", err)
 	}
 	slog.Info("agent starting",
 		"source", "agent",
@@ -43,25 +48,22 @@ func main() {
 	)
 
 	// Step 2: Ensure data dir exists.
-	if err := os.MkdirAll(cfg.DataDir, 0700); err != nil {
-		slog.Error("creating data dir", "error", err)
-		os.Exit(1)
+	if err = os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+		return fmt.Errorf("creating data dir: %w", err)
 	}
 
 	// Step 3: Load or create identity.
 	id, err := identity.Load(cfg.DataDir)
 	if err != nil {
-		slog.Error("loading identity", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("loading identity: %w", err)
 	}
 
 	// Step 4: Open agent SQLite DB, run migrations.
 	db, err := database.Open(cfg.DataDir)
 	if err != nil {
-		slog.Error("opening database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("opening database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Step 5: Load local config from disk (if exists).
 	localCfg, err := localconfig.Load(cfg.DataDir)
@@ -82,8 +84,7 @@ func main() {
 	// Step 7: Create gRPC client.
 	grpcClient, err := grpcclient.New(cfg)
 	if err != nil {
-		slog.Error("creating gRPC client", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("creating gRPC client: %w", err)
 	}
 	defer grpcClient.Close()
 
@@ -126,9 +127,9 @@ func main() {
 		}
 
 		// Try direct delivery first, buffer on failure.
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := grpcClient.ReportJob(ctx, report); err != nil {
+		deliveryCtx, deliveryCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer deliveryCancel()
+		if err := grpcClient.ReportJob(deliveryCtx, report); err != nil {
 			slog.Warn("direct report delivery failed, buffering", "source", "agent", "error", err)
 			if bufErr := rep.BufferReport(report); bufErr != nil {
 				slog.Error("error buffering report", "source", "agent", "error", bufErr)
@@ -144,20 +145,18 @@ func main() {
 	// Step 10: If no identity (first run): call Register, get agent_id, save identity.
 	if id == nil {
 		slog.Info("no identity found, registering with server...", "source", "agent")
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		resp, err := grpcClient.Register(ctx, cfg.AgentName)
-		cancel()
+		regCtx, regCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		resp, err := grpcClient.Register(regCtx, cfg.AgentName)
+		regCancel()
 		if err != nil {
-			slog.Error("registration failed", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("registration failed: %w", err)
 		}
 
 		id = &identity.Identity{
 			AgentID: resp.GetAgentId(),
 		}
 		if err := identity.Save(cfg.DataDir, id); err != nil {
-			slog.Error("saving identity", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("saving identity: %w", err)
 		}
 		slog.Info("registered with server",
 			"source", "agent",
@@ -232,9 +231,6 @@ func main() {
 			default:
 			}
 
-			// Reset backoff before each connection attempt.
-			backoff = time.Second
-
 			slog.Info("connecting to server...", "source", "agent")
 			err := streamHandler.Run(ctx)
 			if ctx.Err() != nil {
@@ -296,6 +292,7 @@ func main() {
 	sched.Stop()
 
 	slog.Info("shutdown complete", "source", "agent")
+	return nil
 }
 
 // handleCommand dispatches server commands to the appropriate executor.

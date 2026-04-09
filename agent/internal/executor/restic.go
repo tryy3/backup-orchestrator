@@ -82,7 +82,8 @@ type resticSummary struct {
 
 // Backup runs restic backup with the given parameters and returns parsed results.
 func (r *ResticExecutor) Backup(ctx context.Context, repo Repository, paths, excludes, tags []string, logger *slog.Logger) (*BackupResult, error) {
-	args := []string{"backup", "--json", "--repo", repo.Path}
+	args := make([]string, 0, 4+2*len(tags)+2*len(excludes)+len(paths))
+	args = append(args, "backup", "--json", "--repo", repo.Path)
 
 	for _, tag := range tags {
 		args = append(args, "--tag", tag)
@@ -233,7 +234,8 @@ func (r *ResticExecutor) ListFiles(ctx context.Context, repo Repository, snapsho
 
 // Restore restores files from a snapshot to the target directory.
 func (r *ResticExecutor) Restore(ctx context.Context, repo Repository, snapshotID string, paths []string, target string, logger *slog.Logger) error {
-	args := []string{"restore", "--repo", repo.Path, "--target", target}
+	args := make([]string, 0, 5+2*len(paths))
+	args = append(args, "restore", "--repo", repo.Path, "--target", target)
 
 	for _, p := range paths {
 		args = append(args, "--include", p)
