@@ -191,6 +191,12 @@ export interface Settings {
   default_retention: RetentionPolicy
 }
 
+export interface ServerVersion {
+  version: string
+  commit: string
+  build_date: string
+}
+
 export interface BrowseRequest {
   repository_id: string
   snapshot_id: string

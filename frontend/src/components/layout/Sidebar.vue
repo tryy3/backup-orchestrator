@@ -12,6 +12,8 @@ defineEmits<{
 
 const route = useRoute()
 
+const appVersion = computed(() => import.meta.env.VITE_APP_VERSION || 'dev')
+
 const navSections = [
   {
     label: 'MONITOR',
@@ -123,7 +125,7 @@ const isActive = computed(() => (path: string) => {
 
     <!-- Footer -->
     <div v-if="!collapsed" class="border-t border-surface-700 px-4 py-3">
-      <span class="font-mono text-[10px] uppercase tracking-wider text-slate-700">v0.1.0</span>
+      <span class="font-mono text-[10px] uppercase tracking-wider text-slate-700">{{ appVersion }}</span>
     </div>
   </aside>
 </template>
