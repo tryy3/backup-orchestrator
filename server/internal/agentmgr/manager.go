@@ -16,7 +16,7 @@ type ConnectedAgent struct {
 	SendCh      chan *backupv1.ServerMessage
 	LastHeart   time.Time
 	Status      string
-	CurrentJob  *CurrentJobInfo // tracks the currently running job (from heartbeats)
+	CurrentJob  *CurrentJobInfo                         // tracks the currently running job (from heartbeats)
 	PendingCmds map[string]chan *backupv1.CommandResult // command_id -> response channel
 	mu          sync.Mutex
 }

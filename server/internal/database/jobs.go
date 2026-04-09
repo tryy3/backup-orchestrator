@@ -21,17 +21,17 @@ type LogEntry struct {
 
 // Job represents a single execution of a backup plan or manual operation.
 type Job struct {
-	ID                string              `json:"id"`
-	AgentID           string              `json:"agent_id"`
-	PlanID            *string             `json:"plan_id,omitempty"`
-	PlanName          string              `json:"plan_name"`
-	Type              string              `json:"type"`
-	Trigger           string              `json:"trigger"`
-	Status            string              `json:"status"`
-	StartedAt         time.Time           `json:"started_at"`
-	FinishedAt        *time.Time          `json:"finished_at,omitempty"`
-	LogTail           *string             `json:"-"`
-	CreatedAt         time.Time           `json:"created_at"`
+	ID                string                `json:"id"`
+	AgentID           string                `json:"agent_id"`
+	PlanID            *string               `json:"plan_id,omitempty"`
+	PlanName          string                `json:"plan_name"`
+	Type              string                `json:"type"`
+	Trigger           string                `json:"trigger"`
+	Status            string                `json:"status"`
+	StartedAt         time.Time             `json:"started_at"`
+	FinishedAt        *time.Time            `json:"finished_at,omitempty"`
+	LogTail           *string               `json:"-"`
+	CreatedAt         time.Time             `json:"created_at"`
 	RepositoryResults []JobRepositoryResult `json:"repository_results,omitempty"`
 	HookResults       []JobHookResult       `json:"hook_results,omitempty"`
 	LogEntries        []LogEntry            `json:"log_entries,omitempty"`
