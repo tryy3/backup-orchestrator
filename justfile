@@ -7,6 +7,7 @@ github-repo := `git remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[
 registry    := "ghcr.io"
 image-tag   := "latest"
 
+<<<<<<< copilot/embed-real-version-metadata
 # Version metadata — injected at build time.
 # For tagged releases: VERSION=v1.2.3; for dev builds: VERSION=dev
 version    := `git describe --tags --exact-match 2>/dev/null || echo "dev"`
@@ -16,6 +17,8 @@ build-date := `date -u +%Y-%m-%dT%H:%M:%SZ`
 server-pkg := "github.com/tryy3/backup-orchestrator/server/internal/version"
 agent-pkg  := "github.com/tryy3/backup-orchestrator/agent/internal/version"
 
+=======
+>>>>>>> main
 # List available recipes
 default:
     @just --list
@@ -102,12 +105,17 @@ lint-fix: lint-fix-server lint-fix-agent
 
 # Build frontend (outputs to frontend/dist and copies to server/internal/frontend/dist)
 build-frontend:
+<<<<<<< copilot/embed-real-version-metadata
     cd frontend && VITE_APP_VERSION={{version}} npm run build
+=======
+    cd frontend && npm run build
+>>>>>>> main
     rm -rf server/internal/frontend/dist
     cp -r frontend/dist server/internal/frontend/dist
 
 # Build server binary (depends on frontend)
 build-server: build-frontend
+<<<<<<< copilot/embed-real-version-metadata
     cd server && go build \
         -ldflags "-X {{server-pkg}}.Version={{version}} -X {{server-pkg}}.Commit={{commit}} -X {{server-pkg}}.BuildDate={{build-date}}" \
         -o ../bin/server ./cmd/server
@@ -123,6 +131,17 @@ build-agent:
     cd agent && go build \
         -ldflags "-X {{agent-pkg}}.Version={{version}} -X {{agent-pkg}}.Commit={{commit}} -X {{agent-pkg}}.BuildDate={{build-date}}" \
         -o ../bin/agent ./cmd/agent
+=======
+    cd server && go build -o ../bin/server ./cmd/server
+
+# Build server binary only (skip frontend rebuild)
+build-server-only:
+    cd server && go build -o ../bin/server ./cmd/server
+
+# Build agent binary
+build-agent:
+    cd agent && go build -o ../bin/agent ./cmd/agent
+>>>>>>> main
 
 # Build all binaries
 build: build-server build-agent
