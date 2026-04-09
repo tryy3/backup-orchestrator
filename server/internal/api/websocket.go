@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 
 	"github.com/tryy3/backup-orchestrator/server/internal/events"
 )
@@ -23,7 +23,7 @@ func websocketHandler(hub *events.Hub) http.HandlerFunc {
 			log.Printf("WebSocket accept error: %v", err)
 			return
 		}
-		defer conn.Close(websocket.StatusNormalClosure, "server closing")
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "server closing") }()
 
 		clientID, eventCh := hub.Register()
 		defer hub.Unregister(clientID)

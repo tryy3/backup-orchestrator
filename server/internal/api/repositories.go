@@ -59,7 +59,11 @@ func createRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 
 		// New repos don't affect existing plans yet, but if local-scoped the agent might need to know.
 		if repo.Scope == "local" && repo.AgentID != nil {
-			go resolver.PushConfigToAgent(context.Background(), *repo.AgentID)
+			go func() {
+				if err := resolver.PushConfigToAgent(context.Background(), *repo.AgentID); err != nil {
+					log.Printf("failed to push config to agent %s after repo create: %v", *repo.AgentID, err)
+				}
+			}()
 		}
 
 		writeJSON(w, http.StatusCreated, repo)
@@ -122,7 +126,12 @@ func deleteRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 
 		// Push config to affected agents (repo removed from their config).
 		for _, agentID := range agentIDs {
-			go resolver.PushConfigToAgent(context.Background(), agentID)
+			agentID := agentID
+			go func() {
+				if err := resolver.PushConfigToAgent(context.Background(), agentID); err != nil {
+					log.Printf("failed to push config to agent %s after repo delete: %v", agentID, err)
+				}
+			}()
 		}
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
@@ -136,6 +145,8 @@ func pushConfigToAgentsUsingRepo(ctx context.Context, db *database.DB, resolver 
 		return
 	}
 	for _, agentID := range agentIDs {
-		resolver.PushConfigToAgent(ctx, agentID)
+		if err := resolver.PushConfigToAgent(ctx, agentID); err != nil {
+			log.Printf("failed to push config to agent %s for repo %s: %v", agentID, repoID, err)
+		}
 	}
 }

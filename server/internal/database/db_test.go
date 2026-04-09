@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -149,13 +148,4 @@ func newTestDB(t *testing.T) *DB {
 	})
 
 	return db
-}
-
-// verifyPragma is a helper that checks a PRAGMA value.
-func verifyPragma(t *testing.T, db *sql.DB, pragma string) string {
-	t.Helper()
-	var value string
-	err := db.QueryRow("PRAGMA " + pragma).Scan(&value)
-	require.NoError(t, err)
-	return value
 }

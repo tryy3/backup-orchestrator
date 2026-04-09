@@ -81,7 +81,11 @@ func approveAgentHandler(db *database.DB, cmdr AgentCommander, resolver *configp
 			_ = cmdr.Send(id, msg)
 
 			// Push initial config to the newly approved agent.
-			go resolver.PushConfigToAgent(context.Background(), id)
+			go func() {
+				if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
+					log.Printf("failed to push config to agent %s after approval: %v", id, err)
+				}
+			}()
 		}
 
 		agent, err := db.GetAgent(r.Context(), id)
@@ -154,7 +158,11 @@ func updateRcloneHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 		}
 
 		// Push updated config to agent.
-		go resolver.PushConfigToAgent(context.Background(), id)
+		go func() {
+			if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
+				log.Printf("failed to push config to agent %s after rclone update: %v", id, err)
+			}
+		}()
 
 		agent, err := db.GetAgent(r.Context(), id)
 		if err != nil {

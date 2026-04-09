@@ -26,7 +26,7 @@ func Handler() http.Handler {
 		if path != "/" && !strings.HasSuffix(path, "/") {
 			// Check if the file exists in the embedded FS.
 			if f, err := dist.Open(strings.TrimPrefix(path, "/")); err == nil {
-				f.Close()
+				_ = f.Close()
 				// Remove the JSON content-type set by middleware for static files.
 				w.Header().Del("Content-Type")
 				fileServer.ServeHTTP(w, r)
@@ -42,6 +42,6 @@ func Handler() http.Handler {
 			http.Error(w, "frontend not built", http.StatusInternalServerError)
 			return
 		}
-		w.Write(data)
+		_, _ = w.Write(data)
 	})
 }
