@@ -26,10 +26,6 @@ func browseFilesystemHandler(cmdr AgentCommander) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "path must be absolute")
 			return
 		}
-		if strings.Contains(fsPath, "..") {
-			writeError(w, http.StatusBadRequest, "path must not contain '..'")
-			return
-		}
 		if len(fsPath) > 4096 {
 			writeError(w, http.StatusBadRequest, "path too long")
 			return

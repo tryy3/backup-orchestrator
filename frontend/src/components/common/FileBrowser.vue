@@ -25,6 +25,9 @@ const selectedPath = ref(props.modelValue || null)
 const wrapperRef = ref<HTMLDivElement>()
 const panelRef = ref<HTMLDivElement>()
 
+// Aborts all in-flight browseFs requests when the agent changes or the component unmounts.
+let fetchController = new AbortController()
+
 // Track whether the input change came from the tree (to avoid re-syncing)
 let syncingFromTree = false
 
@@ -198,7 +201,7 @@ async function doFetchChildren(nodePath: string | null, path: string) {
   }
 
   try {
-    const entries = await agents.browseFs(props.agentId, path)
+    const entries = await agents.browseFs(props.agentId, path, fetchController.signal)
     const nodes: TreeNode[] = entries.map((e) => ({
       entry: e,
       children: [],
@@ -216,6 +219,9 @@ async function doFetchChildren(nodePath: string | null, path: string) {
       rootLoading.value = false
     }
   } catch (e) {
+    // Aborted requests are expected on agent change / unmount — silently ignore.
+    if (e instanceof DOMException && e.name === 'AbortError') return
+
     const msg = e instanceof Error ? e.message : String(e)
     if (target) {
       target.error = msg
@@ -311,8 +317,10 @@ function handleClickOutside(e: MouseEvent) {
   }
 }
 
-// Reset cache when agent changes
+// Reset cache when agent changes; abort in-flight requests
 watch(() => props.agentId, () => {
+  fetchController.abort()
+  fetchController = new AbortController()
   nodeCache.clear()
   inflightRequests.clear()
   rootNodes.value = []
@@ -321,6 +329,7 @@ watch(() => props.agentId, () => {
 
 onMounted(() => document.addEventListener('mousedown', handleClickOutside))
 onUnmounted(() => {
+  fetchController.abort()
   document.removeEventListener('mousedown', handleClickOutside)
   if (syncTimer) clearTimeout(syncTimer)
 })

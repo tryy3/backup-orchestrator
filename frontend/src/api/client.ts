@@ -28,7 +28,17 @@ async function request<T>(path: string, options?: RequestInit & { signal?: Abort
   })
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`${res.status}: ${body}`)
+    // Server returns JSON errors as {"error":"..."} — extract the message.
+    let message = body
+    try {
+      const parsed = JSON.parse(body)
+      if (typeof parsed?.error === 'string') {
+        message = parsed.error
+      }
+    } catch {
+      // Not JSON — use the raw body as-is.
+    }
+    throw new Error(message)
   }
   if (res.status === 204) return undefined as T
   return res.json()
@@ -56,8 +66,8 @@ export const agents = {
       method: 'PUT',
       body: JSON.stringify({ rclone_config: config }),
     }),
-  browseFs: (agentId: string, path: string) =>
-    request<FilesystemEntry[]>(`/agents/${agentId}/fs?path=${encodeURIComponent(path)}`),
+  browseFs: (agentId: string, path: string, signal?: AbortSignal) =>
+    request<FilesystemEntry[]>(`/agents/${agentId}/fs?path=${encodeURIComponent(path)}`, { signal }),
 }
 
 // Repositories
