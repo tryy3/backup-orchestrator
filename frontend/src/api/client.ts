@@ -15,6 +15,7 @@ import type {
   ServerVersion,
   BrowseRequest,
   RestoreRequest,
+  FilesystemEntry,
   TriggerResponse,
 } from '../types/api'
 
@@ -55,6 +56,8 @@ export const agents = {
       method: 'PUT',
       body: JSON.stringify({ rclone_config: config }),
     }),
+  browseFs: (agentId: string, path: string) =>
+    request<FilesystemEntry[]>(`/agents/${agentId}/fs?path=${encodeURIComponent(path)}`),
 }
 
 // Repositories

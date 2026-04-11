@@ -5,6 +5,7 @@ import { useRepositoriesStore } from '../stores/repositories'
 import { useSnapshotsStore } from '../stores/snapshots'
 import DataTable from '../components/common/DataTable.vue'
 import LoadingSpinner from '../components/common/LoadingSpinner.vue'
+import FileBrowser from '../components/common/FileBrowser.vue'
 import { formatDate } from '../utils/time'
 import type { Column } from '../components/common/DataTable.vue'
 
@@ -196,11 +197,12 @@ async function handleRestore() {
             <div class="mt-4 space-y-4">
               <div>
                 <label class="block text-sm font-medium text-slate-400">Target path</label>
-                <input
-                  v-model="restoreTarget"
-                  type="text"
-                  class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
-                />
+                <div class="mt-1">
+                  <FileBrowser
+                    v-model="restoreTarget"
+                    :agent-id="selectedAgent"
+                  />
+                </div>
               </div>
 
               <div>

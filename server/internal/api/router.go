@@ -93,6 +93,7 @@ func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolv
 		r.Get("/agents/{id}/snapshots", listSnapshotsHandler(cmdr))
 		r.Post("/agents/{id}/snapshots/browse", browseSnapshotHandler(cmdr))
 		r.Post("/agents/{id}/restore", triggerRestoreHandler(cmdr))
+		r.Get("/agents/{id}/fs", browseFilesystemHandler(cmdr))
 
 		// Settings
 		r.Get("/settings", getSettingsHandler(db))
