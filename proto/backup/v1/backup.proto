@@ -120,6 +120,7 @@ message Command {
     TriggerRestore trigger_restore = 11;
     ListSnapshots list_snapshots = 12;
     BrowseSnapshot browse_snapshot = 13;
+    BrowseFilesystem browse_filesystem = 14;
   }
 }
 
@@ -142,6 +143,10 @@ message BrowseSnapshot {
   string repository_id = 1;
   string snapshot_id = 2;
   string path = 3; // directory to list within snapshot
+}
+
+message BrowseFilesystem {
+  string path = 1; // absolute path to list; defaults to "/" if empty
 }
 
 // ============================================================

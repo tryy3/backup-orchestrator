@@ -6,6 +6,7 @@ import { useAgentsStore } from '../stores/agents'
 import RetentionEditor from '../components/plans/RetentionEditor.vue'
 import RepositoryPicker from '../components/plans/RepositoryPicker.vue'
 import LoadingSpinner from '../components/common/LoadingSpinner.vue'
+import FileBrowser from '../components/common/FileBrowser.vue'
 import type { BackupPlanCreate, RetentionPolicy } from '../types/api'
 
 const route = useRoute()
@@ -44,6 +45,14 @@ const retentionForm = ref<RetentionPolicy>({
 const saving = ref(false)
 const formLoading = ref(false)
 
+// Stable-keyed wrapper for paths to avoid v-for index key issues with FileBrowser.
+interface PathEntry { id: string; value: string }
+let nextPathId = 0
+function makePathEntry(value: string): PathEntry {
+  return { id: String(nextPathId++), value }
+}
+const pathEntries = ref<PathEntry[]>([makePathEntry('')])
+
 onMounted(async () => {
   agentsStore.fetchAll()
   if (isEdit.value) {
@@ -65,6 +74,7 @@ onMounted(async () => {
         retention: p.retention ? { ...p.retention } : null,
         enabled: p.enabled,
       }
+      pathEntries.value = form.value.paths.map(makePathEntry)
       if (p.retention) {
         overrideRetention.value = true
         retentionForm.value = { ...p.retention }
@@ -74,12 +84,24 @@ onMounted(async () => {
   }
 })
 
+// Sync pathEntries -> form.paths whenever entries change
+function syncPathsToForm() {
+  form.value.paths = pathEntries.value.map((e) => e.value)
+}
+
 function addPath() {
-  form.value.paths.push('')
+  pathEntries.value.push(makePathEntry(''))
+  syncPathsToForm()
 }
 
 function removePath(idx: number) {
-  form.value.paths.splice(idx, 1)
+  pathEntries.value.splice(idx, 1)
+  syncPathsToForm()
+}
+
+function updatePathValue(idx: number, value: string) {
+  pathEntries.value[idx].value = value
+  syncPathsToForm()
 }
 
 function addExclude() {
@@ -187,15 +209,25 @@ const cronPatterns = [
 
         <div class="space-y-3">
           <label class="block text-sm font-medium text-slate-400">Paths to back up</label>
-          <div v-for="(_, idx) in form.paths" :key="idx" class="flex gap-2">
-            <input
-              v-model="form.paths[idx]"
-              type="text"
-              class="block flex-1 rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
-              placeholder="/path/to/backup"
-            />
+          <div v-for="(entry, idx) in pathEntries" :key="entry.id" class="flex gap-2">
+            <div class="flex-1">
+              <FileBrowser
+                v-if="form.agent_id"
+                :model-value="entry.value"
+                :agent-id="form.agent_id"
+                @update:model-value="updatePathValue(idx, $event)"
+              />
+              <input
+                v-else
+                :value="entry.value"
+                type="text"
+                class="block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
+                placeholder="/path/to/backup"
+                @input="updatePathValue(idx, ($event.target as HTMLInputElement).value)"
+              />
+            </div>
             <button
-              v-if="form.paths.length > 1"
+              v-if="pathEntries.length > 1"
               type="button"
               class="rounded px-2 text-red-400 hover:bg-red-500/10"
               @click="removePath(idx)"

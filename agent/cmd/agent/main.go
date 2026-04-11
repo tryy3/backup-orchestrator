@@ -8,6 +8,8 @@ import (
 	"math"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -23,6 +25,12 @@ import (
 	"github.com/tryy3/backup-orchestrator/agent/internal/scheduler"
 	"github.com/tryy3/backup-orchestrator/agent/internal/versions"
 )
+
+// FilesystemEntry represents a directory entry (name and full path).
+type FilesystemEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
@@ -311,6 +319,22 @@ func run() error {
 	return nil
 }
 
+// blockedPaths is the list of filesystem prefixes that should not be browsed.
+var blockedPaths = []string{
+	"/proc", "/sys", "/dev", "/run/credentials",
+	"/selinux", "/cgroup",
+}
+
+// isBlockedPath checks if a path is in the list of paths that should not be browsed.
+func isBlockedPath(path string) bool {
+	for _, b := range blockedPaths {
+		if path == b || strings.HasPrefix(path, b+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // handleCommand dispatches server commands to the appropriate executor.
 func handleCommand(
 	ctx context.Context,
@@ -398,6 +422,64 @@ func handleCommand(
 			result.Error = fmt.Sprintf("marshaling files: %v", err)
 			return result
 		}
+		result.Success = true
+		result.Data = data
+
+	case *backupv1.Command_BrowseFilesystem:
+		path := action.BrowseFilesystem.GetPath()
+		if path == "" {
+			path = "/"
+		}
+
+		// Path validation: clean, resolve symlinks, verify absolute
+		cleanPath := filepath.Clean(path)
+		if !filepath.IsAbs(cleanPath) {
+			result.Success = false
+			result.Error = "path must be absolute"
+			return result
+		}
+
+		resolved, err := filepath.EvalSymlinks(cleanPath)
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("cannot resolve path: %v", err)
+			return result
+		}
+
+		// Blocklist check on the resolved (real) path
+		if isBlockedPath(resolved) {
+			result.Success = false
+			result.Error = fmt.Sprintf("access denied: %s is in blocked paths", resolved)
+			return result
+		}
+
+		// List directory
+		entries, err := os.ReadDir(resolved)
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("failed to read directory: %v", err)
+			return result
+		}
+
+		// Filter to directories only (empty slice, not nil, so JSON encodes as [])
+		dirEntries := make([]FilesystemEntry, 0, len(entries))
+		for _, e := range entries {
+			if e.IsDir() {
+				dirEntries = append(dirEntries, FilesystemEntry{
+					Name: e.Name(),
+					Path: filepath.Join(cleanPath, e.Name()),
+				})
+			}
+		}
+
+		// Marshal response
+		data, err := json.Marshal(dirEntries)
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("marshaling entries: %v", err)
+			return result
+		}
+
 		result.Success = true
 		result.Data = data
 

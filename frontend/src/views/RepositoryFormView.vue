@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useRepositoriesStore } from '../stores/repositories'
 import { useAgentsStore } from '../stores/agents'
 import LoadingSpinner from '../components/common/LoadingSpinner.vue'
+import FileBrowser from '../components/common/FileBrowser.vue'
 import type { RepositoryCreate } from '../types/api'
 
 const route = useRoute()
@@ -68,6 +69,10 @@ async function handleSubmit() {
 }
 
 const approvedAgents = computed(() => agentsStore.list.filter((a) => a.status === 'approved'))
+
+const canBrowse = computed(() =>
+  form.value.scope === 'local' && form.value.type === 'local' && !!form.value.agent_id,
+)
 </script>
 
 <template>
@@ -134,13 +139,21 @@ const approvedAgents = computed(() => agentsStore.list.filter((a) => a.status ==
       <!-- Path -->
       <div>
         <label class="block text-sm font-medium text-slate-400">Path</label>
-        <input
-          v-model="form.path"
-          type="text"
-          required
-          class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
-          placeholder="e.g. /mnt/backup or rclone:remote:bucket/path"
-        />
+        <div class="mt-1">
+          <FileBrowser
+            v-if="canBrowse"
+            v-model="form.path"
+            :agent-id="form.agent_id!"
+          />
+          <input
+            v-else
+            v-model="form.path"
+            type="text"
+            required
+            class="block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
+            placeholder="e.g. /mnt/backup or rclone:remote:bucket/path"
+          />
+        </div>
       </div>
 
       <!-- Password -->

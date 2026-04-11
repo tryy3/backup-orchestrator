@@ -210,6 +210,11 @@ export interface RestoreRequest {
   target: string
 }
 
+export interface FilesystemEntry {
+  name: string
+  path: string
+}
+
 // WebSocket event payloads
 export interface JobCreatedEvent {
   id: string
