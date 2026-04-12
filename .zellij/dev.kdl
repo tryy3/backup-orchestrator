@@ -1,0 +1,27 @@
+// Backup Orchestrator — local dev layout
+// Usage: just dev   (or: zellij --layout .zellij/dev.kdl)
+//
+// Opens three tabs: server (air), agent (air), frontend (vite).
+// Env vars are inherited from the `just dev` process which sets them before
+// launching zellij, so each pane picks them up automatically.
+
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+    }
+
+    tab name="server" focus=true {
+        pane name="server (air)" cwd="server" command="air"
+    }
+    tab name="agent" {
+        pane name="agent (air)" cwd="agent" command="air"
+    }
+    tab name="frontend" {
+        pane name="frontend (vite)" cwd="frontend" command="npm" {
+            args "run" "dev"
+        }
+    }
+}

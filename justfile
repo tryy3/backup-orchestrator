@@ -1,6 +1,15 @@
 # Backup Orchestrator — Task Runner
 # https://github.com/casey/just
 
+# Load .env.dev when present (safe in CI — file won't exist there).
+# Override individual vars by creating .env.dev.local (git-ignored).
+set dotenv-filename := ".env.dev"
+set dotenv-load
+
+# Absolute path to the repository root — used to build data-dir paths.
+project_root := justfile_directory()
+tmp_dir      := project_root + "/tmp"
+
 # Docker — GitHub Container Registry
 # Auto-detected from git remote; override with: just docker-push github-repo=youruser/yourrepo
 github-repo := `git remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||;s|\.git$||' | tr '[:upper:]' '[:lower:]'`
@@ -184,3 +193,37 @@ pod-stop:
     sudo podman -r compose -f docker/docker-compose.yml down
 
 pod-restart: pod-stop pod-start
+
+# ── Dev (hot reload) ──────────────────────────────────────────────────────────
+
+# Run the server with air hot restart (no frontend embed; Vite handles assets).
+# Reads port settings from .env.dev; DB path is set to tmp/server.db.
+dev-server:
+    mkdir -p "{{tmp_dir}}"
+    cd server && BACKUP_DB_PATH="{{tmp_dir}}/server.db" air
+
+# Run the agent with air hot restart, pointing at the local server.
+# Reads BACKUP_SERVER_URL and BACKUP_AGENT_NAME from .env.dev.
+dev-agent:
+    mkdir -p "{{tmp_dir}}/agent-data"
+    cd agent && BACKUP_DATA_DIR="{{tmp_dir}}/agent-data" air
+
+# Run the frontend Vite dev server with HMR (proxies /api to localhost:8080).
+dev-frontend:
+    cd frontend && npm run dev
+
+# Start all three dev processes in separate Zellij tabs.
+# Requires: nix develop (for air + restic + rclone) and zellij.
+# If already inside a Zellij session the tabs open in the current session.
+dev:
+    mkdir -p "{{tmp_dir}}/agent-data"
+    BACKUP_DB_PATH="{{tmp_dir}}/server.db" \
+    BACKUP_DATA_DIR="{{tmp_dir}}/agent-data" \
+    zellij --layout .zellij/dev.kdl
+
+# Stop all dev processes gracefully (SIGINT → air forwards to child binary).
+# Use this from a separate terminal if you prefer not to Ctrl+q inside zellij.
+dev-stop:
+    -pkill -SIGINT -f "air"
+    -pkill -SIGINT -f "npm run dev"
+    @echo "Sent SIGINT to air and npm dev processes."
