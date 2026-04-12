@@ -73,11 +73,13 @@ function openConfirmDialog(id: string, action: 'delete' | 'approve' | 'reject') 
       :loading="store.loading"
       empty-title="No agents"
       empty-message="No agents have registered yet."
+      @row-click="(row) => $router.push(`/agents/${row.id}`)"
     >
       <template #cell-name="{ row }">
         <router-link
           :to="`/agents/${row.id}`"
           class="font-medium text-accent hover:text-accent-dim"
+          @click.stop
         >
           {{ row.name }}
         </router-link>
