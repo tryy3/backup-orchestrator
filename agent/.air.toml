@@ -7,7 +7,7 @@ tmp_dir = ".air"
 
 [build]
   cmd = "go build -o .air/agent ./cmd/agent"
-  bin = ".air/agent"
+  entrypoint = ".air/agent"
   delay = 1000
   exclude_dir = [".air"]
   include_ext = ["go"]

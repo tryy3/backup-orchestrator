@@ -8,7 +8,7 @@ tmp_dir = ".air"
 [build]
   # Build with -tags dev to skip the frontend embed (Vite handles assets in dev).
   cmd = "go build -tags dev -o .air/server ./cmd/server"
-  bin = ".air/server"
+  entrypoint = ".air/server"
   delay = 1000
   exclude_dir = ["internal/frontend/dist", ".air", "tmp"]
   include_ext = ["go"]
