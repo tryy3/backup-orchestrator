@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
-	"text/template"
 	"time"
 
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
@@ -155,15 +154,22 @@ func RunHooks(ctx context.Context, hooks []*backupv1.ResolvedHook, event string,
 	return results, false
 }
 
-// expandTemplate applies HookContext template variables to the command string.
+// expandTemplate replaces HookContext placeholder variables in the command string.
+// Placeholders use {{.FieldName}} syntax and are replaced with their corresponding
+// HookContext field values. Unknown placeholders are left unchanged.
 func expandTemplate(cmdStr string, hctx *HookContext) (string, error) {
-	tmpl, err := template.New("hook").Parse(cmdStr)
-	if err != nil {
-		return "", fmt.Errorf("parsing template: %w", err)
-	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, hctx); err != nil {
-		return "", fmt.Errorf("executing template: %w", err)
-	}
-	return buf.String(), nil
+	r := strings.NewReplacer(
+		"{{.PlanName}}", hctx.PlanName,
+		"{{.Hostname}}", hctx.Hostname,
+		"{{.Status}}", hctx.Status,
+		"{{.Duration}}", hctx.Duration,
+		"{{.BytesAdded}}", hctx.BytesAdded,
+		"{{.FilesNew}}", hctx.FilesNew,
+		"{{.FilesChanged}}", hctx.FilesChanged,
+		"{{.SnapshotID}}", hctx.SnapshotID,
+		"{{.Error}}", hctx.Error,
+		"{{.StartedAt}}", hctx.StartedAt,
+		"{{.FinishedAt}}", hctx.FinishedAt,
+	)
+	return r.Replace(cmdStr), nil
 }
