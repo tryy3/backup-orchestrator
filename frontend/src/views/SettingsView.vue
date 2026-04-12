@@ -47,7 +47,7 @@ onMounted(async () => {
     healthThresholdWarning.value = (store.settings.health_threshold_warning ?? SETTINGS_DEFAULTS.health_threshold_warning) * 100
     maxHeatmapRuns.value = store.settings.max_heatmap_runs ?? SETTINGS_DEFAULTS.max_heatmap_runs
     defaultHookTimeout.value = store.settings.default_hook_timeout_seconds ?? SETTINGS_DEFAULTS.default_hook_timeout_seconds
-    const bp = store.settings.file_browser_blocked_paths ?? [...SETTINGS_DEFAULTS.file_browser_blocked_paths]
+    const bp = store.settings.file_browser_blocked_paths ?? SETTINGS_DEFAULTS.file_browser_blocked_paths
     blockedPaths.value = bp.join('\n')
   }
   try {

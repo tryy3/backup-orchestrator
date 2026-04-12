@@ -114,7 +114,9 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		return fmt.Errorf("get blocked paths: %w", err)
 	}
 	if bpVal != nil {
-		_ = json.Unmarshal([]byte(*bpVal), &blockedPaths)
+		if parseErr := json.Unmarshal([]byte(*bpVal), &blockedPaths); parseErr != nil {
+			log.Printf("Warning: failed to parse file_browser_blocked_paths setting: %v", parseErr)
+		}
 	}
 
 	// Build protobuf repositories.
