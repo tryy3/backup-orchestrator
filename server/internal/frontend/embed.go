@@ -27,15 +27,12 @@ func Handler() http.Handler {
 			// Check if the file exists in the embedded FS.
 			if f, err := dist.Open(strings.TrimPrefix(path, "/")); err == nil {
 				_ = f.Close()
-				// Remove the JSON content-type set by middleware for static files.
-				w.Header().Del("Content-Type")
 				fileServer.ServeHTTP(w, r)
 				return
 			}
 		}
 
 		// SPA fallback: serve index.html for all other routes.
-		w.Header().Del("Content-Type")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		data, err := fs.ReadFile(dist, "index.html")
 		if err != nil {

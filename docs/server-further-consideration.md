@@ -16,11 +16,11 @@ The `Agent` struct has `json:"api_key,omitempty"`, so every `GET /agents` and `G
 
 The `Repository.Password` field has `json:"password"`, exposing the plaintext restic password in every list/get response. Should be omitted or masked in responses. Frontend form handling will need adjustment.
 
-### Move `jsonContentType` into `/api` route group
-**Severity:** P1 — bug
-**File:** `server/internal/api/router.go`
+### ~~Move `jsonContentType` into `/api` route group~~ ✅ Fixed
+~~**Severity:** P1 — bug~~
+~~**File:** `server/internal/api/router.go`~~
 
-The `jsonContentType` middleware is applied globally via `r.Use(jsonContentType)`, which means the embedded frontend SPA handler (`r.NotFound(frontend.Handler())`) also gets `Content-Type: application/json` on all HTML/CSS/JS assets. This breaks the SPA when served from the binary in production. The middleware should be scoped to the `/api` route group only. Currently masked in development because Vite serves the frontend separately.
+Resolved: `jsonContentType` middleware moved into the `/api` route group. `writeJSON` now also sets the header directly for standalone routes (e.g. `/health`). Workaround `Header().Del("Content-Type")` removed from `frontend/embed.go`.
 
 ### Add REST API authentication
 **Severity:** P0 — no auth
