@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRepositoriesStore } from '../stores/repositories'
 import { useAgentsStore } from '../stores/agents'
@@ -26,6 +26,7 @@ const form = ref<RepositoryCreate>({
 
 const saving = ref(false)
 const formLoading = ref(false)
+const formReady = ref(false)
 
 const repoTypes = ['local', 'rclone', 'sftp', 's3', 'b2', 'rest', 'azure', 'gs']
 
@@ -50,11 +51,10 @@ function stripTypePrefix(path: string, type: string): string {
   return path.startsWith(prefix) ? path.slice(prefix.length) : path
 }
 
-// When editing and the user changes the type, strip the old prefix if present
+// When the user changes the type, strip the old prefix if present in the path
 watch(() => form.value.type, (_newType, oldType) => {
-  if (oldType) {
-    form.value.path = stripTypePrefix(form.value.path, oldType)
-  }
+  if (!formReady.value || !oldType) return
+  form.value.path = stripTypePrefix(form.value.path, oldType)
 })
 
 onMounted(async () => {
@@ -74,6 +74,8 @@ onMounted(async () => {
     }
     formLoading.value = false
   }
+  await nextTick()
+  formReady.value = true
 })
 
 async function handleSubmit() {
