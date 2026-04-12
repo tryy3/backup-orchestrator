@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { useAgentsStore } from '../stores/agents'
 import { useJobsStore } from '../stores/jobs'
 import { usePlansStore } from '../stores/plans'
+import { useSettingsStore } from '../stores/settings'
 import type { Job } from '../types/api'
 import RunHeatmap from '../components/common/RunHeatmap.vue'
 import type { HeatmapRun } from '../components/common/RunHeatmap.vue'
@@ -16,6 +17,7 @@ const route = useRoute()
 const agentsStore = useAgentsStore()
 const jobsStore = useJobsStore()
 const plansStore = usePlansStore()
+const settingsStore = useSettingsStore()
 
 const agentId = computed(() => route.params.id as string)
 const configOpen = ref(false)
@@ -26,8 +28,11 @@ const saving = ref(false)
 const now = ref(Date.now())
 let nowTimer: ReturnType<typeof setInterval> | null = null
 
+const cfg = computed(() => settingsStore.resolved)
+
 onMounted(async () => {
   nowTimer = setInterval(() => { now.value = Date.now() }, 5000)
+  settingsStore.fetch()
   await agentsStore.fetchOne(agentId.value)
   if (agentsStore.current) {
     rcloneConfig.value = agentsStore.current.rclone_config || ''
@@ -44,7 +49,7 @@ const agent = computed(() => agentsStore.current)
 
 const isOnline = computed(() => {
   if (!agent.value?.last_heartbeat) return false
-  return now.value - new Date(agent.value.last_heartbeat).getTime() < 5 * 60 * 1000
+  return now.value - new Date(agent.value.last_heartbeat).getTime() < cfg.value.agent_offline_threshold_seconds * 1000
 })
 
 // Most recent job per plan (returns the full Job, not just timestamp)
@@ -182,7 +187,7 @@ async function saveRclone() {
             <div class="flex items-center gap-1"><span class="inline-block h-2 w-2 rounded-[2px] bg-red-500" /> Failed</div>
           </div>
         </div>
-        <RunHeatmap :runs="getAllHeatmapRuns()" :max-runs="30" />
+        <RunHeatmap :runs="getAllHeatmapRuns()" :max-runs="cfg.max_heatmap_runs" />
         <div class="mt-1.5 flex justify-between text-[10px] text-slate-600">
           <span>← older</span>
           <span>latest →</span>
@@ -240,7 +245,7 @@ async function saveRclone() {
                 <span>{{ recentJobByPlan[plan.id] ? liveRelativeTime(recentJobByPlan[plan.id]) : '—' }}</span>
               </div>
             </div>
-            <RunHeatmap :runs="getPlanHeatmapRuns(plan.id)" :max-runs="30" />
+            <RunHeatmap :runs="getPlanHeatmapRuns(plan.id)" :max-runs="cfg.max_heatmap_runs" />
           </div>
         </div>
       </div>
