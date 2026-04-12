@@ -318,7 +318,7 @@ func (db *DB) AppendJobLogs(ctx context.Context, jobID string, entries []LogEntr
 	}
 
 	// Deserialize existing entries.
-	var existing []LogEntry
+	existing := make([]LogEntry, 0, len(entries))
 	if logTail != nil && *logTail != "" {
 		if jsonErr := json.Unmarshal([]byte(*logTail), &existing); jsonErr != nil {
 			// Not valid JSON (e.g., plain text from older format); start fresh.
