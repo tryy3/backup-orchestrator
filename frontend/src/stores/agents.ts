@@ -88,12 +88,22 @@ export const useAgentsStore = defineStore('agents', () => {
     try {
       await api.updateRclone(id, config)
       if (current.value?.id === id) {
-        current.value = { ...current.value, rclone_config: config }
+        current.value = { ...current.value, has_rclone_config: config !== '' }
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
     } finally {
       saving.value = false
+    }
+  }
+
+  async function fetchRcloneConfig(id: string): Promise<string> {
+    try {
+      const result = await api.getRclone(id)
+      return result.rclone_config
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+      return ''
     }
   }
 
@@ -141,5 +151,5 @@ export const useAgentsStore = defineStore('agents', () => {
     unsubs.forEach((fn) => fn())
   })
 
-  return { list, current, loading, saving, error, fetchAll, fetchOne, approve, reject, remove, updateRclone }
+  return { list, current, loading, saving, error, fetchAll, fetchOne, approve, reject, remove, updateRclone, fetchRcloneConfig }
 })
