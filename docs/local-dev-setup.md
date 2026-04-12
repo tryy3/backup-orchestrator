@@ -95,6 +95,8 @@ Proposed `.env.dev` (committed, no secrets):
 BACKUP_DB_PATH=./tmp/server.db
 BACKUP_HTTP_PORT=8080
 BACKUP_GRPC_PORT=8443
+# CORS: allow the Vite dev server (defaults to these two when unset)
+BACKUP_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 
 # agent
 BACKUP_SERVER_URL=localhost:8443

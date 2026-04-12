@@ -30,10 +30,10 @@ No authentication middleware exists on any HTTP endpoint. Anyone with network ac
 
 ## Separate Design Discussions
 
-### CORS hardening
-**File:** `server/internal/api/router.go`
+### ~~CORS hardening~~ ✅ Fixed
+~~**File:** `server/internal/api/router.go`~~
 
-CORS `Allow-Methods` and `Allow-Headers` headers are set unconditionally for all requests regardless of whether the origin matches the whitelist. Only `Allow-Origin` is conditional. Should make all CORS headers conditional on the origin check and gate the allowed origins by environment (dev vs production). Deferred to avoid blocking development workflow.
+Resolved: `newCORSMiddleware(allowedOrigins []string)` now only emits `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers` when the request `Origin` matches the allowed list. Non-matching origins receive no CORS headers. A `Vary: Origin` header is set to prevent cache poisoning. Allowed origins are configured via the `BACKUP_ALLOWED_ORIGINS` environment variable (comma-separated); defaults to `http://localhost:5173` and `http://localhost:3000` for local development. See `server/internal/config/config.go` and `server/internal/api/router.go`.
 
 ### Snapshot cache review
 **Files:** `server/internal/grpcserver/report.go`

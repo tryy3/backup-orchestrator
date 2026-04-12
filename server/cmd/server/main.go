@@ -51,7 +51,7 @@ func main() {
 	grpcSrv := grpcserver.NewGRPCServer(db, mgr, resolver, hub)
 
 	// Create HTTP server.
-	router := api.NewRouter(db, mgr, resolver, hub)
+	router := api.NewRouter(db, mgr, resolver, hub, cfg.AllowedOrigins)
 	httpSrv := &http.Server{
 		Addr:         ":" + cfg.HTTPPort,
 		Handler:      router,

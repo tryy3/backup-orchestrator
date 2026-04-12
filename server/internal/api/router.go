@@ -25,13 +25,15 @@ type AgentCommander interface {
 }
 
 // NewRouter creates and configures the Chi HTTP router with all API routes.
-func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolver, hub *events.Hub) http.Handler {
+// allowedOrigins is the list of origins permitted for CORS requests; only
+// those origins will receive CORS response headers.
+func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolver, hub *events.Hub, allowedOrigins []string) http.Handler {
 	r := chi.NewRouter()
 
 	// Middleware
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(corsMiddleware)
+	r.Use(newCORSMiddleware(allowedOrigins))
 	r.Use(maxBytesMiddleware(1 << 20)) // 1 MB request body limit
 
 	// Health check
@@ -106,22 +108,49 @@ func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolv
 	return r
 }
 
-// corsMiddleware adds CORS headers for local development.
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		if origin == "http://localhost:5173" || origin == "http://localhost:3000" {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+// newCORSMiddleware returns a middleware that enforces CORS policy based on
+// the provided allowedOrigins list. CORS response headers (Allow-Origin,
+// Allow-Methods, Allow-Headers) are only emitted when the request's Origin
+// header matches one of the allowed values. Non-matching origins receive no
+// CORS headers and pre-flight OPTIONS requests are answered with 204 only when
+// the origin is allowed.
+func newCORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	// Build a fast lookup set.
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		allowed[o] = struct{}{}
+	}
 
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			originAllowed := false
+			if origin != "" {
+				if _, ok := allowed[origin]; ok {
+					originAllowed = true
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+					// Vary must be set so caches don't serve one origin's response to another.
+					w.Header().Add("Vary", "Origin")
+				}
+			}
+
+			if r.Method == http.MethodOptions {
+				// Reject pre-flight from disallowed origins so the server fails
+				// fast and the response is unambiguous (no CORS headers + 403).
+				// Pre-flight without an Origin header (e.g. non-browser tooling)
+				// is passed through normally.
+				if origin != "" && !originAllowed {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // jsonContentType sets the Content-Type header to application/json.
