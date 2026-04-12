@@ -124,8 +124,10 @@ func newCORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
+			originAllowed := false
 			if origin != "" {
 				if _, ok := allowed[origin]; ok {
+					originAllowed = true
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -135,6 +137,14 @@ func newCORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler 
 			}
 
 			if r.Method == http.MethodOptions {
+				// Reject pre-flight from disallowed origins so the server fails
+				// fast and the response is unambiguous (no CORS headers + 403).
+				// Pre-flight without an Origin header (e.g. non-browser tooling)
+				// is passed through normally.
+				if origin != "" && !originAllowed {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}

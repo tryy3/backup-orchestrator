@@ -92,9 +92,8 @@ func TestNewCORSMiddleware_PreflightDisallowed(t *testing.T) {
 
 	handler.ServeHTTP(rr, req)
 
-	// Pre-flight for disallowed origin still gets 204 (OPTIONS short-circuit) but
-	// no CORS headers, so the browser will block the actual request.
-	assert.Equal(t, http.StatusNoContent, rr.Code)
+	// Pre-flight from a disallowed origin must be rejected outright (no CORS headers).
+	assert.Equal(t, http.StatusForbidden, rr.Code)
 	assert.Empty(t, rr.Header().Get("Access-Control-Allow-Origin"))
 }
 
@@ -111,4 +110,23 @@ func TestNewCORSMiddleware_EmptyOriginList(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Empty(t, rr.Header().Get("Access-Control-Allow-Origin"))
+}
+
+func TestNewCORSMiddleware_PreflightNoOriginPassedThrough(t *testing.T) {
+	origins := []string{"http://localhost:5173"}
+	called := false
+	handler := newCORSMiddleware(origins)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// OPTIONS without an Origin header is a plain HTTP OPTIONS request (not a CORS
+	// pre-flight) and must be handled normally (short-circuit with 204, not 403).
+	req := httptest.NewRequest(http.MethodOptions, "/api/agents", nil)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusNoContent, rr.Code)
+	assert.False(t, called, "underlying handler should not be invoked for OPTIONS")
 }
