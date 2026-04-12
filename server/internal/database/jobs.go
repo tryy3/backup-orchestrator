@@ -300,6 +300,48 @@ func (db *DB) FindPlannedJob(ctx context.Context, agentID, planID string) (*Job,
 	return j, nil
 }
 
+// AppendJobLogs appends log entries to an existing job's log_tail JSON column.
+// It reads the current log_tail, deserializes it, appends the new entries, and writes it back.
+func (db *DB) AppendJobLogs(ctx context.Context, jobID string, entries []LogEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	// Read current log_tail.
+	var logTail *string
+	err := db.QueryRowContext(ctx, `SELECT log_tail FROM jobs WHERE id = ?`, jobID).Scan(&logTail)
+	if err == sql.ErrNoRows {
+		return nil // Job not found; ignore (it may not be tracked yet).
+	}
+	if err != nil {
+		return fmt.Errorf("read log_tail: %w", err)
+	}
+
+	// Deserialize existing entries.
+	var existing []LogEntry
+	if logTail != nil && *logTail != "" {
+		if jsonErr := json.Unmarshal([]byte(*logTail), &existing); jsonErr != nil {
+			// Not valid JSON (e.g., plain text from older format); start fresh.
+			existing = nil
+		}
+	}
+
+	// Append new entries.
+	existing = append(existing, entries...)
+
+	// Serialize and write back.
+	data, err := json.Marshal(existing)
+	if err != nil {
+		return fmt.Errorf("marshal log entries: %w", err)
+	}
+	s := string(data)
+	_, err = db.ExecContext(ctx, `UPDATE jobs SET log_tail = ? WHERE id = ?`, s, jobID)
+	if err != nil {
+		return fmt.Errorf("update log_tail: %w", err)
+	}
+	return nil
+}
+
 // CompleteJob updates a planned/running job with final results (status, timestamps, logs, results).
 func (db *DB) CompleteJob(ctx context.Context, j *Job) error {
 	tx, err := db.BeginTx(ctx, nil)

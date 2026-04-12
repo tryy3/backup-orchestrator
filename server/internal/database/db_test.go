@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -148,4 +149,82 @@ func newTestDB(t *testing.T) *DB {
 	})
 
 	return db
+}
+
+func TestDB_AppendJobLogs(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	ctx := context.Background()
+
+	// Create an agent first (FK constraint).
+	err := db.CreateAgent(ctx, &Agent{
+		ID:       "agent-1",
+		Name:     "test-agent",
+		Hostname: "localhost",
+		Status:   "approved",
+	})
+	require.NoError(t, err)
+
+	// Create a job.
+	job := &Job{
+		ID:        "test-job-1",
+		AgentID:   "agent-1",
+		PlanName:  "daily",
+		Type:      "backup",
+		Trigger:   "manual",
+		Status:    "running",
+		StartedAt: time.Now().UTC(),
+	}
+	err = db.CreateJob(ctx, job)
+	require.NoError(t, err)
+
+	// Append first batch of logs.
+	err = db.AppendJobLogs(ctx, "test-job-1", []LogEntry{
+		{Timestamp: "2025-01-01T00:00:00Z", Level: "info", Source: "test", Message: "starting"},
+	})
+	require.NoError(t, err)
+
+	// Verify.
+	j, err := db.GetJob(ctx, "test-job-1")
+	require.NoError(t, err)
+	assert.Len(t, j.LogEntries, 1)
+	assert.Equal(t, "starting", j.LogEntries[0].Message)
+
+	// Append second batch — should be cumulative.
+	err = db.AppendJobLogs(ctx, "test-job-1", []LogEntry{
+		{Timestamp: "2025-01-01T00:00:01Z", Level: "info", Source: "test", Message: "mid-progress"},
+		{Timestamp: "2025-01-01T00:00:02Z", Level: "info", Source: "test", Message: "finishing"},
+	})
+	require.NoError(t, err)
+
+	j, err = db.GetJob(ctx, "test-job-1")
+	require.NoError(t, err)
+	assert.Len(t, j.LogEntries, 3)
+	assert.Equal(t, "starting", j.LogEntries[0].Message)
+	assert.Equal(t, "mid-progress", j.LogEntries[1].Message)
+	assert.Equal(t, "finishing", j.LogEntries[2].Message)
+}
+
+func TestDB_AppendJobLogs_NonexistentJob(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	ctx := context.Background()
+
+	// Appending to a non-existent job should not return an error.
+	err := db.AppendJobLogs(ctx, "nonexistent", []LogEntry{
+		{Timestamp: "2025-01-01T00:00:00Z", Level: "info", Source: "test", Message: "ignored"},
+	})
+	assert.NoError(t, err)
+}
+
+func TestDB_AppendJobLogs_EmptyEntries(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDB(t)
+	ctx := context.Background()
+
+	err := db.AppendJobLogs(ctx, "any-job", nil)
+	assert.NoError(t, err)
 }
