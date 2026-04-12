@@ -220,7 +220,7 @@ dev-frontend:
 # Start all three dev processes in separate Zellij tabs.
 # Requires: nix develop (for air + restic + rclone) and zellij.
 # If already inside a Zellij session the tabs open in the current session.
-dev:
+dev: proto-gen
     mkdir -p "{{tmp_dir}}/agent-data"
     BACKUP_DB_PATH="{{tmp_dir}}/server.db" \
     BACKUP_DATA_DIR="{{tmp_dir}}/agent-data" \
