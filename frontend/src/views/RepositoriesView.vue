@@ -80,6 +80,7 @@ async function handleDelete() {
       :loading="store.loading"
       empty-title="No repositories"
       empty-message="Create a repository to get started."
+      @row-click="(row) => $router.push(`/repositories/${row.id}/edit`)"
     >
       <template #cell-name="{ row }">
         <span class="font-medium text-slate-200">{{ row.name }}</span>

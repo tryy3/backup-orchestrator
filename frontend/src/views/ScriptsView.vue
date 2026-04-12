@@ -55,6 +55,7 @@ async function handleDelete() {
       :loading="store.loading"
       empty-title="No scripts"
       empty-message="Create reusable scripts for hooks."
+      @row-click="(row) => $router.push(`/scripts/${row.id}/edit`)"
     >
       <template #cell-name="{ row }">
         <span class="font-medium text-slate-200">{{ row.name }}</span>
