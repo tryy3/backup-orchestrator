@@ -189,7 +189,27 @@ export interface SnapshotInfo {
 
 export interface Settings {
   default_retention: RetentionPolicy
+  heartbeat_interval_seconds?: number
+  agent_offline_threshold_seconds?: number
+  job_history_days?: number
+  health_threshold_failing?: number
+  health_threshold_warning?: number
+  max_heatmap_runs?: number
+  default_hook_timeout_seconds?: number
+  file_browser_blocked_paths?: string[]
 }
+
+/** Default values for global settings (used when no value is stored server-side). */
+export const SETTINGS_DEFAULTS = {
+  heartbeat_interval_seconds: 30,
+  agent_offline_threshold_seconds: 300,
+  job_history_days: 30,
+  health_threshold_failing: 0.9,
+  health_threshold_warning: 0.99,
+  max_heatmap_runs: 30,
+  default_hook_timeout_seconds: 60,
+  file_browser_blocked_paths: ['/proc', '/sys', '/dev', '/run/credentials', '/selinux', '/cgroup'],
+} as const
 
 export interface ServerVersion {
   version: string

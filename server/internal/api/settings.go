@@ -9,22 +9,46 @@ import (
 	"github.com/tryy3/backup-orchestrator/server/internal/database"
 )
 
+// settingsKeys lists all known settings keys that the GET handler will return.
+var settingsKeys = []string{
+	"default_retention",
+	"heartbeat_interval_seconds",
+	"agent_offline_threshold_seconds",
+	"job_history_days",
+	"health_threshold_failing",
+	"health_threshold_warning",
+	"max_heatmap_runs",
+	"default_hook_timeout_seconds",
+	"file_browser_blocked_paths",
+}
+
 func getSettingsHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		settings := make(map[string]json.RawMessage)
 
-		retentionVal, err := db.GetSetting(r.Context(), "default_retention")
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if retentionVal != nil {
-			settings["default_retention"] = json.RawMessage(*retentionVal)
+		for _, key := range settingsKeys {
+			val, err := db.GetSetting(r.Context(), key)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if val != nil {
+				settings[key] = json.RawMessage(*val)
+			}
 		}
 
 		writeJSON(w, http.StatusOK, settings)
 	}
 }
+
+// allowedSettings is the set of keys accepted by the update handler.
+var allowedSettings = func() map[string]bool {
+	m := make(map[string]bool, len(settingsKeys))
+	for _, k := range settingsKeys {
+		m[k] = true
+	}
+	return m
+}()
 
 func updateSettingsHandler(db *database.DB, resolver *configpush.Resolver) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -32,6 +56,13 @@ func updateSettingsHandler(db *database.DB, resolver *configpush.Resolver) http.
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
+		}
+
+		for key := range input {
+			if !allowedSettings[key] {
+				writeError(w, http.StatusBadRequest, "unknown setting: "+key)
+				return
+			}
 		}
 
 		for key, value := range input {

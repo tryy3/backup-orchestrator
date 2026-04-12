@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useAgentsStore } from '../stores/agents'
 import { useJobsStore } from '../stores/jobs'
+import { useSettingsStore } from '../stores/settings'
 import RunHeatmap from '../components/common/RunHeatmap.vue'
 import ErrorBanner from '../components/common/ErrorBanner.vue'
 import type { HeatmapRun } from '../components/common/RunHeatmap.vue'
@@ -9,19 +10,23 @@ import type { Agent, Job } from '../types/api'
 
 const agentsStore = useAgentsStore()
 const jobsStore = useJobsStore()
+const settingsStore = useSettingsStore()
 const jobProgress = computed(() => jobsStore.jobProgress)
 
 const filterStatus = ref<'all' | 'failing' | 'warning' | 'healthy' | 'offline'>('all')
 
 onMounted(() => {
+  settingsStore.fetch()
   agentsStore.fetchAll()
   jobsStore.fetchAll()
 })
 
-// Group jobs by agent_id, filtered to past 30 days
+const cfg = computed(() => settingsStore.resolved)
+
+// Group jobs by agent_id, filtered to configured lookback window
 const jobsByAgent = computed((): Record<string, Job[]> => {
   const map: Record<string, Job[]> = {}
-  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+  const cutoff = Date.now() - cfg.value.job_history_days * 24 * 60 * 60 * 1000
   for (const job of jobsStore.list) {
     if (new Date(job.started_at).getTime() < cutoff) continue
     if (!map[job.agent_id]) map[job.agent_id] = []
@@ -30,7 +35,7 @@ const jobsByAgent = computed((): Record<string, Job[]> => {
   return map
 })
 
-// Convert agent jobs to heatmap runs (last 30 runs across all plans)
+// Convert agent jobs to heatmap runs
 function getHeatmapRuns(agentId: string): HeatmapRun[] {
   const jobs = jobsByAgent.value[agentId] ?? []
   return jobs.map((j) => ({
@@ -44,7 +49,7 @@ function getHeatmapRuns(agentId: string): HeatmapRun[] {
 
 function isOnline(agent: Agent): boolean {
   if (!agent.last_heartbeat) return false
-  return Date.now() - new Date(agent.last_heartbeat).getTime() < 5 * 60 * 1000
+  return Date.now() - new Date(agent.last_heartbeat).getTime() < cfg.value.agent_offline_threshold_seconds * 1000
 }
 
 function agentHealthStatus(agent: Agent): 'healthy' | 'warning' | 'failing' | 'offline' {
@@ -52,8 +57,8 @@ function agentHealthStatus(agent: Agent): 'healthy' | 'warning' | 'failing' | 'o
   const jobs = jobsByAgent.value[agent.id] ?? []
   if (!jobs.length) return 'healthy'
   const rate = jobs.filter((j) => j.status === 'success').length / jobs.length
-  if (rate < 0.9) return 'failing'
-  if (rate < 0.99) return 'warning'
+  if (rate < cfg.value.health_threshold_failing) return 'failing'
+  if (rate < cfg.value.health_threshold_warning) return 'warning'
   return 'healthy'
 }
 
@@ -67,8 +72,8 @@ function reliabilityColor(agentId: string): string {
   const jobs = jobsByAgent.value[agentId] ?? []
   if (!jobs.length) return 'text-slate-500'
   const rate = jobs.filter((j) => j.status === 'success').length / jobs.length
-  if (rate >= 0.99) return 'text-green-400'
-  if (rate >= 0.9) return 'text-amber-400'
+  if (rate >= cfg.value.health_threshold_warning) return 'text-green-400'
+  if (rate >= cfg.value.health_threshold_failing) return 'text-amber-400'
   return 'text-orange-400'
 }
 
@@ -86,8 +91,9 @@ const filteredAgents = computed(() => {
 })
 
 const globalSuccessRate = computed(() => {
+  const cutoff = cfg.value.job_history_days * 24 * 60 * 60 * 1000
   const recent = jobsStore.list.filter(
-    (j) => Date.now() - new Date(j.started_at).getTime() < 30 * 24 * 60 * 60 * 1000,
+    (j) => Date.now() - new Date(j.started_at).getTime() < cutoff,
   )
   if (!recent.length) return null
   return ((recent.filter((j) => j.status === 'success').length / recent.length) * 100).toFixed(1)
@@ -119,7 +125,7 @@ function connectivityDotClass(agent: Agent) {
         <p class="mt-1 text-sm text-slate-500">
           {{ agentsStore.list.filter((a) => a.status === 'approved').length }} active
           agent{{ agentsStore.list.filter((a) => a.status === 'approved').length !== 1 ? 's' : '' }}
-          · 30-day monitoring
+          · {{ cfg.job_history_days }}-day monitoring
         </p>
       </div>
       <div v-if="globalSuccessRate !== null" class="text-right">
@@ -244,14 +250,14 @@ function connectivityDotClass(agent: Agent) {
           </span>
         </div>
 
-        <!-- Last 30 runs heatmap -->
+        <!-- Last N runs heatmap -->
         <div class="mb-3">
-          <RunHeatmap :runs="getHeatmapRuns(agent.id)" :max-runs="30" />
+          <RunHeatmap :runs="getHeatmapRuns(agent.id)" :max-runs="cfg.max_heatmap_runs" />
         </div>
 
         <!-- Reliability stat -->
         <div class="flex items-center justify-between">
-          <span class="text-xs uppercase tracking-wider text-slate-600">30d reliability</span>
+          <span class="text-xs uppercase tracking-wider text-slate-600">{{ cfg.job_history_days }}d reliability</span>
           <span :class="['text-sm font-semibold tabular-nums', reliabilityColor(agent.id)]">
             {{ reliabilityText(agent.id) }}
           </span>

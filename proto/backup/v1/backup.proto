@@ -117,6 +117,8 @@ message AgentConfig {
   repeated BackupPlan backup_plans = 3;
   RetentionPolicy default_retention = 4;
   string rclone_config = 5; // raw INI text
+  int32 heartbeat_interval_secs = 6; // seconds between heartbeats (0 = use agent default)
+  repeated string file_browser_blocked_paths = 7; // paths the file browser refuses to list
 }
 
 message Command {

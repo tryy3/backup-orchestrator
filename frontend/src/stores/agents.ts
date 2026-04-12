@@ -3,9 +3,14 @@ import { ref, onScopeDispose } from 'vue'
 import { agents as api } from '../api/client'
 import { subscribe } from '../api/websocket'
 import type { Agent } from '../types/api'
+import { SETTINGS_DEFAULTS } from '../types/api'
 
-/** Heartbeat age (ms) beyond which an agent is considered offline. */
-const OFFLINE_THRESHOLD_MS = 10 * 60 * 1000
+/**
+ * Heartbeat age (ms) beyond which an agent is considered offline.
+ * Used as a fallback for WebSocket disconnect events; the actual threshold
+ * used for UI display comes from the settings store.
+ */
+const OFFLINE_THRESHOLD_MS = SETTINGS_DEFAULTS.agent_offline_threshold_seconds * 1000
 
 export const useAgentsStore = defineStore('agents', () => {
   const list = ref<Agent[]>([])

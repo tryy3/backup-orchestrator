@@ -25,14 +25,16 @@ type JobStatusFunc func() *JobStatus
 
 // StreamHandler manages the bidirectional Connect stream lifecycle.
 type StreamHandler struct {
-	client      *Client
-	identity    *identity.Identity
-	identityMu  sync.RWMutex
-	onApproval  func(agentID, apiKey string)
-	onConfig    func(cfg *backupv1.AgentConfig)
-	onCommand   func(cmd *backupv1.Command) *backupv1.CommandResult
-	jobStatusFn JobStatusFunc
-	liveLogCh   <-chan *backupv1.LogEntry // receives live log entries from running jobs
+	client            *Client
+	identity          *identity.Identity
+	identityMu        sync.RWMutex
+	onApproval        func(agentID, apiKey string)
+	onConfig          func(cfg *backupv1.AgentConfig)
+	onCommand         func(cmd *backupv1.Command) *backupv1.CommandResult
+	jobStatusFn       JobStatusFunc
+	liveLogCh         <-chan *backupv1.LogEntry // receives live log entries from running jobs
+	heartbeatInterval time.Duration
+	heartbeatMu       sync.RWMutex
 }
 
 // NewStreamHandler creates a new StreamHandler.
@@ -46,13 +48,14 @@ func NewStreamHandler(
 	liveLogCh <-chan *backupv1.LogEntry,
 ) *StreamHandler {
 	return &StreamHandler{
-		client:      client,
-		identity:    id,
-		onApproval:  onApproval,
-		onConfig:    onConfig,
-		onCommand:   onCommand,
-		jobStatusFn: jobStatusFn,
-		liveLogCh:   liveLogCh,
+		client:            client,
+		identity:          id,
+		onApproval:        onApproval,
+		onConfig:          onConfig,
+		onCommand:         onCommand,
+		jobStatusFn:       jobStatusFn,
+		liveLogCh:         liveLogCh,
+		heartbeatInterval: 30 * time.Second,
 	}
 }
 
@@ -77,11 +80,14 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 	errCh := make(chan error, 2)
 	var wg sync.WaitGroup
 
-	// Start send goroutine: heartbeats every 30 seconds + live log forwarding.
+	// Start send goroutine: heartbeats at configured interval + live log forwarding.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ticker := time.NewTicker(30 * time.Second)
+		s.heartbeatMu.RLock()
+		interval := s.heartbeatInterval
+		s.heartbeatMu.RUnlock()
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		// Pending log entries waiting to be batched and sent.
@@ -256,6 +262,14 @@ func (s *StreamHandler) handleApproval(approval *backupv1.Approval) {
 
 func (s *StreamHandler) handleConfig(stream backupv1.BackupService_ConnectClient, cfg *backupv1.AgentConfig) {
 	slog.Info("received config", "source", "stream", "config_version", cfg.GetConfigVersion())
+
+	// Apply heartbeat interval if provided.
+	if hb := cfg.GetHeartbeatIntervalSecs(); hb > 0 {
+		s.heartbeatMu.Lock()
+		s.heartbeatInterval = time.Duration(hb) * time.Second
+		s.heartbeatMu.Unlock()
+		slog.Info("heartbeat interval updated", "source", "stream", "interval_secs", hb)
+	}
 
 	if s.onConfig != nil {
 		s.onConfig(cfg)
