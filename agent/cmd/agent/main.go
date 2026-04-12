@@ -100,9 +100,14 @@ func run() error {
 	resticExec := &executor.ResticExecutor{
 		RcloneConfigPath: executor.RcloneConfigPath(cfg.DataDir),
 	}
+
+	// Channel for streaming live log entries from running jobs to the server.
+	liveLogCh := make(chan *backupv1.LogEntry, 256)
+
 	orchestrator := &executor.JobOrchestrator{
 		Restic:    resticExec,
 		AgentName: cfg.AgentName,
+		LiveLogCh: liveLogCh,
 	}
 
 	// Step 7: Create gRPC client.
@@ -251,6 +256,8 @@ func run() error {
 			},
 			// jobStatus: report current running job for heartbeats.
 			sched.JobStatusFunc(),
+			// liveLogCh: receive live log entries from running jobs.
+			liveLogCh,
 		)
 
 		backoff := time.Second

@@ -2,6 +2,7 @@ package grpcserver
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/tryy3/backup-orchestrator/server/internal/agentmgr"
+	"github.com/tryy3/backup-orchestrator/server/internal/database"
 	"github.com/tryy3/backup-orchestrator/server/internal/events"
 
 	backupv1 "github.com/tryy3/backup-orchestrator/server/internal/gen/backup/v1"
@@ -203,6 +205,9 @@ func (s *GRPCServer) handleAgentMessage(ctx context.Context, agentID, agentStatu
 	case *backupv1.AgentMessage_CommandResult:
 		s.mgr.HandleCommandResult(agentID, payload.CommandResult)
 
+	case *backupv1.AgentMessage_LiveLogs:
+		s.handleLiveLogs(ctx, agentID, payload.LiveLogs)
+
 	default:
 		log.Printf("Unknown message type from agent %s", agentID)
 	}
@@ -259,6 +264,45 @@ func (s *GRPCServer) handleJobStarted(ctx context.Context, agentID string, curre
 			"plan_name":        currentJob.PlanName,
 			"started_at":       currentJob.StartedAt,
 			"progress_percent": currentJob.ProgressPercent,
+		},
+	})
+}
+
+// handleLiveLogs processes incremental log entries sent by an agent during a running job.
+func (s *GRPCServer) handleLiveLogs(ctx context.Context, agentID string, ll *backupv1.LiveLogs) {
+	if len(ll.GetEntries()) == 0 {
+		return
+	}
+
+	// Convert proto entries to database log entries.
+	dbEntries := make([]database.LogEntry, 0, len(ll.GetEntries()))
+	for _, e := range ll.GetEntries() {
+		le := database.LogEntry{
+			Timestamp: e.Timestamp,
+			Level:     e.Level,
+			Source:    e.Source,
+			Message:   e.Message,
+		}
+		if e.Attributes != "" {
+			_ = json.Unmarshal([]byte(e.Attributes), &le.Attributes)
+		}
+		dbEntries = append(dbEntries, le)
+	}
+
+	// Append to the running job's log_tail in the database.
+	if ll.GetJobId() != "" {
+		if err := s.db.AppendJobLogs(ctx, ll.GetJobId(), dbEntries); err != nil {
+			log.Printf("Failed to append live logs for job %s: %v", ll.GetJobId(), err)
+		}
+	}
+
+	// Broadcast live log entries to the frontend.
+	s.hub.Broadcast(events.Event{
+		Type: "job.live_logs",
+		Payload: map[string]interface{}{
+			"agent_id": agentID,
+			"job_id":   ll.GetJobId(),
+			"entries":  dbEntries,
 		},
 	})
 }

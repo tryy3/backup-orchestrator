@@ -2,6 +2,7 @@ package grpcclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -24,15 +25,16 @@ type JobStatusFunc func() *JobStatus
 
 // StreamHandler manages the bidirectional Connect stream lifecycle.
 type StreamHandler struct {
-	client             *Client
-	identity           *identity.Identity
-	identityMu         sync.RWMutex
-	onApproval         func(agentID, apiKey string)
-	onConfig           func(cfg *backupv1.AgentConfig)
-	onCommand          func(cmd *backupv1.Command) *backupv1.CommandResult
-	jobStatusFn        JobStatusFunc
-	heartbeatInterval  time.Duration
-	heartbeatMu        sync.RWMutex
+	client            *Client
+	identity          *identity.Identity
+	identityMu        sync.RWMutex
+	onApproval        func(agentID, apiKey string)
+	onConfig          func(cfg *backupv1.AgentConfig)
+	onCommand         func(cmd *backupv1.Command) *backupv1.CommandResult
+	jobStatusFn       JobStatusFunc
+	liveLogCh         <-chan *backupv1.LogEntry // receives live log entries from running jobs
+	heartbeatInterval time.Duration
+	heartbeatMu       sync.RWMutex
 }
 
 // NewStreamHandler creates a new StreamHandler.
@@ -43,6 +45,7 @@ func NewStreamHandler(
 	onConfig func(cfg *backupv1.AgentConfig),
 	onCommand func(cmd *backupv1.Command) *backupv1.CommandResult,
 	jobStatusFn JobStatusFunc,
+	liveLogCh <-chan *backupv1.LogEntry,
 ) *StreamHandler {
 	return &StreamHandler{
 		client:            client,
@@ -51,6 +54,7 @@ func NewStreamHandler(
 		onConfig:          onConfig,
 		onCommand:         onCommand,
 		jobStatusFn:       jobStatusFn,
+		liveLogCh:         liveLogCh,
 		heartbeatInterval: 30 * time.Second,
 	}
 }
@@ -76,7 +80,7 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 	errCh := make(chan error, 2)
 	var wg sync.WaitGroup
 
-	// Start send goroutine: heartbeats at configured interval.
+	// Start send goroutine: heartbeats at configured interval + live log forwarding.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -86,9 +90,29 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
+		// Pending log entries waiting to be batched and sent.
+		var pendingLogs []*backupv1.LogEntry
+		var pendingJobID string
+
+		// flushLogs sends any accumulated log entries as a LiveLogs message.
+		flushLogs := func() {
+			if len(pendingLogs) == 0 {
+				return
+			}
+			if err := s.sendLiveLogs(stream, pendingJobID, pendingLogs); err != nil {
+				slog.Error("error sending live logs", "source", "stream", "error", err)
+			}
+			pendingLogs = nil
+		}
+
+		// logFlushTicker batches log entries so we don't send per-entry.
+		logFlushTicker := time.NewTicker(2 * time.Second)
+		defer logFlushTicker.Stop()
+
 		for {
 			select {
 			case <-runCtx.Done():
+				flushLogs()
 				// Close the send side of the stream.
 				_ = stream.CloseSend()
 				return
@@ -97,6 +121,18 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 					errCh <- fmt.Errorf("sending heartbeat: %w", err)
 					return
 				}
+			case entry, ok := <-s.liveLogCh:
+				if !ok {
+					flushLogs()
+					return
+				}
+				// Extract job_id from attributes if available.
+				if jobID := extractJobID(entry); jobID != "" {
+					pendingJobID = jobID
+				}
+				pendingLogs = append(pendingLogs, entry)
+			case <-logFlushTicker.C:
+				flushLogs()
 			}
 		}
 	}()
@@ -175,6 +211,37 @@ func (s *StreamHandler) sendHeartbeat(stream backupv1.BackupService_ConnectClien
 		},
 	}
 	return stream.Send(msg)
+}
+
+func (s *StreamHandler) sendLiveLogs(stream backupv1.BackupService_ConnectClient, jobID string, entries []*backupv1.LogEntry) error {
+	s.identityMu.RLock()
+	agentID := s.identity.AgentID
+	apiKey := s.identity.APIKey
+	s.identityMu.RUnlock()
+
+	msg := &backupv1.AgentMessage{
+		AgentId: agentID,
+		ApiKey:  apiKey,
+		Payload: &backupv1.AgentMessage_LiveLogs{
+			LiveLogs: &backupv1.LiveLogs{
+				JobId:   jobID,
+				Entries: entries,
+			},
+		},
+	}
+	return stream.Send(msg)
+}
+
+// extractJobID looks for a "job_id" attribute in the log entry's JSON attributes.
+func extractJobID(entry *backupv1.LogEntry) string {
+	if entry.Attributes == "" {
+		return ""
+	}
+	var attrs map[string]string
+	if err := json.Unmarshal([]byte(entry.Attributes), &attrs); err != nil {
+		return ""
+	}
+	return attrs["job_id"]
 }
 
 func (s *StreamHandler) handleApproval(approval *backupv1.Approval) {

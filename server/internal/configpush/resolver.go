@@ -228,11 +228,11 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 
 	// Build config message.
 	config := &backupv1.AgentConfig{
-		ConfigVersion:          int32(version),
-		Repositories:           pbRepos,
-		BackupPlans:            pbPlans,
-		DefaultRetention:       defaultRetention,
-		HeartbeatIntervalSecs:  heartbeatInterval,
+		ConfigVersion:           int32(version),
+		Repositories:            pbRepos,
+		BackupPlans:             pbPlans,
+		DefaultRetention:        defaultRetention,
+		HeartbeatIntervalSecs:   heartbeatInterval,
 		FileBrowserBlockedPaths: blockedPaths,
 	}
 	if agent.RcloneConfig != nil {

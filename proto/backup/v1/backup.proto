@@ -59,7 +59,14 @@ message AgentMessage {
     Heartbeat heartbeat = 10;
     ConfigAck config_ack = 11;
     CommandResult command_result = 12;
+    LiveLogs live_logs = 13;
   }
+}
+
+// LiveLogs carries incremental log entries from the agent while a job is running.
+message LiveLogs {
+  string job_id = 1;
+  repeated LogEntry entries = 2;
 }
 
 message Heartbeat {

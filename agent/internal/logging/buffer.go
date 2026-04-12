@@ -18,6 +18,7 @@ const maxEntries = 1000
 type entryBuffer struct {
 	mu      sync.Mutex
 	entries []*backupv1.LogEntry
+	notify  chan<- *backupv1.LogEntry // optional; non-nil when live-log streaming is enabled
 }
 
 // BufferHandler is a slog.Handler that captures log entries into a buffer
@@ -33,6 +34,17 @@ type BufferHandler struct {
 func NewBufferHandler(level slog.Level) *BufferHandler {
 	return &BufferHandler{
 		buf:   &entryBuffer{},
+		level: level,
+	}
+}
+
+// NewBufferHandlerWithNotify creates a BufferHandler that also sends each entry
+// to the provided channel (non-blocking) for live-log streaming.
+func NewBufferHandlerWithNotify(level slog.Level, ch chan<- *backupv1.LogEntry) *BufferHandler {
+	return &BufferHandler{
+		buf: &entryBuffer{
+			notify: ch,
+		},
 		level: level,
 	}
 }
@@ -89,6 +101,15 @@ func (h *BufferHandler) Handle(_ context.Context, r slog.Record) error {
 	}
 
 	h.buf.entries = append(h.buf.entries, entry)
+
+	// Non-blocking send to live-log channel (if enabled).
+	if h.buf.notify != nil {
+		select {
+		case h.buf.notify <- entry:
+		default:
+		}
+	}
+
 	return nil
 }
 
