@@ -226,6 +226,14 @@ func run() error {
 					}
 				}
 
+				// Update file browser blocked paths if provided.
+				if bp := agentCfg.GetFileBrowserBlockedPaths(); len(bp) > 0 {
+					blockedPathsMu.Lock()
+					blockedPaths = bp
+					blockedPathsMu.Unlock()
+					slog.Info("file browser blocked paths updated", "source", "agent", "paths", bp)
+				}
+
 				// Update scheduler.
 				sched.UpdateSchedule(
 					agentCfg.GetBackupPlans(),
@@ -320,14 +328,20 @@ func run() error {
 }
 
 // blockedPaths is the list of filesystem prefixes that should not be browsed.
+// It is initialized with defaults and updated when the server pushes config.
 var blockedPaths = []string{
 	"/proc", "/sys", "/dev", "/run/credentials",
 	"/selinux", "/cgroup",
 }
 
+var blockedPathsMu sync.RWMutex
+
 // isBlockedPath checks if a path is in the list of paths that should not be browsed.
 func isBlockedPath(path string) bool {
-	for _, b := range blockedPaths {
+	blockedPathsMu.RLock()
+	paths := blockedPaths
+	blockedPathsMu.RUnlock()
+	for _, b := range paths {
 		if path == b || strings.HasPrefix(path, b+"/") {
 			return true
 		}

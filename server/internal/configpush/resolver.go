@@ -81,6 +81,42 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		}
 	}
 
+	// Load default hook timeout from settings (default: 60 seconds).
+	defaultHookTimeout := int32(60)
+	hookTimeoutVal, err := r.db.GetSetting(ctx, "default_hook_timeout_seconds")
+	if err != nil {
+		return fmt.Errorf("get default hook timeout: %w", err)
+	}
+	if hookTimeoutVal != nil {
+		var t int32
+		if parseErr := json.Unmarshal([]byte(*hookTimeoutVal), &t); parseErr == nil && t > 0 {
+			defaultHookTimeout = t
+		}
+	}
+
+	// Load heartbeat interval from settings (default: 30 seconds).
+	heartbeatInterval := int32(30)
+	hbVal, err := r.db.GetSetting(ctx, "heartbeat_interval_seconds")
+	if err != nil {
+		return fmt.Errorf("get heartbeat interval: %w", err)
+	}
+	if hbVal != nil {
+		var hb int32
+		if parseErr := json.Unmarshal([]byte(*hbVal), &hb); parseErr == nil && hb > 0 {
+			heartbeatInterval = hb
+		}
+	}
+
+	// Load file browser blocked paths from settings.
+	var blockedPaths []string
+	bpVal, err := r.db.GetSetting(ctx, "file_browser_blocked_paths")
+	if err != nil {
+		return fmt.Errorf("get blocked paths: %w", err)
+	}
+	if bpVal != nil {
+		_ = json.Unmarshal([]byte(*bpVal), &blockedPaths)
+	}
+
 	// Build protobuf repositories.
 	var pbRepos []*backupv1.Repository
 	for _, repo := range repoMap {
@@ -167,7 +203,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 					resolved.Type = "command"
 				}
 				resolved.Name = resolved.OnEvent + "-inline"
-				resolved.TimeoutSeconds = 60
+				resolved.TimeoutSeconds = defaultHookTimeout
 				if h.Timeout != nil {
 					resolved.TimeoutSeconds = int32(*h.Timeout)
 				}
@@ -190,10 +226,12 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 
 	// Build config message.
 	config := &backupv1.AgentConfig{
-		ConfigVersion:    int32(version),
-		Repositories:     pbRepos,
-		BackupPlans:      pbPlans,
-		DefaultRetention: defaultRetention,
+		ConfigVersion:          int32(version),
+		Repositories:           pbRepos,
+		BackupPlans:            pbPlans,
+		DefaultRetention:       defaultRetention,
+		HeartbeatIntervalSecs:  heartbeatInterval,
+		FileBrowserBlockedPaths: blockedPaths,
 	}
 	if agent.RcloneConfig != nil {
 		config.RcloneConfig = *agent.RcloneConfig
