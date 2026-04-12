@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRepositoriesStore } from '../stores/repositories'
 import { useAgentsStore } from '../stores/agents'
@@ -29,6 +29,34 @@ const formLoading = ref(false)
 
 const repoTypes = ['local', 'rclone', 'sftp', 's3', 'b2', 'rest', 'azure', 'gs']
 
+const typePrefix = computed(() => form.value.type + ':')
+
+const pathPlaceholder = computed(() => {
+  switch (form.value.type) {
+    case 'local': return '/mnt/backup'
+    case 'rclone': return 'remote:bucket/path'
+    case 'sftp': return 'user@host:/path'
+    case 's3': return 'bucketname/path'
+    case 'b2': return 'bucketname:/path'
+    case 'rest': return 'http://host:8000/path'
+    case 'azure': return 'containername:/path'
+    case 'gs': return 'bucketname:/path'
+    default: return '/path/to/repo'
+  }
+})
+
+function stripTypePrefix(path: string, type: string): string {
+  const prefix = type + ':'
+  return path.startsWith(prefix) ? path.slice(prefix.length) : path
+}
+
+// When editing and the user changes the type, strip the old prefix if present
+watch(() => form.value.type, (_newType, oldType) => {
+  if (oldType) {
+    form.value.path = stripTypePrefix(form.value.path, oldType)
+  }
+})
+
 onMounted(async () => {
   agentsStore.fetchAll()
   if (isEdit.value) {
@@ -40,7 +68,7 @@ onMounted(async () => {
         scope: repoStore.current.scope,
         agent_id: repoStore.current.agent_id ?? undefined,
         type: repoStore.current.type,
-        path: repoStore.current.path,
+        path: stripTypePrefix(repoStore.current.path, repoStore.current.type),
         password: repoStore.current.password,
       }
     }
@@ -53,6 +81,12 @@ async function handleSubmit() {
   const data = { ...form.value }
   if (data.scope === 'global') {
     data.agent_id = undefined
+  }
+
+  // Auto-prepend type prefix to path (guard against manual double-prefix)
+  const prefix = data.type + ':'
+  if (!data.path.startsWith(prefix)) {
+    data.path = prefix + data.path
   }
 
   let result
@@ -145,14 +179,20 @@ const canBrowse = computed(() =>
             v-model="form.path"
             :agent-id="form.agent_id!"
           />
-          <input
-            v-else
-            v-model="form.path"
-            type="text"
-            required
-            class="block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
-            placeholder="e.g. /mnt/backup or rclone:remote:bucket/path"
-          />
+          <div v-else class="flex">
+            <span
+              class="inline-flex items-center rounded-l border border-r-0 border-surface-600 bg-surface-800 px-3 font-mono text-sm text-slate-400"
+            >
+              {{ typePrefix }}
+            </span>
+            <input
+              v-model="form.path"
+              type="text"
+              required
+              class="block w-full rounded-r border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
+              :placeholder="pathPlaceholder"
+            />
+          </div>
         </div>
       </div>
 
