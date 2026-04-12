@@ -22,10 +22,13 @@ import (
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
 
 	// Open database.
-	db, err := database.New(cfg.DBPath)
+	db, err := database.New(cfg.DBPath, cfg.EncryptionKey)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}

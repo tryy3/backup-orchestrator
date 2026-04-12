@@ -30,10 +30,15 @@ func (db *DB) CreateRepository(ctx context.Context, r *Repository) error {
 	r.CreatedAt = now
 	r.UpdatedAt = now
 
-	_, err := db.ExecContext(ctx, `
+	encPassword, err := db.encrypt(r.Password)
+	if err != nil {
+		return fmt.Errorf("encrypt password: %w", err)
+	}
+
+	_, err = db.ExecContext(ctx, `
 		INSERT INTO repositories (id, name, scope, agent_id, type, path, password, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.Name, r.Scope, r.AgentID, r.Type, r.Path, r.Password, r.CreatedAt, r.UpdatedAt,
+		r.ID, r.Name, r.Scope, r.AgentID, r.Type, r.Path, encPassword, r.CreatedAt, r.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create repository: %w", err)
@@ -53,6 +58,10 @@ func (db *DB) GetRepository(ctx context.Context, id string) (*Repository, error)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get repository: %w", err)
+	}
+	r.Password, err = db.decrypt(r.Password)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt repository password: %w", err)
 	}
 	return r, nil
 }
@@ -85,6 +94,10 @@ func (db *DB) ListRepositories(ctx context.Context, scope, agentID string) ([]Re
 		if err := rows.Scan(&r.ID, &r.Name, &r.Scope, &r.AgentID, &r.Type, &r.Path, &r.Password, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan repository: %w", err)
 		}
+		r.Password, err = db.decrypt(r.Password)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt repository %s password: %w", r.ID, err)
+		}
 		repos = append(repos, r)
 	}
 	return repos, rows.Err()
@@ -93,10 +106,16 @@ func (db *DB) ListRepositories(ctx context.Context, scope, agentID string) ([]Re
 // UpdateRepository updates an existing repository.
 func (db *DB) UpdateRepository(ctx context.Context, r *Repository) error {
 	r.UpdatedAt = time.Now().UTC()
+
+	encPassword, err := db.encrypt(r.Password)
+	if err != nil {
+		return fmt.Errorf("encrypt password: %w", err)
+	}
+
 	result, err := db.ExecContext(ctx, `
 		UPDATE repositories SET name=?, scope=?, agent_id=?, type=?, path=?, password=?, updated_at=?
 		WHERE id=?`,
-		r.Name, r.Scope, r.AgentID, r.Type, r.Path, r.Password, r.UpdatedAt, r.ID,
+		r.Name, r.Scope, r.AgentID, r.Type, r.Path, encPassword, r.UpdatedAt, r.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update repository: %w", err)
@@ -171,6 +190,10 @@ func (db *DB) GetRepositoriesByIDs(ctx context.Context, ids []string) (map[strin
 		var r Repository
 		if err := rows.Scan(&r.ID, &r.Name, &r.Scope, &r.AgentID, &r.Type, &r.Path, &r.Password, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan repository: %w", err)
+		}
+		r.Password, err = db.decrypt(r.Password)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt repository %s password: %w", r.ID, err)
 		}
 		result[r.ID] = &r
 	}

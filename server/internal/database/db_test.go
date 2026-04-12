@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func TestNew(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 	require.NotNil(t, db)
 	defer db.Close()
@@ -87,7 +88,7 @@ func TestNew_Migrations(t *testing.T) {
 func TestNew_InvalidPath(t *testing.T) {
 	t.Parallel()
 
-	db, err := New("/nonexistent/dir/test.db")
+	db, err := New("/nonexistent/dir/test.db", nil)
 	assert.Error(t, err)
 	assert.Nil(t, db)
 }
@@ -111,7 +112,7 @@ func TestDB_Close_Idempotent(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 
 	err = db.Close()
@@ -141,7 +142,25 @@ func newTestDB(t *testing.T) *DB {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		db.Close()
+	})
+
+	return db
+}
+
+// newTestDBWithKey creates a test database with encryption enabled.
+func newTestDBWithKey(t *testing.T) *DB {
+	t.Helper()
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	key := []byte("0123456789abcdef0123456789abcdef") // 32 bytes
+	db, err := New(dbPath, key)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -227,4 +246,122 @@ func TestDB_AppendJobLogs_EmptyEntries(t *testing.T) {
 
 	err := db.AppendJobLogs(ctx, "any-job", nil)
 	assert.NoError(t, err)
+}
+
+func TestDB_EncryptionRoundTrip_Repository(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDBWithKey(t)
+	ctx := context.Background()
+
+	repo := &Repository{
+		Name:     "encrypted-repo",
+		Scope:    "global",
+		Type:     "local",
+		Path:     "local:/tmp/backup",
+		Password: "super-secret",
+	}
+	err := db.CreateRepository(ctx, repo)
+	require.NoError(t, err)
+
+	// Read back — should get plaintext.
+	got, err := db.GetRepository(ctx, repo.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "super-secret", got.Password)
+
+	// Verify the raw DB value is encrypted.
+	var raw string
+	err = db.QueryRowContext(ctx, "SELECT password FROM repositories WHERE id = ?", repo.ID).Scan(&raw)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(raw, "enc:"), "raw password should be encrypted, got: %s", raw)
+}
+
+func TestDB_EncryptionRoundTrip_Agent(t *testing.T) {
+	t.Parallel()
+
+	db := newTestDBWithKey(t)
+	ctx := context.Background()
+
+	rclone := "[remote]\ntype = s3\n"
+	err := db.CreateAgent(ctx, &Agent{
+		ID:           "agent-enc",
+		Name:         "enc-agent",
+		Hostname:     "localhost",
+		Status:       "approved",
+		RcloneConfig: &rclone,
+	})
+	require.NoError(t, err)
+
+	// Read back — should get plaintext.
+	agent, err := db.GetAgent(ctx, "agent-enc")
+	require.NoError(t, err)
+	require.NotNil(t, agent.RcloneConfig)
+	assert.Equal(t, rclone, *agent.RcloneConfig)
+
+	// Verify the raw DB value is encrypted.
+	var raw string
+	err = db.QueryRowContext(ctx, "SELECT rclone_config FROM agents WHERE id = ?", "agent-enc").Scan(&raw)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(raw, "enc:"), "raw rclone_config should be encrypted, got: %s", raw)
+}
+
+func TestDB_EncryptionMigration(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	// First, create DB without encryption and insert plaintext values.
+	db1, err := New(dbPath, nil)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	repo := &Repository{
+		Name:     "plain-repo",
+		Scope:    "global",
+		Type:     "local",
+		Path:     "local:/tmp",
+		Password: "plaintext-pw",
+	}
+	err = db1.CreateRepository(ctx, repo)
+	require.NoError(t, err)
+
+	rclone := "[remote]\ntype = b2\n"
+	err = db1.CreateAgent(ctx, &Agent{
+		ID:           "agent-plain",
+		Name:         "plain-agent",
+		Hostname:     "host",
+		Status:       "approved",
+		RcloneConfig: &rclone,
+	})
+	require.NoError(t, err)
+
+	db1.Close()
+
+	// Re-open with encryption key — migration should encrypt existing values.
+	key := []byte("0123456789abcdef0123456789abcdef")
+	db2, err := New(dbPath, key)
+	require.NoError(t, err)
+	defer db2.Close()
+
+	// Verify raw values are now encrypted.
+	var rawPw string
+	err = db2.QueryRowContext(ctx, "SELECT password FROM repositories WHERE id = ?", repo.ID).Scan(&rawPw)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(rawPw, "enc:"), "password should be encrypted after migration")
+
+	var rawRclone string
+	err = db2.QueryRowContext(ctx, "SELECT rclone_config FROM agents WHERE id = ?", "agent-plain").Scan(&rawRclone)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(rawRclone, "enc:"), "rclone_config should be encrypted after migration")
+
+	// Verify decrypted reads still work.
+	gotRepo, err := db2.GetRepository(ctx, repo.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "plaintext-pw", gotRepo.Password)
+
+	gotAgent, err := db2.GetAgent(ctx, "agent-plain")
+	require.NoError(t, err)
+	require.NotNil(t, gotAgent.RcloneConfig)
+	assert.Equal(t, rclone, *gotAgent.RcloneConfig)
 }

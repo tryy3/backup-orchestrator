@@ -5,12 +5,38 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/tryy3/backup-orchestrator/server/internal/configpush"
 	"github.com/tryy3/backup-orchestrator/server/internal/database"
 )
+
+// repositoryResponse is the API response DTO that omits the password.
+type repositoryResponse struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Scope     string    `json:"scope"`
+	AgentID   *string   `json:"agent_id,omitempty"`
+	Type      string    `json:"type"`
+	Path      string    `json:"path"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func toRepositoryResponse(r *database.Repository) repositoryResponse {
+	return repositoryResponse{
+		ID:        r.ID,
+		Name:      r.Name,
+		Scope:     r.Scope,
+		AgentID:   r.AgentID,
+		Type:      r.Type,
+		Path:      r.Path,
+		CreatedAt: r.CreatedAt,
+		UpdatedAt: r.UpdatedAt,
+	}
+}
 
 func listRepositoriesHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -22,10 +48,11 @@ func listRepositoriesHandler(db *database.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if repos == nil {
-			repos = []database.Repository{}
+		resp := make([]repositoryResponse, 0, len(repos))
+		for i := range repos {
+			resp = append(resp, toRepositoryResponse(&repos[i]))
 		}
-		writeJSON(w, http.StatusOK, repos)
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
@@ -66,7 +93,7 @@ func createRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 			}()
 		}
 
-		writeJSON(w, http.StatusCreated, repo)
+		writeJSON(w, http.StatusCreated, toRepositoryResponse(&repo))
 	}
 }
 
@@ -82,7 +109,7 @@ func getRepositoryHandler(db *database.DB) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "repository not found")
 			return
 		}
-		writeJSON(w, http.StatusOK, repo)
+		writeJSON(w, http.StatusOK, toRepositoryResponse(repo))
 	}
 }
 
@@ -90,14 +117,44 @@ func updateRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
-		var repo database.Repository
-		if err := json.NewDecoder(r.Body).Decode(&repo); err != nil {
+		var input struct {
+			Name     string  `json:"name"`
+			Scope    string  `json:"scope"`
+			AgentID  *string `json:"agent_id"`
+			Type     string  `json:"type"`
+			Path     string  `json:"path"`
+			Password string  `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		repo.ID = id
 
-		if err := db.UpdateRepository(r.Context(), &repo); err != nil {
+		// If password is blank, keep the existing one.
+		if input.Password == "" {
+			existing, err := db.GetRepository(r.Context(), id)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if existing == nil {
+				writeError(w, http.StatusNotFound, "repository not found")
+				return
+			}
+			input.Password = existing.Password
+		}
+
+		repo := &database.Repository{
+			ID:       id,
+			Name:     input.Name,
+			Scope:    input.Scope,
+			AgentID:  input.AgentID,
+			Type:     input.Type,
+			Path:     input.Path,
+			Password: input.Password,
+		}
+
+		if err := db.UpdateRepository(r.Context(), repo); err != nil {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
@@ -105,7 +162,7 @@ func updateRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 		// Push config to all agents whose plans reference this repo.
 		go pushConfigToAgentsUsingRepo(context.Background(), db, resolver, id)
 
-		writeJSON(w, http.StatusOK, repo)
+		writeJSON(w, http.StatusOK, toRepositoryResponse(repo))
 	}
 }
 

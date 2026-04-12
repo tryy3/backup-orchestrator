@@ -38,12 +38,17 @@ func (db *DB) CreateAgent(ctx context.Context, a *Agent) error {
 	a.CreatedAt = now
 	a.UpdatedAt = now
 
-	_, err := db.ExecContext(ctx, `
+	encRclone, err := db.encryptPtr(a.RcloneConfig)
+	if err != nil {
+		return fmt.Errorf("encrypt rclone config: %w", err)
+	}
+
+	_, err = db.ExecContext(ctx, `
 		INSERT INTO agents (id, name, hostname, os, status, api_key, agent_version, restic_version, rclone_version,
 			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.ID, a.Name, a.Hostname, a.OS, a.Status, a.APIKey, a.AgentVersion, a.ResticVersion, a.RcloneVersion,
-		a.RcloneConfig, a.LastHeartbeat, a.LastJobAt, a.ConfigVersion, a.ConfigAppliedAt, a.CreatedAt, a.UpdatedAt,
+		encRclone, a.LastHeartbeat, a.LastJobAt, a.ConfigVersion, a.ConfigAppliedAt, a.CreatedAt, a.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create agent: %w", err)
@@ -67,6 +72,10 @@ func (db *DB) GetAgent(ctx context.Context, id string) (*Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get agent: %w", err)
 	}
+	a.RcloneConfig, err = db.decryptPtr(a.RcloneConfig)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt agent rclone config: %w", err)
+	}
 	return a, nil
 }
 
@@ -85,6 +94,10 @@ func (db *DB) GetAgentByAPIKey(ctx context.Context, apiKey string) (*Agent, erro
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get agent by api key: %w", err)
+	}
+	a.RcloneConfig, err = db.decryptPtr(a.RcloneConfig)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt agent rclone config: %w", err)
 	}
 	return a, nil
 }
@@ -107,6 +120,10 @@ func (db *DB) ListAgents(ctx context.Context) ([]Agent, error) {
 			&a.ResticVersion, &a.RcloneVersion, &a.RcloneConfig, &a.LastHeartbeat, &a.LastJobAt,
 			&a.ConfigVersion, &a.ConfigAppliedAt, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan agent: %w", err)
+		}
+		a.RcloneConfig, err = db.decryptPtr(a.RcloneConfig)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt agent %s rclone config: %w", a.ID, err)
 		}
 		agents = append(agents, a)
 	}
@@ -176,8 +193,12 @@ func (db *DB) UpdateHeartbeat(ctx context.Context, id, agentVersion, resticVersi
 
 // UpdateRcloneConfig updates the agent's rclone configuration.
 func (db *DB) UpdateRcloneConfig(ctx context.Context, id, config string) error {
+	encConfig, err := db.encrypt(config)
+	if err != nil {
+		return fmt.Errorf("encrypt rclone config: %w", err)
+	}
 	now := time.Now().UTC()
-	result, err := db.ExecContext(ctx, `UPDATE agents SET rclone_config=?, updated_at=? WHERE id=?`, config, now, id)
+	result, err := db.ExecContext(ctx, `UPDATE agents SET rclone_config=?, updated_at=? WHERE id=?`, encConfig, now, id)
 	if err != nil {
 		return fmt.Errorf("update rclone config: %w", err)
 	}
