@@ -24,7 +24,7 @@ COPY agent/ ./agent/
 # Build
 RUN cd agent && CGO_ENABLED=0 go build -o /agent ./cmd/agent
 
-# Stage 2: Runtime with restic + rclone + database tools
+# Stage 3: Runtime with restic + rclone + database tools
 FROM docker.io/library/alpine:3.23
 RUN apk add --no-cache ca-certificates tzdata curl unzip
 
