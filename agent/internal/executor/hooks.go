@@ -3,7 +3,6 @@ package executor
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"log/slog"
 	"os/exec"
 	"sort"
@@ -47,14 +46,8 @@ func RunHook(ctx context.Context, hook *backupv1.ResolvedHook, hctx *HookContext
 		Status:   "success",
 	}
 
-	// Expand template variables in the command.
-	expanded, err := expandTemplate(hook.GetCommand(), hctx)
-	if err != nil {
-		result.Status = "failed"
-		result.Error = fmt.Sprintf("template expansion error: %v", err)
-		result.DurationMs = time.Since(start).Milliseconds()
-		return result
-	}
+	// Expand placeholder variables in the command.
+	expanded := expandTemplate(hook.GetCommand(), hctx)
 
 	// Apply timeout if specified.
 	timeoutSec := hook.GetTimeoutSeconds()
@@ -157,7 +150,7 @@ func RunHooks(ctx context.Context, hooks []*backupv1.ResolvedHook, event string,
 // expandTemplate replaces HookContext placeholder variables in the command string.
 // Placeholders use {{.FieldName}} syntax and are replaced with their corresponding
 // HookContext field values. Unknown placeholders are left unchanged.
-func expandTemplate(cmdStr string, hctx *HookContext) (string, error) {
+func expandTemplate(cmdStr string, hctx *HookContext) string {
 	r := strings.NewReplacer(
 		"{{.PlanName}}", hctx.PlanName,
 		"{{.Hostname}}", hctx.Hostname,
@@ -171,5 +164,5 @@ func expandTemplate(cmdStr string, hctx *HookContext) (string, error) {
 		"{{.StartedAt}}", hctx.StartedAt,
 		"{{.FinishedAt}}", hctx.FinishedAt,
 	)
-	return r.Replace(cmdStr), nil
+	return r.Replace(cmdStr)
 }

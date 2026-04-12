@@ -22,10 +22,7 @@ func TestExpandTemplate_SimpleSubstitution(t *testing.T) {
 		Status:     "success",
 		SnapshotID: "abc123",
 	}
-	got, err := expandTemplate("backup {{.PlanName}} status={{.Status}} snap={{.SnapshotID}}", hctx)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	got := expandTemplate("backup {{.PlanName}} status={{.Status}} snap={{.SnapshotID}}", hctx)
 	want := "backup daily status=success snap=abc123"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -33,21 +30,15 @@ func TestExpandTemplate_SimpleSubstitution(t *testing.T) {
 }
 
 func TestExpandTemplate_NoPlaceholders(t *testing.T) {
-	got, err := expandTemplate("echo hello", &HookContext{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	got := expandTemplate("echo hello", &HookContext{})
 	if got != "echo hello" {
 		t.Errorf("got %q, want %q", got, "echo hello")
 	}
 }
 
 func TestExpandTemplate_UnknownPlaceholderPassthrough(t *testing.T) {
-	// Unknown placeholders are left unchanged (not an error with strings.Replacer).
-	got, err := expandTemplate("echo {{.Broken", &HookContext{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	// Unknown placeholders are left unchanged.
+	got := expandTemplate("echo {{.Broken", &HookContext{})
 	if got != "echo {{.Broken" {
 		t.Errorf("got %q, want %q", got, "echo {{.Broken")
 	}
@@ -55,10 +46,7 @@ func TestExpandTemplate_UnknownPlaceholderPassthrough(t *testing.T) {
 
 func TestExpandTemplate_UnrecognisedFieldPassthrough(t *testing.T) {
 	// Unrecognised {{.FieldName}} placeholders are left unchanged.
-	got, err := expandTemplate("echo {{.NonExistent}}", &HookContext{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	got := expandTemplate("echo {{.NonExistent}}", &HookContext{})
 	if got != "echo {{.NonExistent}}" {
 		t.Errorf("got %q, want %q", got, "echo {{.NonExistent}}")
 	}
