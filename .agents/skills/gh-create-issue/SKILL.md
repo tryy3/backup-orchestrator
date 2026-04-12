@@ -26,19 +26,21 @@ Analyze the user's request to determine the issue type:
 
 ### Step 3: Collect Information
 
-Based on the selected template, ask the user for required information only. Follow the template's required fields and option constraints (for example, Platform and Priority choices).
+Infer as much as possible from the user's request before asking questions. Only ask if the request is too vague to produce a meaningful issue (e.g. no reproducible detail, unclear what the desired outcome is). Do not ask about optional fields or request confirmation.
 
-### Step 4: Build and Preview Issue Content
+### Step 4: Build Issue Content
 
 Write the issue body using the `create_file` tool to a fixed path such as `/tmp/gh-issue-body.md`. Do NOT use `mktemp` + heredoc — the variable is lost between terminal calls and the heredoc echoes content noisily in interactive shells.
 
 - Use the exact title prefix from the selected template.
-- Fill content following the template body structure and section order.
+- Fill content following the template body structure and section order. Use "good-enough" detail — the goal is to capture the idea, not write a perfect report.
 - Apply labels exactly as defined by the template.
 - Keep all labels when there are multiple labels.
 - If template has no labels, do not add custom labels.
 
-Preview the file content in chat and ask for confirmation before creating. **Skip this step if the user explicitly indicates no preview/confirmation is needed** (for example, automation workflows).
+**Do NOT preview or ask for confirmation before creating.** Proceed directly to Step 5. The only exceptions are:
+- The user explicitly asks to review or confirm before submitting.
+- The request is too vague to write a meaningful issue — in that case ask only the minimum clarifying questions needed, then create without further confirmation.
 
 ### Step 5: Create Issue
 
@@ -67,5 +69,7 @@ gh issue create --web
 - Must read template files under `.github/ISSUE_TEMPLATE/` to ensure following the correct format.
 - Treat template files as the only source of truth. Do not hardcode title prefixes or labels in this skill.
 - Title must be clear and concise, avoid vague terms like "a suggestion" or "stuck".
-- Provide as much detail as possible to help developers understand and resolve the issue.
-- If user doesn't specify a template type, ask them to choose one first.
+- "Good-enough" detail is the goal — capture the idea clearly, not write a perfect report.
+- Do not ask for confirmation before creating unless the user requests it.
+- Only ask clarifying questions when the request is too vague to produce a meaningful issue.
+- If user doesn't specify a template type and it cannot be inferred, ask them to choose one first.
