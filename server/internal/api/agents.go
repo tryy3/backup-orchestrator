@@ -216,7 +216,9 @@ func updateRcloneHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 			return
 		}
 
-		// Blank config keeps existing value.
+		// Blank config keeps existing value — the rclone update only touches
+		// the rclone_config column, so skipping the write preserves the stored
+		// value (unlike repository updates which rewrite all columns).
 		if input.RcloneConfig != "" {
 			if err := db.UpdateRcloneConfig(r.Context(), id, input.RcloneConfig); err != nil {
 				writeError(w, http.StatusNotFound, err.Error())

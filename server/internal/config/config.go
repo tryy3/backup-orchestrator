@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,6 +72,7 @@ func loadEncryptionKey(dbPath string) ([]byte, error) {
 	if err := os.WriteFile(keyPath, []byte(hexKey), 0o600); err != nil {
 		return nil, fmt.Errorf("write encryption key file %s: %w", keyPath, err)
 	}
+	log.Printf("Generated new encryption key at %s", keyPath)
 	return key, nil
 }
 

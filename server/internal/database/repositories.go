@@ -61,7 +61,7 @@ func (db *DB) GetRepository(ctx context.Context, id string) (*Repository, error)
 	}
 	r.Password, err = db.decrypt(r.Password)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt repository password: %w", err)
+		return nil, fmt.Errorf("decrypt repository %s password: %w", r.ID, err)
 	}
 	return r, nil
 }
