@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
 )
 
 func TestBufferHandler_CapturesEntries(t *testing.T) {
@@ -186,5 +188,63 @@ func TestLevelToString(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("levelToString(%v): got %q, want %q", tt.level, got, tt.want)
 		}
+	}
+}
+
+func TestBufferHandler_NotifyChannel(t *testing.T) {
+	ch := make(chan *backupv1.LogEntry, 10)
+	h := NewBufferHandlerWithNotify(slog.LevelInfo, ch)
+	logger := slog.New(h)
+
+	logger.Info("hello", "source", "test")
+	logger.Warn("warning msg")
+
+	// Verify entries are both in the buffer and the channel.
+	entries := h.Entries()
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries in buffer, got %d", len(entries))
+	}
+
+	// Drain channel.
+	var chEntries []*backupv1.LogEntry
+	for len(ch) > 0 {
+		chEntries = append(chEntries, <-ch)
+	}
+	if len(chEntries) != 2 {
+		t.Fatalf("expected 2 entries in channel, got %d", len(chEntries))
+	}
+	if chEntries[0].Message != "hello" {
+		t.Errorf("channel entry 0 message: got %q, want %q", chEntries[0].Message, "hello")
+	}
+	if chEntries[1].Message != "warning msg" {
+		t.Errorf("channel entry 1 message: got %q, want %q", chEntries[1].Message, "warning msg")
+	}
+}
+
+func TestBufferHandler_NotifyChannelNonBlocking(t *testing.T) {
+	// Channel with zero buffer — should not block.
+	ch := make(chan *backupv1.LogEntry)
+	h := NewBufferHandlerWithNotify(slog.LevelInfo, ch)
+	logger := slog.New(h)
+
+	// This should not block even though nobody is reading from ch.
+	logger.Info("should not block")
+
+	entries := h.Entries()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry in buffer, got %d", len(entries))
+	}
+}
+
+func TestBufferHandler_NilNotifyChannel(t *testing.T) {
+	// Without notify — should behave exactly as before.
+	h := NewBufferHandler(slog.LevelInfo)
+	logger := slog.New(h)
+
+	logger.Info("hello")
+
+	entries := h.Entries()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
 }

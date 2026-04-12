@@ -16,6 +16,7 @@ import (
 type JobOrchestrator struct {
 	Restic    *ResticExecutor
 	AgentName string
+	LiveLogCh chan<- *backupv1.LogEntry // optional; live-log entries are sent here when non-nil
 }
 
 // ExecuteBackupJob implements the multi-repo backup flow:
@@ -38,7 +39,12 @@ func (o *JobOrchestrator) ExecuteBackupJob(
 	startedAt := time.Now()
 
 	// Create per-job logger: writes to both console and buffer.
-	buf := logging.NewBufferHandler(slog.LevelInfo)
+	var buf *logging.BufferHandler
+	if o.LiveLogCh != nil {
+		buf = logging.NewBufferHandlerWithNotify(slog.LevelInfo, o.LiveLogCh)
+	} else {
+		buf = logging.NewBufferHandler(slog.LevelInfo)
+	}
 	multi := logging.NewMultiHandler(slog.Default().Handler(), buf)
 	jlog := slog.New(multi)
 
