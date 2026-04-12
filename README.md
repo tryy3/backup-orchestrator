@@ -46,3 +46,24 @@ just vet            # go vet all Go modules
 just lint           # golangci-lint on all Go modules
 just proto-gen      # regenerate protobuf code
 ```
+
+## Docker images
+
+Three container images are published:
+
+| Image | Contents | Use when |
+|-------|----------|----------|
+| `ghcr.io/tryy3/backup-orchestrator-server` | REST + gRPC server with embedded UI | Always — runs the central server |
+| `ghcr.io/tryy3/backup-orchestrator-agent` | Agent + restic + rclone | Backing up files/directories — no database tools needed |
+| `ghcr.io/tryy3/backup-orchestrator-agent-db` | Agent + restic + rclone + sqlite3 | Hooks require database CLI tools (e.g. `sqlite3 .dump` before a backup) |
+
+Pick the agent image that matches your workload. The `-agent` image is the smallest; use
+`-agent-db` when your pre/post-backup hooks need to interact with databases.
+
+```bash
+# Build all images locally
+just docker-build
+
+# Push multi-arch images (requires docker buildx + ghcr.io login)
+just docker-push
+```

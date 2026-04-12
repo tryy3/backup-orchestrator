@@ -1,0 +1,57 @@
+# Stage 1: Generate proto files
+FROM docker.io/library/golang:1.26.2-alpine AS proto-gen
+RUN apk add --no-cache git
+COPY --from=docker.io/bufbuild/buf:latest /usr/local/bin/buf /usr/local/bin/buf
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.0 \
+    && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+WORKDIR /app
+COPY proto/ ./proto/
+RUN cd proto && buf generate
+
+# Stage 2: Build agent
+FROM docker.io/library/golang:1.26.2-alpine AS builder
+RUN apk add --no-cache git
+WORKDIR /app
+
+# Copy agent module and download deps
+COPY agent/go.mod agent/go.sum ./agent/
+RUN cd agent && go mod download
+
+# Copy generated proto files and agent source
+COPY --from=proto-gen /app/agent/internal/gen/ ./agent/internal/gen/
+COPY agent/ ./agent/
+
+# Build
+RUN cd agent && CGO_ENABLED=0 go build -o /agent ./cmd/agent
+
+# Stage 3: Runtime with restic + rclone + database tools
+FROM docker.io/library/alpine:3.23
+RUN apk add --no-cache ca-certificates tzdata curl unzip
+
+ARG TARGETARCH
+
+# Install restic
+ARG RESTIC_VERSION=0.17.3
+RUN RESTIC_ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "linux_arm64" || echo "linux_amd64") \
+    && curl -L "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_${RESTIC_ARCH}.bz2" | bunzip2 > /usr/local/bin/restic \
+    && chmod +x /usr/local/bin/restic
+
+# Install rclone
+ARG RCLONE_VERSION=1.69.1
+RUN RCLONE_ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "linux-arm64" || echo "linux-amd64") \
+    && curl -L "https://github.com/rclone/rclone/releases/download/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-${RCLONE_ARCH}.zip" -o /tmp/rclone.zip \
+    && unzip /tmp/rclone.zip -d /tmp \
+    && cp /tmp/rclone-*/rclone /usr/local/bin/rclone \
+    && chmod +x /usr/local/bin/rclone \
+    && rm -rf /tmp/rclone*
+
+# Install database tools
+RUN apk add --no-cache sqlite
+
+COPY --from=builder /agent /usr/local/bin/agent
+
+ENV BACKUP_DATA_DIR=/data
+
+VOLUME ["/data"]
+
+ENTRYPOINT ["agent"]

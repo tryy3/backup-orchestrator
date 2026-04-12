@@ -169,8 +169,9 @@ docker-login github-user="":
 
 # Build images locally (native platform only, loaded into local Docker)
 docker-build:
-    docker build -f docker/Dockerfile.server -t {{registry}}/{{github-repo}}-server:{{image-tag}} .
-    docker build -f docker/Dockerfile.agent  -t {{registry}}/{{github-repo}}-agent:{{image-tag}}  .
+    docker build -f docker/Dockerfile.server   -t {{registry}}/{{github-repo}}-server:{{image-tag}}   .
+    docker build -f docker/Dockerfile.agent    -t {{registry}}/{{github-repo}}-agent:{{image-tag}}    .
+    docker build -f docker/Dockerfile.agent-db -t {{registry}}/{{github-repo}}-agent-db:{{image-tag}} .
 
 # Build multi-arch images and push to ghcr.io (requires docker buildx and docker-login)
 [confirm("Push multi-arch images to ghcr.io? This requires docker buildx and you must be logged in.")]
@@ -182,6 +183,10 @@ docker-push:
     docker buildx build --platform linux/amd64,linux/arm64 \
         -f docker/Dockerfile.agent \
         -t {{registry}}/{{github-repo}}-agent:{{image-tag}} \
+        --push .
+    docker buildx build --platform linux/amd64,linux/arm64 \
+        -f docker/Dockerfile.agent-db \
+        -t {{registry}}/{{github-repo}}-agent-db:{{image-tag}} \
         --push .
 
 # Docker start

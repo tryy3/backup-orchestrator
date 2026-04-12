@@ -29,6 +29,24 @@ services:
       BACKUP_AGENT_NAME: demo-agent
       BACKUP_DATA_DIR: /data
 
+  # Agent variant with database tools (sqlite3).
+  # Use this instead of 'agent' when backup hooks need database CLI tools.
+  # agent-db:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile.agent-db
+  #   depends_on:
+  #     - server
+  #   volumes:
+  #     - agent-data:/data
+  #     - /home:/mnt/backup/home:ro
+  #     - ./tmp:/tmp
+  #     - restore-data:/mnt/restore
+  #   environment:
+  #     BACKUP_SERVER_URL: server:8443
+  #     BACKUP_AGENT_NAME: demo-agent-db
+  #     BACKUP_DATA_DIR: /data
+
 volumes:
   server-data:
   agent-data:
