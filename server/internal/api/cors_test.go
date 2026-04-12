@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,7 +16,7 @@ func TestNewCORSMiddleware_AllowedOrigin(t *testing.T) {
 	}))
 
 	for _, origin := range origins {
-		req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/agents", nil)
 		req.Header.Set("Origin", origin)
 		rr := httptest.NewRecorder()
 
@@ -35,7 +36,7 @@ func TestNewCORSMiddleware_DisallowedOrigin(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/agents", nil)
 	req.Header.Set("Origin", "https://evil.example.com")
 	rr := httptest.NewRecorder()
 
@@ -54,7 +55,7 @@ func TestNewCORSMiddleware_NoOriginHeader(t *testing.T) {
 	}))
 
 	// Same-origin requests carry no Origin header; they must not be affected.
-	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/agents", nil)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -70,7 +71,7 @@ func TestNewCORSMiddleware_PreflightAllowed(t *testing.T) {
 		w.WriteHeader(http.StatusOK) // should not be reached
 	}))
 
-	req := httptest.NewRequest(http.MethodOptions, "/api/agents", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/api/agents", nil)
 	req.Header.Set("Origin", "http://localhost:5173")
 	rr := httptest.NewRecorder()
 
@@ -86,7 +87,7 @@ func TestNewCORSMiddleware_PreflightDisallowed(t *testing.T) {
 		w.WriteHeader(http.StatusOK) // should not be reached
 	}))
 
-	req := httptest.NewRequest(http.MethodOptions, "/api/agents", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/api/agents", nil)
 	req.Header.Set("Origin", "https://evil.example.com")
 	rr := httptest.NewRecorder()
 
@@ -102,7 +103,7 @@ func TestNewCORSMiddleware_EmptyOriginList(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/agents", nil)
 	req.Header.Set("Origin", "http://localhost:5173")
 	rr := httptest.NewRecorder()
 
@@ -122,7 +123,7 @@ func TestNewCORSMiddleware_PreflightNoOriginPassedThrough(t *testing.T) {
 
 	// OPTIONS without an Origin header is a plain HTTP OPTIONS request (not a CORS
 	// pre-flight) and must be handled normally (short-circuit with 204, not 403).
-	req := httptest.NewRequest(http.MethodOptions, "/api/agents", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/api/agents", nil)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
