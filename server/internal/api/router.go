@@ -33,21 +33,21 @@ func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolv
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
 	r.Use(maxBytesMiddleware(1 << 20)) // 1 MB request body limit
-	r.Use(jsonContentType)
 
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	// Version info
-	r.Get("/api/version", versionHandler())
-
-	// WebSocket endpoint (before JSON content-type middleware).
+	// WebSocket endpoint (outside /api group to avoid JSON content-type middleware).
 	r.Get("/api/ws", websocketHandler(hub))
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
+		r.Use(jsonContentType)
+
+		// Version info
+		r.Get("/version", versionHandler())
 		// Agents
 		r.Get("/agents", listAgentsHandler(db))
 		r.Get("/agents/{id}", getAgentHandler(db))
@@ -146,6 +146,7 @@ func maxBytesMiddleware(maxBytes int64) func(http.Handler) http.Handler {
 
 // writeJSON encodes a value as JSON and writes it to the response.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		log.Printf("writeJSON encode error: %v", err)
