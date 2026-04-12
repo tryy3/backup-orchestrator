@@ -22,10 +22,7 @@ func TestExpandTemplate_SimpleSubstitution(t *testing.T) {
 		Status:     "success",
 		SnapshotID: "abc123",
 	}
-	got, err := expandTemplate("backup {{.PlanName}} status={{.Status}} snap={{.SnapshotID}}", hctx)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	got := expandTemplate("backup {{.PlanName}} status={{.Status}} snap={{.SnapshotID}}", hctx)
 	want := "backup daily status=success snap=abc123"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -33,26 +30,25 @@ func TestExpandTemplate_SimpleSubstitution(t *testing.T) {
 }
 
 func TestExpandTemplate_NoPlaceholders(t *testing.T) {
-	got, err := expandTemplate("echo hello", &HookContext{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	got := expandTemplate("echo hello", &HookContext{})
 	if got != "echo hello" {
 		t.Errorf("got %q, want %q", got, "echo hello")
 	}
 }
 
-func TestExpandTemplate_InvalidTemplate(t *testing.T) {
-	_, err := expandTemplate("echo {{.Broken", &HookContext{})
-	if err == nil {
-		t.Fatal("expected error for invalid template")
+func TestExpandTemplate_UnknownPlaceholderPassthrough(t *testing.T) {
+	// Unknown placeholders are left unchanged.
+	got := expandTemplate("echo {{.Broken", &HookContext{})
+	if got != "echo {{.Broken" {
+		t.Errorf("got %q, want %q", got, "echo {{.Broken")
 	}
 }
 
-func TestExpandTemplate_MissingField(t *testing.T) {
-	_, err := expandTemplate("echo {{.NonExistent}}", &HookContext{})
-	if err == nil {
-		t.Fatal("expected error for missing field")
+func TestExpandTemplate_UnrecognisedFieldPassthrough(t *testing.T) {
+	// Unrecognised {{.FieldName}} placeholders are left unchanged.
+	got := expandTemplate("echo {{.NonExistent}}", &HookContext{})
+	if got != "echo {{.NonExistent}}" {
+		t.Errorf("got %q, want %q", got, "echo {{.NonExistent}}")
 	}
 }
 
@@ -94,19 +90,18 @@ func TestRunHook_Failure(t *testing.T) {
 	}
 }
 
-func TestRunHook_TemplateError(t *testing.T) {
+func TestRunHook_UnknownPlaceholder(t *testing.T) {
+	// Unknown placeholders are passed through unchanged; the hook still runs.
 	hook := &backupv1.ResolvedHook{
-		Name:    "bad-template",
-		OnEvent: "before_backup",
-		Command: "echo {{.Invalid",
+		Name:           "unknown-placeholder",
+		OnEvent:        "before_backup",
+		Command:        "echo {{.Unknown}}",
+		TimeoutSeconds: 5,
 	}
 	result := RunHook(context.Background(), hook, &HookContext{}, discardLogger())
 
-	if result.Status != "failed" {
-		t.Errorf("status: got %q, want failed", result.Status)
-	}
-	if result.Error == "" {
-		t.Error("expected non-empty error")
+	if result.Status != "success" {
+		t.Errorf("status: got %q, want success", result.Status)
 	}
 }
 

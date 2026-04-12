@@ -6,15 +6,7 @@ Items surfaced during the internal code review that are worth exploring but fall
 
 ## 1. Hook Template Engine Safety
 
-**Current state**: Hook commands use Go's `text/template` for variable expansion in `executor/hooks.go`. The `HookContext` struct only has string fields, so it's safe today.
-
-**Risk**: `text/template` can call methods on the context struct. If methods are ever added to `HookContext` (or it's changed to embed a struct that has methods), those methods become callable from hook templates authored on the server side. This is a potential code execution vector.
-
-**Options to explore**:
-- Switch to a simpler `strings.Replacer` approach (e.g., `{{.PlanName}}` → literal replacement, no template logic).
-- Keep `text/template` but add an explicit allowlist via a custom `template.FuncMap`.
-- Document the constraint: "`HookContext` must remain a plain struct with exported string fields only."
-- Consider `html/template` for auto-escaping if hook output ever appears in HTML contexts.
+**Resolution**: Replaced `text/template` with `strings.Replacer` in `executor/hooks.go`. The `expandTemplate` function now performs literal `{{.FieldName}}` substitution over the fixed set of `HookContext` fields. Unknown placeholders are left unchanged rather than causing an error. This eliminates the method-call risk entirely and makes the allowed variable set explicit and auditable.
 
 ---
 
