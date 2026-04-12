@@ -10,6 +10,17 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+        air = pkgs.buildGoModule rec {
+          pname = "air";
+          version = "1.65.0";
+          src = pkgs.fetchFromGitHub {
+            owner = "air-verse";
+            repo = "air";
+            rev = "v${version}";
+            hash = "sha256-pqvnX/PiipZM8jLBN6zN/yVnuCCk+aTII5AH0N4nHEM=";
+          };
+          vendorHash = "sha256-03xZ3P/7xjznYdM9rv+8ZYftQlnjJ6ZTq0HdSvGpaWw=";
+        };
       in
       {
         devShells.default = pkgs.mkShell {
@@ -42,7 +53,12 @@
             # Misc
             gnumake
             rclone
+            restic
             gh
+
+            # Dev tooling
+            zellij
+            air
           ];
 
           shellHook = ''

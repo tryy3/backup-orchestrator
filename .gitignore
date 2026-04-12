@@ -50,9 +50,15 @@ result
 # Environment
 .env
 .env.local
+.env.dev.local
+
+# Air (Go hot-restart) build artefacts
+server/.air/
+agent/.air/
 
 # Agent data (local dev)
 data/
 
 # project specific stufff
 tmp/
+tmp-*

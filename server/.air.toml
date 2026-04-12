@@ -1,0 +1,23 @@
+# air — hot restart config for the server binary
+# Run from the server/ directory: air
+# https://github.com/air-verse/air
+
+root = "."
+tmp_dir = ".air"
+
+[build]
+  # Build with -tags dev to skip the frontend embed (Vite handles assets in dev).
+  cmd = "go build -tags dev -o .air/server ./cmd/server"
+  bin = ".air/server"
+  delay = 1000
+  exclude_dir = ["internal/frontend/dist", ".air", "tmp"]
+  include_ext = ["go"]
+  # Send SIGINT first so the server can shut down gracefully.
+  send_interrupt = true
+  kill_delay = "2s"
+
+[log]
+  time = false
+
+[misc]
+  clean_on_exit = true

@@ -1,0 +1,22 @@
+# air — hot restart config for the agent binary
+# Run from the agent/ directory: air
+# https://github.com/air-verse/air
+
+root = "."
+tmp_dir = ".air"
+
+[build]
+  cmd = "go build -o .air/agent ./cmd/agent"
+  bin = ".air/agent"
+  delay = 1000
+  exclude_dir = [".air"]
+  include_ext = ["go"]
+  # Send SIGINT first so the agent can disconnect from the server gracefully.
+  send_interrupt = true
+  kill_delay = "2s"
+
+[log]
+  time = false
+
+[misc]
+  clean_on_exit = true
