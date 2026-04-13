@@ -91,7 +91,7 @@ func (db *DB) ListRepositories(ctx context.Context, scope, agentID string) ([]Re
 	var repos []Repository
 	for rows.Next() {
 		var r Repository
-		if err := rows.Scan(&r.ID, &r.Name, &r.Scope, &r.AgentID, &r.Type, &r.Path, &r.Password, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err = rows.Scan(&r.ID, &r.Name, &r.Scope, &r.AgentID, &r.Type, &r.Path, &r.Password, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan repository: %w", err)
 		}
 		r.Password, err = db.decrypt(r.Password)
@@ -188,7 +188,7 @@ func (db *DB) GetRepositoriesByIDs(ctx context.Context, ids []string) (map[strin
 	result := make(map[string]*Repository, len(ids))
 	for rows.Next() {
 		var r Repository
-		if err := rows.Scan(&r.ID, &r.Name, &r.Scope, &r.AgentID, &r.Type, &r.Path, &r.Password, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err = rows.Scan(&r.ID, &r.Name, &r.Scope, &r.AgentID, &r.Type, &r.Path, &r.Password, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan repository: %w", err)
 		}
 		r.Password, err = db.decrypt(r.Password)

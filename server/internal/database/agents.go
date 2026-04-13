@@ -116,7 +116,7 @@ func (db *DB) ListAgents(ctx context.Context) ([]Agent, error) {
 	var agents []Agent
 	for rows.Next() {
 		var a Agent
-		if err := rows.Scan(&a.ID, &a.Name, &a.Hostname, &a.OS, &a.Status, &a.APIKey, &a.AgentVersion,
+		if err = rows.Scan(&a.ID, &a.Name, &a.Hostname, &a.OS, &a.Status, &a.APIKey, &a.AgentVersion,
 			&a.ResticVersion, &a.RcloneVersion, &a.RcloneConfig, &a.LastHeartbeat, &a.LastJobAt,
 			&a.ConfigVersion, &a.ConfigAppliedAt, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan agent: %w", err)

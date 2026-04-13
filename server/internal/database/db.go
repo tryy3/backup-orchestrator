@@ -118,6 +118,16 @@ func (db *DB) encryptPtr(value *string) (*string, error) {
 // migrateEncryption re-encrypts any plaintext values found in the database.
 func (db *DB) migrateEncryption(ctx context.Context) error {
 	// Migrate repository passwords.
+	if err := db.migrateRepositoryPasswords(ctx); err != nil {
+		return err
+	}
+
+	// Migrate agent rclone configs.
+	return db.migrateAgentRcloneConfigs(ctx)
+}
+
+// migrateRepositoryPasswords encrypts any plaintext repository passwords.
+func (db *DB) migrateRepositoryPasswords(ctx context.Context) error {
 	rows, err := db.QueryContext(ctx, "SELECT id, password FROM repositories")
 	if err != nil {
 		return fmt.Errorf("query repository passwords: %w", err)
@@ -127,66 +137,71 @@ func (db *DB) migrateEncryption(ctx context.Context) error {
 	type idVal struct {
 		id, val string
 	}
-	var repoUpdates []idVal
+	var updates []idVal
 	for rows.Next() {
 		var id, password string
-		if err := rows.Scan(&id, &password); err != nil {
+		if err = rows.Scan(&id, &password); err != nil {
 			return fmt.Errorf("scan repository password: %w", err)
 		}
 		if password != "" && !crypto.IsEncrypted(password) {
-			encrypted, err := crypto.Encrypt(db.encryptionKey, password)
-			if err != nil {
-				return fmt.Errorf("encrypt repository %s password: %w", id, err)
+			encrypted, encErr := crypto.Encrypt(db.encryptionKey, password)
+			if encErr != nil {
+				return fmt.Errorf("encrypt repository %s password: %w", id, encErr)
 			}
-			repoUpdates = append(repoUpdates, idVal{id, encrypted})
+			updates = append(updates, idVal{id, encrypted})
 		}
 	}
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return fmt.Errorf("iterate repository passwords: %w", err)
 	}
 
-	for _, u := range repoUpdates {
-		if _, err := db.ExecContext(ctx, "UPDATE repositories SET password = ? WHERE id = ?", u.val, u.id); err != nil {
+	for _, u := range updates {
+		if _, err = db.ExecContext(ctx, "UPDATE repositories SET password = ? WHERE id = ?", u.val, u.id); err != nil {
 			return fmt.Errorf("update repository %s password: %w", u.id, err)
 		}
 	}
-	if len(repoUpdates) > 0 {
-		log.Printf("Encrypted %d repository password(s)", len(repoUpdates))
+	if len(updates) > 0 {
+		log.Printf("Encrypted %d repository password(s)", len(updates))
 	}
+	return nil
+}
 
-	// Migrate agent rclone configs.
-	agentRows, err := db.QueryContext(ctx, "SELECT id, rclone_config FROM agents WHERE rclone_config IS NOT NULL AND rclone_config != ''")
+// migrateAgentRcloneConfigs encrypts any plaintext agent rclone configs.
+func (db *DB) migrateAgentRcloneConfigs(ctx context.Context) error {
+	rows, err := db.QueryContext(ctx, "SELECT id, rclone_config FROM agents WHERE rclone_config IS NOT NULL AND rclone_config != ''")
 	if err != nil {
 		return fmt.Errorf("query agent rclone configs: %w", err)
 	}
-	defer func() { _ = agentRows.Close() }()
+	defer func() { _ = rows.Close() }()
 
-	var agentUpdates []idVal
-	for agentRows.Next() {
+	type idVal struct {
+		id, val string
+	}
+	var updates []idVal
+	for rows.Next() {
 		var id, config string
-		if err := agentRows.Scan(&id, &config); err != nil {
+		if err = rows.Scan(&id, &config); err != nil {
 			return fmt.Errorf("scan agent rclone config: %w", err)
 		}
 		if !crypto.IsEncrypted(config) {
-			encrypted, err := crypto.Encrypt(db.encryptionKey, config)
-			if err != nil {
-				return fmt.Errorf("encrypt agent %s rclone config: %w", id, err)
+			encrypted, encErr := crypto.Encrypt(db.encryptionKey, config)
+			if encErr != nil {
+				return fmt.Errorf("encrypt agent %s rclone config: %w", id, encErr)
 			}
-			agentUpdates = append(agentUpdates, idVal{id, encrypted})
+			updates = append(updates, idVal{id, encrypted})
 		}
 	}
-	if err := agentRows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return fmt.Errorf("iterate agent rclone configs: %w", err)
 	}
 
-	for _, u := range agentUpdates {
-		if _, err := db.ExecContext(ctx, "UPDATE agents SET rclone_config = ? WHERE id = ?", u.val, u.id); err != nil {
+	for _, u := range updates {
+		if _, err = db.ExecContext(ctx, "UPDATE agents SET rclone_config = ? WHERE id = ?", u.val, u.id); err != nil {
 			return fmt.Errorf("update agent %s rclone config: %w", u.id, err)
 		}
 	}
-	if len(agentUpdates) > 0 {
-		log.Printf("Encrypted %d agent rclone config(s)", len(agentUpdates))
+	if len(updates) > 0 {
+		log.Printf("Encrypted %d agent rclone config(s)", len(updates))
 	}
-
 	return nil
 }
