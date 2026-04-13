@@ -22,6 +22,7 @@ const settingsStore = useSettingsStore()
 const agentId = computed(() => route.params.id as string)
 const configOpen = ref(false)
 const rcloneConfig = ref('')
+const rcloneLoaded = ref(false)
 const saving = ref(false)
 
 // Reactive "now" that ticks every 5 seconds for live relative times.
@@ -34,9 +35,6 @@ onMounted(async () => {
   nowTimer = setInterval(() => { now.value = Date.now() }, 5000)
   settingsStore.fetch()
   await agentsStore.fetchOne(agentId.value)
-  if (agentsStore.current) {
-    rcloneConfig.value = agentsStore.current.rclone_config || ''
-  }
   plansStore.fetchAll({ agent_id: agentId.value })
   jobsStore.fetchAll({ agent_id: agentId.value })
 })
@@ -44,6 +42,14 @@ onMounted(async () => {
 onUnmounted(() => {
   if (nowTimer) clearInterval(nowTimer)
 })
+
+async function toggleConfig() {
+  configOpen.value = !configOpen.value
+  if (configOpen.value && !rcloneLoaded.value) {
+    rcloneConfig.value = await agentsStore.fetchRcloneConfig(agentId.value)
+    rcloneLoaded.value = true
+  }
+}
 
 const agent = computed(() => agentsStore.current)
 
@@ -254,7 +260,7 @@ async function saveRclone() {
       <div class="rounded-lg border border-surface-700 bg-surface-900">
         <button
           class="flex w-full items-center justify-between px-4 py-3 text-sm text-slate-400 transition-colors hover:text-slate-200"
-          @click="configOpen = !configOpen"
+          @click="toggleConfig"
         >
           <span class="font-medium">Rclone Configuration</span>
           <svg

@@ -69,7 +69,7 @@ onMounted(async () => {
         agent_id: repoStore.current.agent_id ?? undefined,
         type: repoStore.current.type,
         path: stripTypePrefix(repoStore.current.path, repoStore.current.type),
-        password: repoStore.current.password,
+        password: '',
       }
     }
     formLoading.value = false
@@ -204,9 +204,9 @@ const canBrowse = computed(() =>
         <input
           v-model="form.password"
           type="password"
-          required
+          :required="!isEdit"
           class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
-          placeholder="Restic repository password"
+          :placeholder="isEdit ? 'Leave blank to keep existing password' : 'Restic repository password'"
         />
       </div>
 

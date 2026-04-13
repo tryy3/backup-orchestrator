@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -17,6 +18,48 @@ import (
 	"github.com/tryy3/backup-orchestrator/server/internal/database"
 )
 
+// agentResponse is the API response DTO that omits rclone_config and exposes
+// has_rclone_config instead.
+type agentResponse struct {
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	Hostname        string     `json:"hostname"`
+	OS              *string    `json:"os,omitempty"`
+	Status          string     `json:"status"`
+	APIKey          *string    `json:"api_key,omitempty"`
+	AgentVersion    *string    `json:"agent_version,omitempty"`
+	ResticVersion   *string    `json:"restic_version,omitempty"`
+	RcloneVersion   *string    `json:"rclone_version,omitempty"`
+	HasRcloneConfig bool       `json:"has_rclone_config"`
+	LastHeartbeat   *time.Time `json:"last_heartbeat,omitempty"`
+	LastJobAt       *time.Time `json:"last_job_at,omitempty"`
+	ConfigVersion   int        `json:"config_version"`
+	ConfigAppliedAt *time.Time `json:"config_applied_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+func toAgentResponse(a *database.Agent) agentResponse {
+	return agentResponse{
+		ID:              a.ID,
+		Name:            a.Name,
+		Hostname:        a.Hostname,
+		OS:              a.OS,
+		Status:          a.Status,
+		APIKey:          a.APIKey,
+		AgentVersion:    a.AgentVersion,
+		ResticVersion:   a.ResticVersion,
+		RcloneVersion:   a.RcloneVersion,
+		HasRcloneConfig: a.RcloneConfig != nil && *a.RcloneConfig != "",
+		LastHeartbeat:   a.LastHeartbeat,
+		LastJobAt:       a.LastJobAt,
+		ConfigVersion:   a.ConfigVersion,
+		ConfigAppliedAt: a.ConfigAppliedAt,
+		CreatedAt:       a.CreatedAt,
+		UpdatedAt:       a.UpdatedAt,
+	}
+}
+
 func listAgentsHandler(db *database.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		agents, err := db.ListAgents(r.Context())
@@ -24,10 +67,11 @@ func listAgentsHandler(db *database.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if agents == nil {
-			agents = []database.Agent{}
+		resp := make([]agentResponse, 0, len(agents))
+		for i := range agents {
+			resp = append(resp, toAgentResponse(&agents[i]))
 		}
-		writeJSON(w, http.StatusOK, agents)
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
@@ -43,7 +87,7 @@ func getAgentHandler(db *database.DB) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "agent not found")
 			return
 		}
-		writeJSON(w, http.StatusOK, agent)
+		writeJSON(w, http.StatusOK, toAgentResponse(agent))
 	}
 }
 
@@ -92,7 +136,7 @@ func approveAgentHandler(db *database.DB, cmdr AgentCommander, resolver *configp
 		if err != nil {
 			log.Printf("Failed to reload agent %s after approval: %v", id, err)
 		}
-		writeJSON(w, http.StatusOK, agent)
+		writeJSON(w, http.StatusOK, toAgentResponse(agent))
 	}
 }
 
@@ -125,7 +169,7 @@ func rejectAgentHandler(db *database.DB, cmdr AgentCommander) http.HandlerFunc {
 		if err != nil {
 			log.Printf("Failed to reload agent %s after rejection: %v", id, err)
 		}
-		writeJSON(w, http.StatusOK, agent)
+		writeJSON(w, http.StatusOK, toAgentResponse(agent))
 	}
 }
 
@@ -137,6 +181,26 @@ func deleteAgentHandler(db *database.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	}
+}
+
+func getRcloneHandler(db *database.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		agent, err := db.GetAgent(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if agent == nil {
+			writeError(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		config := ""
+		if agent.RcloneConfig != nil {
+			config = *agent.RcloneConfig
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"rclone_config": config})
 	}
 }
 
@@ -152,9 +216,14 @@ func updateRcloneHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 			return
 		}
 
-		if err := db.UpdateRcloneConfig(r.Context(), id, input.RcloneConfig); err != nil {
-			writeError(w, http.StatusNotFound, err.Error())
-			return
+		// Blank config keeps existing value — the rclone update only touches
+		// the rclone_config column, so skipping the write preserves the stored
+		// value (unlike repository updates which rewrite all columns).
+		if input.RcloneConfig != "" {
+			if err := db.UpdateRcloneConfig(r.Context(), id, input.RcloneConfig); err != nil {
+				writeError(w, http.StatusNotFound, err.Error())
+				return
+			}
 		}
 
 		// Push updated config to agent.
@@ -168,6 +237,6 @@ func updateRcloneHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 		if err != nil {
 			log.Printf("Failed to reload agent %s after rclone update: %v", id, err)
 		}
-		writeJSON(w, http.StatusOK, agent)
+		writeJSON(w, http.StatusOK, toAgentResponse(agent))
 	}
 }

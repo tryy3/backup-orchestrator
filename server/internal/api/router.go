@@ -56,6 +56,7 @@ func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolv
 		r.Post("/agents/{id}/approve", approveAgentHandler(db, cmdr, resolver))
 		r.Post("/agents/{id}/reject", rejectAgentHandler(db, cmdr))
 		r.Delete("/agents/{id}", deleteAgentHandler(db))
+		r.Get("/agents/{id}/rclone", getRcloneHandler(db))
 		r.Put("/agents/{id}/rclone", updateRcloneHandler(db, resolver))
 
 		// Repositories

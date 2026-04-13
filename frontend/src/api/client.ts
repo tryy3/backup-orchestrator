@@ -61,6 +61,8 @@ export const agents = {
   approve: (id: string) => request<Agent>(`/agents/${id}/approve`, { method: 'POST' }),
   reject: (id: string) => request<Agent>(`/agents/${id}/reject`, { method: 'POST' }),
   remove: (id: string) => request<void>(`/agents/${id}`, { method: 'DELETE' }),
+  getRclone: (id: string) =>
+    request<{ rclone_config: string }>(`/agents/${id}/rclone`),
   updateRclone: (id: string, config: string) =>
     request<void>(`/agents/${id}/rclone`, {
       method: 'PUT',

@@ -9,7 +9,7 @@ export interface Agent {
   agent_version: string
   restic_version: string
   rclone_version: string
-  rclone_config: string
+  has_rclone_config: boolean
   last_heartbeat: string | null
   last_job_at: string | null
   config_version: number
@@ -25,7 +25,6 @@ export interface Repository {
   agent_id: string | null
   type: 'local' | 'rclone' | 'sftp' | 's3' | 'b2' | 'rest' | 'azure' | 'gs'
   path: string
-  password: string
   created_at: string
   updated_at: string
 }
@@ -36,7 +35,7 @@ export interface RepositoryCreate {
   agent_id?: string
   type: string
   path: string
-  password: string
+  password?: string
 }
 
 export interface RetentionPolicy {
