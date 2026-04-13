@@ -16,7 +16,7 @@ type Agent struct {
 	Hostname        string     `json:"hostname"`
 	OS              *string    `json:"os,omitempty"`
 	Status          string     `json:"status"`
-	APIKey          *string    `json:"api_key,omitempty"`
+	APIKey          *string    `json:"-"`
 	AgentVersion    *string    `json:"agent_version,omitempty"`
 	ResticVersion   *string    `json:"restic_version,omitempty"`
 	RcloneVersion   *string    `json:"rclone_version,omitempty"`
