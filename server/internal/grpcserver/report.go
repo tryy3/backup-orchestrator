@@ -152,6 +152,13 @@ func (s *GRPCServer) ReportJob(ctx context.Context, req *backupv1.JobReport) (*b
 
 // storeJobReport either updates an existing planned/running job or creates a new one.
 func (s *GRPCServer) storeJobReport(ctx context.Context, job *database.Job) error {
+	// Aborted reports record a rejected trigger (e.g. duplicate trigger for a
+	// plan that is already running). They must never overwrite an actively
+	// running job's row; always create a new entry so both are visible.
+	if job.Status == "aborted" {
+		return s.db.CreateJob(ctx, job)
+	}
+
 	// Try to find a planned/running job to update.
 	if job.PlanID != nil && *job.PlanID != "" {
 		planned, err := s.db.FindPlannedJob(ctx, job.AgentID, *job.PlanID)

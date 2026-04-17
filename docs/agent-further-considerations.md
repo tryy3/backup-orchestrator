@@ -56,13 +56,53 @@ Items surfaced during the internal code review that are worth exploring but fall
 
 ## 5. Concurrent Backup Job Execution
 
-**Current state**: The scheduler tracks a single `currentJob` and reports it in heartbeats. `TriggerNow` fires a goroutine, so it's possible for a manual trigger and a scheduled backup to overlap. The `currentJob` tracking would overwrite the first job's status.
+**Status**: Resolved. See the concurrency policy below.
 
-**Options to explore**:
-- Decide on a policy: allow concurrent jobs, or queue/reject overlapping triggers.
-- If allowing concurrency, change `currentJob` to a slice/map and report all running jobs.
-- If serializing, add a job queue with a single worker goroutine.
-- Consider per-repository locking — restic itself can't safely run concurrent operations on the same repo.
+### Policy
+
+- **Different backup plans may run concurrently.** The agent tracks running
+  jobs in a per-plan map keyed by plan ID, so two plans can execute at the
+  same time without interfering with each other's bookkeeping.
+- **The same plan must not run concurrently.** If a trigger (manual or
+  scheduled) arrives while a job for that plan is already running, the new
+  trigger is **aborted immediately** — no queue, no waiting. The rejection is
+  reported to the server as a `JobReport` with `status = "aborted"` so the
+  operator can see it in job history.
+
+This matches the common failure mode where a user manually re-triggers a
+plan that the cron scheduler has already started (or clicks "backup now"
+multiple times in quick succession).
+
+### Implementation notes
+
+- `agent/internal/scheduler/scheduler.go` uses `currentJobs map[string]*JobStatus`
+  (plan ID → running job). A `tryStartJob` helper acquires the per-plan slot
+  atomically before a goroutine is launched for either the scheduled cron
+  callback or a `TriggerNow` request.
+- Heartbeat `CurrentJob` (proto `RunningJob`) currently models a single
+  running job. When multiple plans are running concurrently, the
+  earliest-started one is reported in the heartbeat. The JobReport at
+  completion is the authoritative source of truth for each run.
+- Server-side `storeJobReport` treats `aborted` reports specially: they
+  always create a new job row instead of replacing an existing
+  `planned`/`running` job, so the genuinely running job's row is not
+  overwritten by the rejection.
+
+### restic repository locking
+
+restic uses file-based locks inside the repository itself:
+
+- `restic backup` acquires a **non-exclusive (shared)** lock, so multiple
+  concurrent `backup` operations against the same repository are safe —
+  including from different machines.
+- `forget`, `prune`, and `check` acquire an **exclusive** lock and will fail
+  fast (or wait, depending on flags) if other operations hold a lock.
+
+Because restic handles concurrency correctly at the repository level,
+**no agent-level per-repository lock is needed.** If a restic operation
+fails because the repository is locked by another process, the error
+surfaces as a normal backup failure and it is up to the user to schedule
+overlapping routines so that they don't fight for exclusive operations.
 
 ---
 
