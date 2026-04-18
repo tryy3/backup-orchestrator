@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/tryy3/backup-orchestrator/agent/internal/atomicfile"
 )
 
 // Identity holds the agent's enrollment credentials.
@@ -33,14 +35,14 @@ func Load(dataDir string) (*Identity, error) {
 	return &id, nil
 }
 
-// Save writes the identity to {dataDir}/identity.json.
+// Save writes the identity to {dataDir}/identity.json atomically.
 func Save(dataDir string, id *Identity) error {
 	path := filepath.Join(dataDir, "identity.json")
 	data, err := json.MarshalIndent(id, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshaling identity: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := atomicfile.Write(path, data, 0o600); err != nil {
 		return fmt.Errorf("writing identity file: %w", err)
 	}
 	return nil
