@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log"
+	"log/slog"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -53,7 +53,7 @@ func (s *GRPCServer) Connect(stream backupv1.BackupService_ConnectServer) error 
 	s.mgr.Register(agentID, sendCh)
 	defer s.mgr.Unregister(agentID)
 
-	log.Printf("Agent %s (%s) connected, status=%s", agentID, agent.Hostname, agent.Status)
+	slog.Info("agent connected", "agent_id", agentID, "hostname", agent.Hostname, "status", agent.Status)
 
 	// Broadcast agent.connected event.
 	s.hub.Broadcast(events.Event{
@@ -117,7 +117,7 @@ func (s *GRPCServer) Connect(stream backupv1.BackupService_ConnectServer) error 
 	// and stops the send goroutine. No manual close(sendCh) here —
 	// Unregister owns the channel lifecycle to prevent races.
 
-	log.Printf("Agent %s disconnected", agentID)
+	slog.Info("agent disconnected", "agent_id", agentID)
 
 	// Broadcast agent.disconnected event.
 	s.hub.Broadcast(events.Event{
@@ -179,7 +179,7 @@ func (s *GRPCServer) handleAgentMessage(ctx context.Context, agentID, agentStatu
 
 		// Update database.
 		if err := s.db.UpdateHeartbeat(ctx, agentID, hb.AgentVersion, hb.ResticVersion, hb.RcloneVersion); err != nil {
-			log.Printf("Failed to update heartbeat for agent %s: %v", agentID, err)
+			slog.Error("failed to update heartbeat", "agent_id", agentID, "error", err)
 		}
 
 		// Broadcast agent.heartbeat event.
@@ -196,10 +196,10 @@ func (s *GRPCServer) handleAgentMessage(ctx context.Context, agentID, agentStatu
 		if ack.Success {
 			now := time.Now().UTC()
 			if err := s.db.UpdateConfigApplied(ctx, agentID, now); err != nil {
-				log.Printf("Failed to update config applied for agent %s: %v", agentID, err)
+				slog.Error("failed to update config applied", "agent_id", agentID, "error", err)
 			}
 		} else {
-			log.Printf("Agent %s failed to apply config version %d: %s", agentID, ack.ConfigVersion, ack.Error)
+			slog.Warn("agent failed to apply config", "agent_id", agentID, "config_version", ack.ConfigVersion, "error", ack.Error)
 		}
 
 	case *backupv1.AgentMessage_CommandResult:
@@ -209,7 +209,7 @@ func (s *GRPCServer) handleAgentMessage(ctx context.Context, agentID, agentStatu
 		s.handleLiveLogs(ctx, agentID, payload.LiveLogs)
 
 	default:
-		log.Printf("Unknown message type from agent %s", agentID)
+		slog.Warn("unknown message type from agent", "agent_id", agentID)
 	}
 }
 
@@ -223,7 +223,7 @@ func (s *GRPCServer) handleJobStarted(ctx context.Context, agentID string, curre
 	// Look up plans for this agent to find the plan ID from the plan name.
 	plans, err := s.db.ListPlans(ctx, agentID)
 	if err != nil {
-		log.Printf("Failed to list plans for agent %s: %v", agentID, err)
+		slog.Error("failed to list plans for agent", "agent_id", agentID, "error", err)
 		return
 	}
 
@@ -236,14 +236,14 @@ func (s *GRPCServer) handleJobStarted(ctx context.Context, agentID string, curre
 	}
 
 	if planID == "" {
-		log.Printf("No plan found named %q for agent %s", currentJob.PlanName, agentID)
+		slog.Warn("no plan found for agent", "plan_name", currentJob.PlanName, "agent_id", agentID)
 		return
 	}
 
 	// Find planned job and update to running.
 	planned, err := s.db.FindPlannedJob(ctx, agentID, planID)
 	if err != nil {
-		log.Printf("Failed to find planned job for agent %s plan %s: %v", agentID, planID, err)
+		slog.Error("failed to find planned job", "agent_id", agentID, "plan_id", planID, "error", err)
 		return
 	}
 
@@ -251,7 +251,7 @@ func (s *GRPCServer) handleJobStarted(ctx context.Context, agentID string, curre
 	if planned != nil {
 		jobID = planned.ID
 		if err := s.db.UpdateJobStatus(ctx, planned.ID, "running", nil, nil); err != nil {
-			log.Printf("Failed to update planned job %s to running: %v", planned.ID, err)
+			slog.Error("failed to update planned job to running", "job_id", planned.ID, "error", err)
 		}
 	}
 
@@ -292,7 +292,7 @@ func (s *GRPCServer) handleLiveLogs(ctx context.Context, agentID string, ll *bac
 	// Append to the running job's log_tail in the database.
 	if ll.GetJobId() != "" {
 		if err := s.db.AppendJobLogs(ctx, ll.GetJobId(), dbEntries); err != nil {
-			log.Printf("Failed to append live logs for job %s: %v", ll.GetJobId(), err)
+			slog.Error("failed to append live logs", "job_id", ll.GetJobId(), "error", err)
 		}
 	}
 

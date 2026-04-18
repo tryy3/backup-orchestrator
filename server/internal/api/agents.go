@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -127,14 +127,14 @@ func approveAgentHandler(db *database.DB, cmdr AgentCommander, resolver *configp
 			// Push initial config to the newly approved agent.
 			go func() {
 				if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
-					log.Printf("failed to push config to agent %s after approval: %v", id, err)
+					slog.Error("failed to push config to agent after approval", "agent_id", id, "error", err)
 				}
 			}()
 		}
 
 		agent, err := db.GetAgent(r.Context(), id)
 		if err != nil {
-			log.Printf("Failed to reload agent %s after approval: %v", id, err)
+			slog.Error("failed to reload agent after approval", "agent_id", id, "error", err)
 		}
 		writeJSON(w, http.StatusOK, toAgentResponse(agent))
 	}
@@ -167,7 +167,7 @@ func rejectAgentHandler(db *database.DB, cmdr AgentCommander) http.HandlerFunc {
 
 		agent, err := db.GetAgent(r.Context(), id)
 		if err != nil {
-			log.Printf("Failed to reload agent %s after rejection: %v", id, err)
+			slog.Error("failed to reload agent after rejection", "agent_id", id, "error", err)
 		}
 		writeJSON(w, http.StatusOK, toAgentResponse(agent))
 	}
@@ -229,13 +229,13 @@ func updateRcloneHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 		// Push updated config to agent.
 		go func() {
 			if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
-				log.Printf("failed to push config to agent %s after rclone update: %v", id, err)
+				slog.Error("failed to push config to agent after rclone update", "agent_id", id, "error", err)
 			}
 		}()
 
 		agent, err := db.GetAgent(r.Context(), id)
 		if err != nil {
-			log.Printf("Failed to reload agent %s after rclone update: %v", id, err)
+			slog.Error("failed to reload agent after rclone update", "agent_id", id, "error", err)
 		}
 		writeJSON(w, http.StatusOK, toAgentResponse(agent))
 	}

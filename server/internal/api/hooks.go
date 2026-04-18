@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -129,7 +129,10 @@ func reorderHooksHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 
 		pushConfigForPlan(r.Context(), db, resolver, planID)
 
-		hooks, _ := db.ListHooks(r.Context(), planID)
+		hooks, err := db.ListHooks(r.Context(), planID)
+		if err != nil {
+			slog.Error("failed to list hooks after reorder", "plan_id", planID, "error", err)
+		}
 		if hooks == nil {
 			hooks = []database.PlanHook{}
 		}
@@ -140,12 +143,16 @@ func reorderHooksHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 // pushConfigForPlan looks up the plan's agent and triggers a config push.
 func pushConfigForPlan(ctx context.Context, db *database.DB, resolver *configpush.Resolver, planID string) {
 	plan, err := db.GetPlan(ctx, planID)
-	if err != nil || plan == nil {
+	if err != nil {
+		slog.Error("failed to get plan for config push", "plan_id", planID, "error", err)
+		return
+	}
+	if plan == nil {
 		return
 	}
 	go func() {
 		if err := resolver.PushConfigToAgent(context.Background(), plan.AgentID); err != nil {
-			log.Printf("failed to push config to agent %s for plan %s: %v", plan.AgentID, planID, err)
+			slog.Error("failed to push config to agent", "agent_id", plan.AgentID, "plan_id", planID, "error", err)
 		}
 	}()
 }

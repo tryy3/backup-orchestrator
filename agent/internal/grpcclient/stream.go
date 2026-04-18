@@ -68,7 +68,13 @@ func NewStreamHandler(
 // It returns when the stream disconnects or the context is cancelled.
 // The caller is responsible for reconnection with exponential backoff.
 func (s *StreamHandler) Run(ctx context.Context) error {
-	stream, err := s.client.client.Connect(ctx)
+	// Per-attempt context: cancelling this also cancels the underlying stream,
+	// which makes stream.Recv() return immediately instead of blocking until
+	// a TCP timeout on half-open connections.
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	defer streamCancel()
+
+	stream, err := s.client.client.Connect(streamCtx)
 	if err != nil {
 		return fmt.Errorf("opening connect stream: %w", err)
 	}
@@ -77,10 +83,6 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 	if err := s.sendHeartbeat(stream); err != nil {
 		return fmt.Errorf("sending initial heartbeat: %w", err)
 	}
-
-	// Derived context so we can signal both goroutines to stop when Run exits.
-	runCtx, runCancel := context.WithCancel(ctx)
-	defer runCancel()
 
 	// outboundCh funnels all messages from the recv goroutine (config acks,
 	// command results) into the single send goroutine so that stream.Send is
@@ -125,7 +127,7 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 
 		for {
 			select {
-			case <-runCtx.Done():
+			case <-streamCtx.Done():
 				flushLogs()
 				// Drain remaining outbound messages from in-flight handlers.
 				for msg := range outboundCh {
@@ -208,8 +210,8 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 		retErr = ctx.Err()
 	}
 
-	// Cancel derived context to signal the other goroutine, then wait.
-	runCancel()
+	// Cancel stream context to unblock Recv and signal the other goroutine.
+	streamCancel()
 
 	// Wait for in-flight handler goroutines so their outbound messages
 	// are enqueued before we drain the channel.
