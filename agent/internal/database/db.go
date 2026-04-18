@@ -23,7 +23,7 @@ type DB struct {
 }
 
 // Open creates or opens the agent SQLite database at {dataDir}/state.db,
-// enables WAL mode and foreign keys, and runs migrations.
+// enables WAL mode, foreign keys, and recommended SQLite pragmas, and runs migrations.
 func Open(dataDir string) (*DB, error) {
 	dbPath := filepath.Join(dataDir, "state.db")
 	sqlDB, err := sql.Open("sqlite", dbPath)
@@ -32,13 +32,32 @@ func Open(dataDir string) (*DB, error) {
 	}
 
 	// Limit to a single connection — SQLite only supports one writer.
+	// Pin the idle connection so pragmas set at open time are never lost
+	// when database/sql closes and reopens the underlying connection.
 	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+	sqlDB.SetConnMaxIdleTime(0)
 
-	// Enable WAL mode and foreign keys.
+	// Enable WAL mode for better concurrent read performance.
 	if _, err := sqlDB.ExecContext(context.Background(), "PRAGMA journal_mode=WAL"); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("setting WAL mode: %w", err)
 	}
+
+	// Retry on SQLITE_BUSY for up to 5 seconds instead of failing immediately.
+	if _, err := sqlDB.ExecContext(context.Background(), "PRAGMA busy_timeout=5000"); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("setting busy timeout: %w", err)
+	}
+
+	// NORMAL is the recommended pairing for WAL: durable across app crashes,
+	// significantly faster than the default FULL.
+	if _, err := sqlDB.ExecContext(context.Background(), "PRAGMA synchronous=NORMAL"); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("setting synchronous mode: %w", err)
+	}
+
+	// Enable foreign key enforcement.
 	if _, err := sqlDB.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("enabling foreign keys: %w", err)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -263,36 +262,7 @@ func run() error {
 			liveLogCh,
 		)
 
-		backoff := time.Second
-		maxBackoff := 5 * time.Minute
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			slog.Info("connecting to server...", "source", "agent")
-			err := streamHandler.Run(ctx)
-			if ctx.Err() != nil {
-				return // context cancelled, shutting down
-			}
-			slog.Warn("stream disconnected", "source", "agent", "error", err)
-
-			// Flush any buffered reports on reconnect.
-			rep.FlushNow()
-
-			slog.Info("reconnecting", "source", "agent", "backoff", backoff)
-			select {
-			case <-time.After(backoff):
-			case <-ctx.Done():
-				return
-			}
-
-			// Exponential backoff with cap.
-			backoff = time.Duration(math.Min(float64(backoff*2), float64(maxBackoff)))
-		}
+		runReconnectLoop(ctx, streamHandler.Run, rep.FlushNow, realSleep, time.Now)
 	}()
 
 	// Step 12: If local config exists, start scheduler immediately.
