@@ -1,8 +1,10 @@
 package identity
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -19,7 +21,8 @@ func TestLoadMissingFile(t *testing.T) {
 
 func TestSaveAndLoad(t *testing.T) {
 	dir := t.TempDir()
-	original := &Identity{AgentID: "agent-123", APIKey: "key-456"}
+	original := &Identity{AgentID: "agent-123"}
+	original.SetAPIKey("key-456")
 
 	if err := Save(dir, original); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -32,14 +35,16 @@ func TestSaveAndLoad(t *testing.T) {
 	if loaded.AgentID != original.AgentID {
 		t.Errorf("AgentID: got %q, want %q", loaded.AgentID, original.AgentID)
 	}
-	if loaded.APIKey != original.APIKey {
-		t.Errorf("APIKey: got %q, want %q", loaded.APIKey, original.APIKey)
+	if loaded.GetAPIKey() != original.GetAPIKey() {
+		t.Errorf("APIKey: got %q, want %q", loaded.GetAPIKey(), original.GetAPIKey())
 	}
 }
 
 func TestSaveFilePermissions(t *testing.T) {
 	dir := t.TempDir()
-	if err := Save(dir, &Identity{AgentID: "a", APIKey: "b"}); err != nil {
+	id := &Identity{AgentID: "a"}
+	id.SetAPIKey("b")
+	if err := Save(dir, id); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
@@ -72,10 +77,14 @@ func TestLoadCorruptedFile(t *testing.T) {
 func TestSaveOverwrite(t *testing.T) {
 	dir := t.TempDir()
 
-	if err := Save(dir, &Identity{AgentID: "old", APIKey: "old-key"}); err != nil {
+	old := &Identity{AgentID: "old"}
+	old.SetAPIKey("old-key")
+	if err := Save(dir, old); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if err := Save(dir, &Identity{AgentID: "new", APIKey: "new-key"}); err != nil {
+	newID := &Identity{AgentID: "new"}
+	newID.SetAPIKey("new-key")
+	if err := Save(dir, newID); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
@@ -86,4 +95,28 @@ func TestSaveOverwrite(t *testing.T) {
 	if loaded.AgentID != "new" {
 		t.Errorf("AgentID: got %q, want %q", loaded.AgentID, "new")
 	}
+}
+
+// TestAPIKeyConcurrentAccess verifies that concurrent SetAPIKey / GetAPIKey
+// calls do not race. Run with -race to exercise the detector.
+func TestAPIKeyConcurrentAccess(t *testing.T) {
+	id := &Identity{AgentID: "agent-123"}
+	id.SetAPIKey("initial-key")
+
+	const goroutines = 10
+	var wg sync.WaitGroup
+	wg.Add(goroutines * 2)
+
+	for i := range goroutines {
+		go func(n int) {
+			defer wg.Done()
+			id.SetAPIKey(fmt.Sprintf("key-%d", n))
+		}(i)
+		go func() {
+			defer wg.Done()
+			_ = id.GetAPIKey()
+		}()
+	}
+
+	wg.Wait()
 }

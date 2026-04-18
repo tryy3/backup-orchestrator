@@ -6,14 +6,59 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/tryy3/backup-orchestrator/agent/internal/atomicfile"
 )
 
 // Identity holds the agent's enrollment credentials.
+// AgentID is set once at registration and never mutated; it is safe to read
+// directly. APIKey may be written after approval and must be accessed via
+// SetAPIKey / GetAPIKey to avoid data races.
 type Identity struct {
 	AgentID string `json:"agent_id"`
+	apiKey  string
+	mu      sync.RWMutex
+}
+
+// SetAPIKey stores the API key in a thread-safe manner.
+func (id *Identity) SetAPIKey(key string) {
+	id.mu.Lock()
+	defer id.mu.Unlock()
+	id.apiKey = key
+}
+
+// GetAPIKey returns the API key in a thread-safe manner.
+func (id *Identity) GetAPIKey() string {
+	id.mu.RLock()
+	defer id.mu.RUnlock()
+	return id.apiKey
+}
+
+// identityJSON is the on-disk representation used for marshaling.
+type identityJSON struct {
+	AgentID string `json:"agent_id"`
 	APIKey  string `json:"api_key"`
+}
+
+// MarshalJSON implements json.Marshaler for thread-safe serialization.
+func (id *Identity) MarshalJSON() ([]byte, error) {
+	id.mu.RLock()
+	defer id.mu.RUnlock()
+	return json.Marshal(&identityJSON{AgentID: id.AgentID, APIKey: id.apiKey})
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (id *Identity) UnmarshalJSON(data []byte) error {
+	var tmp identityJSON
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return err
+	}
+	id.AgentID = tmp.AgentID
+	id.mu.Lock()
+	id.apiKey = tmp.APIKey
+	id.mu.Unlock()
+	return nil
 }
 
 // Load reads the identity from {dataDir}/identity.json.

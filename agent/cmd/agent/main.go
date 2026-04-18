@@ -131,12 +131,10 @@ func run() error {
 
 	// ReportFunc for scheduler: buffer the report and attempt delivery.
 	reportFn := func(report *backupv1.JobReport) {
-		configMu.RLock()
 		if id != nil {
 			report.AgentId = id.AgentID
-			report.ApiKey = id.APIKey
+			report.ApiKey = id.GetAPIKey()
 		}
-		configMu.RUnlock()
 
 		// Record local job.
 		startedAt := ""
@@ -202,9 +200,7 @@ func run() error {
 			id,
 			// onApproval: save API key to identity.
 			func(agentID, apiKey string) {
-				configMu.Lock()
-				id.APIKey = apiKey
-				configMu.Unlock()
+				id.SetAPIKey(apiKey)
 
 				if err := identity.Save(cfg.DataDir, id); err != nil {
 					slog.Error("error saving identity after approval", "source", "agent", "error", err)
