@@ -39,6 +39,7 @@ type StreamHandler struct {
 	liveLogCh         <-chan *backupv1.LogEntry // receives live log entries from running jobs
 	heartbeatInterval time.Duration
 	heartbeatMu       sync.RWMutex
+	intervalUpdateCh  chan time.Duration // signals the send goroutine to reset the heartbeat ticker
 }
 
 // NewStreamHandler creates a new StreamHandler.
@@ -60,6 +61,7 @@ func NewStreamHandler(
 		jobStatusFn:       jobStatusFn,
 		liveLogCh:         liveLogCh,
 		heartbeatInterval: 30 * time.Second,
+		intervalUpdateCh:  make(chan time.Duration, 1),
 	}
 }
 
@@ -150,6 +152,8 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 					errCh <- fmt.Errorf("sending heartbeat: %w", err)
 					return
 				}
+			case newInterval := <-s.intervalUpdateCh:
+				ticker.Reset(newInterval)
 			case entry, ok := <-s.liveLogCh:
 				if !ok {
 					flushLogs()
@@ -302,10 +306,18 @@ func (s *StreamHandler) handleConfig(outboundCh chan<- *backupv1.AgentMessage, c
 
 	// Apply heartbeat interval if provided.
 	if hb := cfg.GetHeartbeatIntervalSecs(); hb > 0 {
+		newInterval := time.Duration(hb) * time.Second
 		s.heartbeatMu.Lock()
-		s.heartbeatInterval = time.Duration(hb) * time.Second
+		s.heartbeatInterval = newInterval
 		s.heartbeatMu.Unlock()
 		slog.Info("heartbeat interval updated", "source", "stream", "interval_secs", hb)
+		// Signal the send goroutine to reset the heartbeat ticker.
+		// Non-blocking: if a pending update is already queued the send
+		// goroutine will consume it shortly.
+		select {
+		case s.intervalUpdateCh <- newInterval:
+		default:
+		}
 	}
 
 	if s.onConfig != nil {
