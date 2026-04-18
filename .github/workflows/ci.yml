@@ -9,10 +9,66 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+      agent: ${{ steps.filter.outputs.agent }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      proto: ${{ steps.filter.outputs.proto }}
+      go: ${{ steps.filter.outputs.go }}
+      build: ${{ steps.filter.outputs.build }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            server:
+              - 'server/**'
+              - 'proto/**'
+              - '.github/workflows/**'
+              - '.golangci.yml'
+              - 'justfile'
+            agent:
+              - 'agent/**'
+              - 'proto/**'
+              - '.github/workflows/**'
+              - '.golangci.yml'
+              - 'justfile'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/**'
+            proto:
+              - 'proto/**'
+              - '.github/workflows/**'
+            go:
+              - 'server/**'
+              - 'agent/**'
+              - 'proto/**'
+              - '.github/workflows/**'
+              - '.golangci.yml'
+              - 'justfile'
+            build:
+              - 'server/**'
+              - 'agent/**'
+              - 'frontend/**'
+              - 'proto/**'
+              - '.github/workflows/**'
+              - 'docker/**'
+              - 'justfile'
+
   # ── Go: server tests ────────────────────────────────────────────────────────
   test-server:
     name: Test (server)
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
     steps:
       - uses: actions/checkout@v6
 
@@ -45,6 +101,8 @@ jobs:
   test-agent:
     name: Test (agent)
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.agent == 'true'
     steps:
       - uses: actions/checkout@v6
 
@@ -74,6 +132,8 @@ jobs:
   test-frontend:
     name: Test (frontend)
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.frontend == 'true'
     steps:
       - uses: actions/checkout@v6
 
@@ -92,6 +152,8 @@ jobs:
   fmt-vet:
     name: fmt + vet
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.go == 'true'
     steps:
       - uses: actions/checkout@v6
 
@@ -145,6 +207,8 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.build == 'true'
     steps:
       - uses: actions/checkout@v6
 
@@ -191,7 +255,8 @@ jobs:
   lint:
     name: Lint (golangci-lint)
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.go == 'true'
     steps:
       - uses: actions/checkout@v6
 
@@ -235,7 +300,8 @@ jobs:
   proto-check:
     name: Proto (lint + breaking)
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.proto == 'true'
     permissions:
       contents: read
       pull-requests: write
