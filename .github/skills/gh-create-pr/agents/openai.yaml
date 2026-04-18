@@ -1,4 +1,25 @@
 interface:
   display_name: "Create GitHub PR"
-  short_description: "Create PRs with required template compliance"
-  default_prompt: "Create a pull request for my current branch using the repository template workflow."
+  short_description: "Create or update PRs with required template and labels"
+  default_prompt: |
+    Create or update a pull request for my current branch using the repository template workflow.
+
+    Reliability requirements:
+    - Read .github/pull_request_template.md first and preserve all sections.
+    - Determine base/head from current branch context (default base: main unless user says otherwise).
+    - Before creating, run preflight checks:
+      1) export GH_PAGER=cat and export PAGER=cat
+      2) detect existing open PR for head->base with:
+         gh pr list --state open --head <head> --base <base> --json url --jq '.[0].url'
+      3) if an existing PR is found, do not run gh pr create again; report URL and use gh pr edit if updates are needed.
+    - Show the full PR body in chat and request confirmation before creation unless the user explicitly waives preview.
+    - Use a two-step create flow in terminal agents:
+      1) write body to a temp file
+      2) run gh pr create as a separate command
+      Do not chain a long heredoc and gh pr create in one command.
+    - Validate body file exists before create: test -s "$pr_body_file"
+    - Always include required labels in gh pr create:
+      - exactly one type/*
+      - at least one area/*
+      - optional impact/* when relevant
+    - If gh pr create reports "already exists", treat that as success for creation intent and switch to verify/update mode.
