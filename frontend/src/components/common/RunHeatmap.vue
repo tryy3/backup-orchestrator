@@ -5,7 +5,7 @@ import { formatDate, formatDuration, durationBetween } from '../../utils/time'
 
 export interface HeatmapRun {
   id: string
-  status: 'success' | 'partial' | 'failed' | 'running' | 'planned'
+  status: 'success' | 'partial' | 'failed' | 'running' | 'planned' | 'aborted'
   started_at: string
   finished_at: string | null
   plan_name?: string
@@ -35,6 +35,7 @@ function cellColor(run: HeatmapRun): string {
   if (run.status === 'success') return 'bg-green-500'
   if (run.status === 'partial') return 'bg-amber-500'
   if (run.status === 'failed') return 'bg-red-500'
+  if (run.status === 'aborted') return 'bg-slate-500'
   return 'bg-slate-600'
 }
 

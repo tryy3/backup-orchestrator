@@ -2,7 +2,7 @@ package events
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/google/uuid"
@@ -39,7 +39,7 @@ func (h *Hub) Register() (clientID string, events <-chan []byte) {
 	h.clients[id] = ch
 	h.mu.Unlock()
 
-	log.Printf("WebSocket client %s registered (%d total)", id, h.ClientCount())
+	slog.Info("WebSocket client registered", "client_id", id, "total", h.ClientCount())
 	return id, ch
 }
 
@@ -52,7 +52,7 @@ func (h *Hub) Unregister(clientID string) {
 	}
 	h.mu.Unlock()
 
-	log.Printf("WebSocket client %s unregistered", clientID)
+	slog.Info("WebSocket client unregistered", "client_id", clientID)
 }
 
 // Broadcast sends an event to all connected clients.
@@ -67,7 +67,7 @@ func (h *Hub) Broadcast(event Event) {
 
 	data, err := json.Marshal(event)
 	if err != nil {
-		log.Printf("Failed to marshal event %s: %v", event.Type, err)
+		slog.Error("failed to marshal event", "type", event.Type, "error", err)
 		return
 	}
 
@@ -78,7 +78,7 @@ func (h *Hub) Broadcast(event Event) {
 		select {
 		case ch <- data:
 		default:
-			log.Printf("WebSocket client %s buffer full, dropping event %s", id, event.Type)
+			slog.Warn("WebSocket client buffer full, dropping event", "client_id", id, "type", event.Type)
 		}
 	}
 }

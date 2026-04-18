@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 
 	backupv1 "github.com/tryy3/backup-orchestrator/server/internal/gen/backup/v1"
 
@@ -115,7 +115,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 	}
 	if bpVal != nil {
 		if parseErr := json.Unmarshal([]byte(*bpVal), &blockedPaths); parseErr != nil {
-			log.Printf("Warning: failed to parse file_browser_blocked_paths setting: %v", parseErr)
+			slog.Warn("failed to parse file_browser_blocked_paths setting", "error", parseErr)
 		}
 	}
 
@@ -163,7 +163,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		// Resolve hooks for this plan.
 		hooks, hookErr := r.db.ListHooks(ctx, p.ID)
 		if hookErr != nil {
-			log.Printf("Failed to load hooks for plan %s: %v", p.ID, hookErr)
+			slog.Error("failed to load hooks for plan", "plan_id", p.ID, "error", hookErr)
 			continue
 		}
 
@@ -178,7 +178,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 				// Resolve from script.
 				script, scriptErr := r.db.GetScript(ctx, *h.ScriptID)
 				if scriptErr != nil || script == nil {
-					log.Printf("Failed to resolve script %s for hook %s: %v", *h.ScriptID, h.ID, scriptErr)
+					slog.Error("failed to resolve script for hook", "script_id", *h.ScriptID, "hook_id", h.ID, "error", scriptErr)
 					continue
 				}
 				resolved.Name = script.Name
@@ -250,7 +250,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		return fmt.Errorf("send config to agent %s: %w", agentID, err)
 	}
 
-	log.Printf("Pushed config version %d to agent %s", version, agentID)
+	slog.Info("pushed config to agent", "config_version", version, "agent_id", agentID)
 	return nil
 }
 
@@ -258,14 +258,14 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 func (r *Resolver) PushConfigToAllAgents(ctx context.Context) {
 	agents, err := r.db.ListAgents(ctx)
 	if err != nil {
-		log.Printf("Failed to list agents for config push: %v", err)
+		slog.Error("failed to list agents for config push", "error", err)
 		return
 	}
 
 	for _, a := range agents {
 		if a.Status == "approved" && r.mgr.IsOnline(a.ID) {
 			if err := r.PushConfigToAgent(ctx, a.ID); err != nil {
-				log.Printf("Failed to push config to agent %s: %v", a.ID, err)
+				slog.Error("failed to push config to agent", "agent_id", a.ID, "error", err)
 			}
 		}
 	}

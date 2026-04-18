@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -88,7 +88,7 @@ func createRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 		if repo.Scope == "local" && repo.AgentID != nil {
 			go func() {
 				if err := resolver.PushConfigToAgent(context.Background(), *repo.AgentID); err != nil {
-					log.Printf("failed to push config to agent %s after repo create: %v", *repo.AgentID, err)
+					slog.Error("failed to push config to agent after repo create", "agent_id", *repo.AgentID, "error", err)
 				}
 			}()
 		}
@@ -173,7 +173,7 @@ func deleteRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 		// Find affected agents before deleting.
 		agentIDs, err := db.AgentIDsUsingRepository(r.Context(), id)
 		if err != nil {
-			log.Printf("Failed to find agents using repository %s: %v", id, err)
+			slog.Error("failed to find agents using repository", "repo_id", id, "error", err)
 		}
 
 		if err := db.DeleteRepository(r.Context(), id); err != nil {
@@ -186,7 +186,7 @@ func deleteRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 			agentID := agentID
 			go func() {
 				if err := resolver.PushConfigToAgent(context.Background(), agentID); err != nil {
-					log.Printf("failed to push config to agent %s after repo delete: %v", agentID, err)
+					slog.Error("failed to push config to agent after repo delete", "agent_id", agentID, "error", err)
 				}
 			}()
 		}
@@ -198,12 +198,12 @@ func deleteRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 func pushConfigToAgentsUsingRepo(ctx context.Context, db *database.DB, resolver *configpush.Resolver, repoID string) {
 	agentIDs, err := db.AgentIDsUsingRepository(ctx, repoID)
 	if err != nil {
-		log.Printf("error finding agents for repo %s: %v", repoID, err)
+		slog.Error("error finding agents for repo", "repo_id", repoID, "error", err)
 		return
 	}
 	for _, agentID := range agentIDs {
 		if err := resolver.PushConfigToAgent(ctx, agentID); err != nil {
-			log.Printf("failed to push config to agent %s for repo %s: %v", agentID, repoID, err)
+			slog.Error("failed to push config to agent for repo", "agent_id", agentID, "repo_id", repoID, "error", err)
 		}
 	}
 }

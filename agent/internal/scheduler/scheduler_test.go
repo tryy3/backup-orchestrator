@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -141,12 +142,13 @@ func TestJobStatusFunc_Running(t *testing.T) {
 	s := New(context.Background(), nil, nil)
 	defer s.Stop()
 
-	s.setCurrentJob("test-plan")
+	s.setCurrentJob("p1", "test-plan")
 
 	fn := s.JobStatusFunc()
 	status := fn()
 	if status == nil {
 		t.Fatal("expected non-nil job status")
+		return
 	}
 	if status.PlanName != "test-plan" {
 		t.Errorf("plan name: got %q, want %q", status.PlanName, "test-plan")
@@ -155,10 +157,117 @@ func TestJobStatusFunc_Running(t *testing.T) {
 		t.Errorf("progress: got %v, want -1", status.ProgressPercent)
 	}
 
-	s.clearCurrentJob()
+	s.clearCurrentJob("p1")
 	status = fn()
 	if status != nil {
 		t.Error("expected nil after clearing job")
+	}
+}
+
+func TestJobStatusFunc_MultiplePlans_ReturnsEarliest(t *testing.T) {
+	s := New(context.Background(), nil, nil)
+	defer s.Stop()
+
+	// Start p1 first, then p2; the earlier job must be reported in heartbeats.
+	s.setCurrentJob("p1", "first-plan")
+	time.Sleep(5 * time.Millisecond)
+	s.setCurrentJob("p2", "second-plan")
+
+	status := s.JobStatusFunc()()
+	if status == nil {
+		t.Fatal("expected non-nil job status")
+	}
+	if status.PlanName != "first-plan" {
+		t.Errorf("expected earliest plan name %q, got %q", "first-plan", status.PlanName)
+	}
+
+	// Clearing the earliest should fall back to the other running plan.
+	s.clearCurrentJob("p1")
+	status = s.JobStatusFunc()()
+	if status == nil || status.PlanName != "second-plan" {
+		t.Errorf("after clearing p1, expected second-plan, got %+v", status)
+	}
+}
+
+func TestTryStartJob_SamePlanRejected(t *testing.T) {
+	s := New(context.Background(), nil, nil)
+	defer s.Stop()
+
+	if !s.tryStartJob("p1", "daily") {
+		t.Fatal("first tryStartJob should succeed")
+	}
+	if s.tryStartJob("p1", "daily") {
+		t.Error("second tryStartJob for same plan must be rejected")
+	}
+
+	// After clearing, it should be accepted again.
+	s.clearCurrentJob("p1")
+	if !s.tryStartJob("p1", "daily") {
+		t.Error("tryStartJob after clear should succeed")
+	}
+}
+
+func TestTryStartJob_DifferentPlansAllowed(t *testing.T) {
+	s := New(context.Background(), nil, nil)
+	defer s.Stop()
+
+	if !s.tryStartJob("p1", "daily") {
+		t.Fatal("first plan should start")
+	}
+	if !s.tryStartJob("p2", "weekly") {
+		t.Error("second plan (different ID) should start concurrently")
+	}
+}
+
+func TestTriggerNow_DuplicateEmitsAbortedReport(t *testing.T) {
+	var reports []*backupv1.JobReport
+	var mu sync.Mutex
+	reportFn := func(r *backupv1.JobReport) {
+		mu.Lock()
+		defer mu.Unlock()
+		reports = append(reports, r)
+	}
+
+	s := New(context.Background(), nil, reportFn)
+	defer s.Stop()
+
+	// Simulate a job already running for this plan.
+	s.setCurrentJob("p1", "daily")
+
+	plans := []*backupv1.BackupPlan{
+		{Id: "p1", Name: "daily"},
+	}
+	s.TriggerNow("p1", plans, nil, nil)
+
+	// TriggerNow launches a goroutine; give it a moment to run.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(reports)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reports) != 1 {
+		t.Fatalf("expected 1 aborted report, got %d", len(reports))
+	}
+	r := reports[0]
+	if r.Status != "aborted" {
+		t.Errorf("status: got %q, want aborted", r.Status)
+	}
+	if r.PlanId != "p1" || r.PlanName != "daily" {
+		t.Errorf("plan fields mismatch: id=%q name=%q", r.PlanId, r.PlanName)
+	}
+	if r.Trigger != "manual" {
+		t.Errorf("trigger: got %q, want manual", r.Trigger)
+	}
+	if r.StartedAt == nil || r.FinishedAt == nil {
+		t.Error("aborted report should have started_at and finished_at set")
 	}
 }
 

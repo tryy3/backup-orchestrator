@@ -53,7 +53,7 @@ function getAgentName(id: string) {
   return agentMap.get(id) || id.slice(0, 8)
 }
 
-const statuses = ['', 'running', 'success', 'partial', 'failed']
+const statuses = ['', 'running', 'success', 'partial', 'failed', 'aborted']
 </script>
 
 <template>
