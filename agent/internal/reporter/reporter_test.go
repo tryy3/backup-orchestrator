@@ -108,12 +108,12 @@ func TestFlush_ConcurrentFlushSkipped(t *testing.T) {
 	r := New(db, nil, 0)
 	r.grpc = slow // inject slow reporter directly (same package)
 
+	ctx := context.Background()
+
 	// Buffer one report so flush has work to do.
 	if err := r.BufferReport(ctx, &backupv1.JobReport{JobId: "j1"}); err != nil {
 		t.Fatalf("BufferReport: %v", err)
 	}
-
-	ctx := context.Background()
 
 	// First flush — will block inside ReportJob.
 	go r.flush(ctx)
