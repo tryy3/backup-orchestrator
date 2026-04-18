@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
+	"github.com/tryy3/backup-orchestrator/agent/internal/atomicfile"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-// Save marshals the AgentConfig to JSON and writes it to {dataDir}/config.json.
+// Save marshals the AgentConfig to JSON and writes it atomically to {dataDir}/config.json.
 func Save(dataDir string, cfg *backupv1.AgentConfig) error {
 	path := filepath.Join(dataDir, "config.json")
 	data, err := protojson.MarshalOptions{
@@ -19,7 +20,7 @@ func Save(dataDir string, cfg *backupv1.AgentConfig) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := atomicfile.Write(path, data, 0o600); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
 	return nil
