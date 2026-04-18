@@ -54,8 +54,8 @@ func (id *Identity) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
-	id.AgentID = tmp.AgentID
 	id.mu.Lock()
+	id.AgentID = tmp.AgentID
 	id.apiKey = tmp.APIKey
 	id.mu.Unlock()
 	return nil
