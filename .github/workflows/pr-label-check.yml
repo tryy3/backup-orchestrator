@@ -1,0 +1,55 @@
+name: PR Label Check
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate-labels:
+    name: Validate required labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR labels
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const labels = context.payload.pull_request.labels.map((label) => label.name)
+            const typeLabels = labels.filter((label) => label.startsWith('type/'))
+            const areaLabels = labels.filter((label) => label.startsWith('area/'))
+
+            const docUrl = 'https://github.com/${{ github.repository }}/blob/${{ github.event.repository.default_branch }}/docs/release-workflow-plan.md#type-label-hierarchy-how-to-choose-exactly-one'
+            const messages = []
+
+            if (typeLabels.length === 0) {
+              messages.push('Missing required type label. Add exactly one label starting with type/.')
+            }
+
+            if (typeLabels.length > 1) {
+              messages.push(`Found multiple type labels: ${typeLabels.join(', ')}. Keep exactly one.`)
+            }
+
+            if (areaLabels.length === 0) {
+              messages.push('Missing required area label. Add at least one label starting with area/.')
+            }
+
+            if (messages.length > 0) {
+              core.setFailed([
+                'PR label validation failed.',
+                ...messages,
+                `See label policy: ${docUrl}`,
+              ].join('\n'))
+              return
+            }
+
+            core.notice(`PR label validation passed with ${typeLabels[0]} and ${areaLabels.join(', ')}.`)

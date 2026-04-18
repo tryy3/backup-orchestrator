@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/tryy3/backup-orchestrator/discussions
+    about: For questions, ideas, and general discussion — please use Discussions instead of opening an issue.

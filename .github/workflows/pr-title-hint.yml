@@ -1,0 +1,122 @@
+name: PR Title Hint
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  title-hint:
+    name: Non-blocking PR title hint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment with title hints when needed
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const marker = '<!-- pr-title-hint -->'
+            const pr = context.payload.pull_request
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+            const issue_number = pr.number
+            const title = (pr.title || '').trim()
+
+            const reasons = []
+            const examples = [
+              'Add backup scheduling support to agent',
+              'Fix startup crash when server config is missing',
+              'Improve restic snapshot listing performance',
+              'Update golangci-lint to v2.1',
+            ]
+
+            if (title.length < 10) {
+              reasons.push('title is very short (fewer than 10 characters)')
+            }
+
+            if (/^(wip|draft|temp)\b[:\-\s]*/i.test(title)) {
+              reasons.push('title starts with WIP/draft/temp')
+            }
+
+            if (/^fix:\s*$/i.test(title)) {
+              reasons.push('title uses `fix:` without a subject')
+            }
+
+            if (/^(fix|update|changes?|misc|tmp)$/i.test(title)) {
+              reasons.push('title is too vague to be useful in history/release notes')
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            })
+
+            const existing = comments.find(
+              (comment) =>
+                comment.user?.type === 'Bot' &&
+                typeof comment.body === 'string' &&
+                comment.body.includes(marker),
+            )
+
+            if (reasons.length === 0) {
+              if (existing) {
+                await github.rest.issues.deleteComment({
+                  owner,
+                  repo,
+                  comment_id: existing.id,
+                })
+              }
+
+              core.notice('PR title hint: title looks good; no comment needed.')
+              return
+            }
+
+            const body = [
+              marker,
+              '### Non-blocking PR title hint',
+              '',
+              'This is only a suggestion to keep squash-merge history and release notes readable.',
+              '',
+              `Current title: "${title}"`,
+              '',
+              'Potential issues detected:',
+              ...reasons.map((reason) => `- ${reason}`),
+              '',
+              'Suggested style (guidance, not enforced):',
+              '- Use a short, imperative, specific title',
+              '- Keep it under ~72 characters when practical',
+              '- Avoid trailing periods',
+              '',
+              'Example titles:',
+              ...examples.map((example) => `- ${example}`),
+              '',
+              'Reference: docs/maintainer-guidelines.md',
+            ].join('\n')
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              })
+              core.notice('PR title hint: updated existing comment.')
+              return
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            })
+            core.notice('PR title hint: added comment.')

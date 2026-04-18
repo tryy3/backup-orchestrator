@@ -159,6 +159,23 @@ clean:
     rm -rf server/coverage.out server/coverage.html
     rm -rf agent/coverage.out agent/coverage.html
 
+# ── Release ───────────────────────────────────────────────────────────────────
+
+# Generate a release note draft from merged PR release-note blocks since the last git tag.
+# Prints structured markdown to stdout — pipe to a file or review in terminal.
+# Usage: just release-notes                 (auto-detect last tag)
+#        just release-notes from-tag=v1.0.0 (explicit start tag)
+release-notes from-tag="":
+    python3 scripts/release-notes.py {{ if from-tag != "" { "--from-tag " + from-tag } else { "" } }}
+
+# Generate release notes and add an AI-written summary paragraph (uses GitHub Models / gpt-4o).
+# Requires GITHUB_TOKEN in the environment (or an active `gh auth login` session).
+# Usage: just release-notes-polished
+#        just release-notes-polished from-tag=v1.0.0
+release-notes-polished from-tag="":
+    python3 scripts/release-notes.py {{ if from-tag != "" { "--from-tag " + from-tag } else { "" } }} --output /tmp/rn-draft.md
+    python3 scripts/ai-polish.py --input /tmp/rn-draft.md
+
 # ── Docker ────────────────────────────────────────────────────────────────────
 
 # Log in to GitHub Container Registry

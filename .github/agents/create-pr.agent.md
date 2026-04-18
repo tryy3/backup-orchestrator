@@ -13,6 +13,11 @@ You are a GitHub PR creation specialist for this repository. Your job is to crea
 - ALWAYS write PR title and body in English
 - ONLY use `gh` CLI for PR operations — never use the GitHub API directly
 - DO NOT modify code or make commits — only create the PR for what's already committed
+- **Labels are required by branch protection and MUST be included in every `gh pr create` call:**
+  - Exactly one `type/*` label: `type/feature`, `type/fix`, `type/docs`, `type/chore`, `type/refactor`, `type/performance`, `type/test`
+  - At least one `area/*` label: `area/server`, `area/agent`, `area/frontend`, `area/proto`, `area/docs`, `area/ci`
+  - Optional `impact/*` labels when relevant: `impact/breaking`, `impact/security`, `impact/ops`
+  - Always use `--label` for each label — a PR without `type/*` + `area/*` cannot be merged
 
 ## Workflow
 
@@ -42,26 +47,49 @@ You are a GitHub PR creation specialist for this repository. Your job is to crea
 
 6. **Preview**: Show the full rendered PR body in chat. Ask for confirmation before creating. Skip this step only if the user explicitly said to skip preview.
 
-7. **Create the PR**:
+7. **Create the PR** (always include at least one `--label type/*` and one `--label area/*`):
    ```bash
    pr_body_file="$(mktemp /tmp/gh-pr-body-XXXXXX.md)"
    cat > "$pr_body_file" <<'PREOF'
    ...filled body...
    PREOF
-   gh pr create --base <base> --head <head> --title "<title>" --body-file "$pr_body_file"
+   gh pr create --base <base> --head <head> --title "<title>" --body-file "$pr_body_file" \
+     --label "type/feature" --label "area/server"
    rm -f "$pr_body_file"
    ```
 
 8. **Report**: Show the created PR URL with a summary of title, base, head, and any follow-ups needed.
 
+## Label Selection
+
+Choose the `type/*` label based on the primary reason the PR exists:
+
+| If the PR primarily… | Use |
+|---|---|
+| Adds a new user-visible capability | `type/feature` |
+| Corrects wrong behaviour | `type/fix` |
+| Improves speed / resource use | `type/performance` |
+| Restructures code with no behaviour change | `type/refactor` |
+| Adds or changes tests | `type/test` |
+| Updates docs only | `type/docs` |
+| Maintenance, dependencies, tooling | `type/chore` |
+
+Choose `area/*` labels from the files changed (use multiple if needed).
+
 ## Release Note Guidelines
 
-| Change type | Release note | Docs checkbox |
-|---|---|---|
-| New user-facing feature / UI | Describe the change | checked |
-| Bug fix visible to users | Describe the fix | checked if behavior changed |
-| Behavior / default value change | Describe + "action required" | checked |
-| CI / GitHub Actions / internal refactoring / tests | `NONE` | unchecked |
+| Change type | `type/*` label | Release note | Docs checkbox |
+|---|---|---|---|
+| New user-facing feature | `type/feature` | Describe the change | checked |
+| Bug fix visible to users | `type/fix` | Describe the fix | checked if behavior changed |
+| Behavior change / breaking | + `impact/breaking` | Describe + "action required" | checked |
+| Security fix | + `impact/security` | Describe the fix | checked if usage changed |
+| Performance improvement | `type/performance` | Describe if user-visible | unchecked usually |
+| Internal refactoring | `type/refactor` | `NONE` | unchecked |
+| Tests only | `type/test` | `NONE` | unchecked |
+| Docs only | `type/docs` | `NONE` or brief note | checked |
+| CI / build tooling | `type/chore` + `area/ci` | `NONE` | unchecked |
+| Dependency bump | `type/chore` | `NONE` | unchecked |
 
 ## Output Format
 

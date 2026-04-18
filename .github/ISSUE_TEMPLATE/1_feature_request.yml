@@ -1,7 +1,7 @@
 name: 💡 Feature Request
 description: Suggest an idea for this project
 title: "[Feature]: "
-labels: []
+labels: ["type/feature"]
 type: Feature
 body:
   - type: markdown
@@ -35,6 +35,23 @@ body:
         - Windows
         - macOS
         - Linux
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the system would this feature affect? This helps us apply the correct area label.
+      multiple: true
+      options:
+        - Server
+        - Agent
+        - Frontend
+        - Proto / gRPC
+        - Documentation
+        - CI / Build
+        - Other / Unknown
     validations:
       required: true
 

@@ -2,6 +2,14 @@
 
 ### What this PR does
 
+PR title reminder (non-blocking): use a short, imperative, specific title. With squash merge, this title becomes the merge commit subject.
+
+Optional maintainer hint for squash subject:
+
+Suggested squash subject: <!-- e.g. feat(agent): add backup scheduling support -->
+
+Reference: [docs/maintainer-guidelines.md](docs/maintainer-guidelines.md)
+
 Before this PR:
 
 After this PR:
@@ -28,6 +36,22 @@ If this PR introduces breaking changes, please describe the changes and the impa
 
 <!-- optional -->
 
+### Labels
+
+Please ensure this PR has:
+
+- exactly one `type/*` label
+- one or more `area/*` labels when relevant
+- optional `impact/*` labels when they help release context
+
+Type label guidance:
+
+- choose the label that best matches the main reason this PR exists
+- if a feature PR also includes docs/tests/refactors, keep `type/feature`
+- if the main goal is efficiency, prefer `type/performance` over `type/refactor`
+
+Reference: [docs/release-workflow-plan.md](docs/release-workflow-plan.md)
+
 ### Checklist
 
 This checklist is not enforcing, but it's a reminder of items that could be relevant to every PR.
@@ -39,6 +63,7 @@ Approvers are expected to review this list.
 - [ ] Upgrade: Impact of this change on upgrade flows was considered and addressed if required
 - [ ] Documentation: A [user-guide update](https://docs.cherry-ai.com) was considered and is present (link) or not required. Check this only when the PR introduces or changes a user-facing feature or behavior.
 - [ ] Self-review: I have reviewed my own code (e.g., via [`/gh-pr-review`](/.claude/skills/gh-pr-review/SKILL.md), `gh pr diff`, or GitHub UI) before requesting review from others
+- [ ] Labels: This PR has exactly one `type/*` label and appropriate `area/*` labels
 
 ### Release note
 

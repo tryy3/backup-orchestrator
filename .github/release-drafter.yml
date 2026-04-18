@@ -1,0 +1,66 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+change-title-escapes: '\<*_&'
+
+# SemVer bump rules based on PR labels.
+# impact/breaking → major, type/feature → minor, everything else → patch.
+version-resolver:
+  major:
+    labels:
+      - 'impact/breaking'
+  minor:
+    labels:
+      - 'type/feature'
+  patch:
+    labels:
+      - 'type/fix'
+      - 'type/performance'
+      - 'type/refactor'
+      - 'type/test'
+      - 'type/docs'
+      - 'type/chore'
+  default: patch
+
+# Labels that exclude a PR from the release notes entirely.
+exclude-labels:
+  - 'skip-changelog'
+
+# Bots that should not appear in the contributors list.
+exclude-contributors:
+  - 'renovate[bot]'
+  - 'github-actions[bot]'
+
+# Category order = display order in the release draft.
+# impact/* sections always appear first so breaking/security changes
+# are visible at the top of the release notes.
+categories:
+  - title: '⚠️ Breaking Changes'
+    labels:
+      - 'impact/breaking'
+  - title: '🔒 Security'
+    labels:
+      - 'impact/security'
+  - title: '✨ Features'
+    labels:
+      - 'type/feature'
+  - title: '🐛 Bug Fixes'
+    labels:
+      - 'type/fix'
+  - title: '⚡ Performance'
+    labels:
+      - 'type/performance'
+  - title: '🔧 Maintenance'
+    labels:
+      - 'type/chore'
+      - 'type/refactor'
+      - 'type/test'
+      - 'type/docs'
+
+template: |
+  ## What's Changed
+
+  $CHANGES
+
+  ---
+
+  **Full Changelog**: $PREVIOUS_TAG...v$RESOLVED_VERSION

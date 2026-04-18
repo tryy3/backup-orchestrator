@@ -15,9 +15,8 @@ description: Create or update GitHub pull requests using the repository-required
    git push -u <remote> <head-branch>
    ```
 4. Determine the base branch:
-   - For official repo(CherryHQ/cherry-studio) as `origin`: default base is `main` from `origin`, but allow the user to explicitly indicate a base branch.
-   - For fork repo as `origin`: check available remotes with `git remote -v`, default base may be `upstream/main` or another remote. Always assume that user wants to merge head to CherryHQ/cherry-studio/main, unless the user explicitly indicates a base branch.
-   - Ask the user to confirm the base branch if it's not the default.
+   - Default base is `main`. Ask the user to confirm if a different base is needed.
+   - Check available remotes with `git remote -v` if unclear.
 5. Create a temp file and write the PR body:
    - Use `pr_body_file="$(mktemp /tmp/gh-pr-body-XXXXXX).md"`
    - Fill content using the template structure exactly (keep section order, headings, checkbox formatting).
@@ -38,19 +37,25 @@ description: Create or update GitHub pull requests using the repository-required
 - PR title and body must be written in English.
 - Never create the PR before showing the full final body to the user, unless they explicitly waive the preview or confirmation.
 - Never rely on command permission prompts as PR body preview.
+- **Labels are required by branch protection.** Every PR must have:
+  - Exactly one `type/*` label (`type/feature`, `type/fix`, `type/docs`, `type/chore`, `type/refactor`, `type/performance`, `type/test`)
+  - At least one `area/*` label (`area/server`, `area/agent`, `area/frontend`, `area/proto`, `area/docs`, `area/ci`)
+  - Optional `impact/*` labels (`impact/breaking`, `impact/security`, `impact/ops`) when relevant
+  - Use `--label` for each label when calling `gh pr create`
 - **Release note & Documentation checkbox** — both are driven by whether the change is **user-facing**. Use the table below:
 
-  | Change type | Release note | Docs `[x]` |
-  |---|---|---|
-  | New user-facing feature / setting / UI | Describe the change | ✅ |
-  | Bug fix visible to users | Describe the fix | ✅ if behavior changed |
-  | Behavior change / default value change | Describe + `action required` | ✅ |
-  | Security fix in a user-facing dependency | Describe the fix | ✅ if usage changed |
-  | CI / GitHub Actions changes | `NONE` | ❌ |
-  | Internal refactoring (user cannot tell) | `NONE` | ❌ |
-  | Dev / build tooling changes | `NONE` | ❌ |
-  | Dev-only dependency bump | `NONE` | ❌ |
-  | Test-only / code style changes | `NONE` | ❌ |
+  | Change type | `type/*` label | Release note | Docs `[x]` |
+  |---|---|---|---|
+  | New user-facing feature | `type/feature` | Describe the change | ✅ |
+  | Bug fix visible to users | `type/fix` | Describe the fix | ✅ if behavior changed |
+  | Behavior change / breaking | `type/fix` or `type/feature` + `impact/breaking` | Describe + `action required` | ✅ |
+  | Security fix | any + `impact/security` | Describe the fix | ✅ if usage changed |
+  | Performance improvement | `type/performance` | Describe if user-visible | ❌ usually |
+  | Internal refactoring | `type/refactor` | `NONE` | ❌ |
+  | Tests only | `type/test` | `NONE` | ❌ |
+  | Docs only | `type/docs` | `NONE` (or brief note) | ✅ |
+  | CI / build tooling | `type/chore` + `area/ci` | `NONE` | ❌ |
+  | Dependency bump | `type/chore` | `NONE` | ❌ |
 
 ## Command Pattern
 
@@ -65,6 +70,8 @@ cat > "$pr_body_file" <<'EOF'
 EOF
 
 # run only after explicit user confirmation
-gh pr create --base <base> --head <head> --title "<title>" --body-file "$pr_body_file"
+# always include at least one --label type/* and one --label area/*
+gh pr create --base <base> --head <head> --title "<title>" --body-file "$pr_body_file" \
+  --label "type/feature" --label "area/server"
 rm -f "$pr_body_file"
 ```

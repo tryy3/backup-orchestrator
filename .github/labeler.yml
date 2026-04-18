@@ -1,0 +1,27 @@
+area/server:
+  - changed-files:
+      - any-glob-to-any-file: server/**
+
+area/agent:
+  - changed-files:
+      - any-glob-to-any-file: agent/**
+
+area/frontend:
+  - changed-files:
+      - any-glob-to-any-file: frontend/**
+
+area/proto:
+  - changed-files:
+      - any-glob-to-any-file: proto/**
+
+area/docs:
+  - changed-files:
+      - any-glob-to-any-file: docs/**
+      - any-glob-to-any-file: README.md
+      - any-glob-to-any-file: ROADMAP.md
+
+area/ci:
+  - changed-files:
+      - any-glob-to-any-file: .github/**
+      - any-glob-to-any-file: justfile
+      - any-glob-to-any-file: flake.nix

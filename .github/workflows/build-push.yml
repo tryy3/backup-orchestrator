@@ -26,6 +26,7 @@ jobs:
       cache-scope: server
       meta-images: ghcr.io/${{ github.repository }}-server
       meta-tags: |
+        type=raw,value=latest,enable={{is_default_branch}}
         type=ref,event=branch
         type=semver,pattern={{version}}
         type=semver,pattern={{major}}.{{minor}}
@@ -52,6 +53,7 @@ jobs:
       cache-scope: agent
       meta-images: ghcr.io/${{ github.repository }}-agent
       meta-tags: |
+        type=raw,value=latest,enable={{is_default_branch}}
         type=ref,event=branch
         type=semver,pattern={{version}}
         type=semver,pattern={{major}}.{{minor}}
@@ -78,6 +80,7 @@ jobs:
       cache-scope: agent-db
       meta-images: ghcr.io/${{ github.repository }}-agent-db
       meta-tags: |
+        type=raw,value=latest,enable={{is_default_branch}}
         type=ref,event=branch
         type=semver,pattern={{version}}
         type=semver,pattern={{major}}.{{minor}}

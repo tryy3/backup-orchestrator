@@ -1,7 +1,7 @@
 name: 🐛 Bug Report
 description: Create a report to help us improve
 title: "[Bug]: "
-labels: []
+labels: ["type/fix"]
 type: Bug
 body:
   - type: markdown
@@ -36,6 +36,35 @@ body:
         - Linux
     validations:
       required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the system is affected? This helps us apply the correct area label.
+      multiple: true
+      options:
+        - Server
+        - Agent
+        - Frontend
+        - Proto / gRPC
+        - Documentation
+        - CI / Build
+        - Other / Unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      description: Does this bug have any of the following special impacts?
+      multiple: true
+      options:
+        - Breaking change (existing setup stops working)
+        - Security vulnerability
+        - Operations / deployment concern
+        - None of the above
 
   - type: input
     id: version

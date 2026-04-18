@@ -73,3 +73,4 @@ gh issue create --web
 - Do not ask for confirmation before creating unless the user requests it.
 - Only ask clarifying questions when the request is too vague to produce a meaningful issue.
 - If user doesn't specify a template type and it cannot be inferred, ask them to choose one first.
+- **Component and Impact dropdowns are informational.** The `type/*` label from the template is applied automatically. A maintainer must separately apply the appropriate `area/*` label (from Component answer) and any `impact/*` labels (from Impact answer) after the issue is created — `gh issue create` cannot apply labels that aren't pre-defined in the template `labels` field.

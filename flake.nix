@@ -56,6 +56,7 @@
             rclone
             restic
             gh
+            python3
 
             # Dev tooling
             zellij
