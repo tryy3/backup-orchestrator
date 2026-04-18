@@ -52,14 +52,14 @@ func (r *Reporter) Run(ctx context.Context) {
 }
 
 // BufferReport marshals a JobReport to JSON and inserts it into the local buffer.
-func (r *Reporter) BufferReport(report *backupv1.JobReport) error {
+func (r *Reporter) BufferReport(ctx context.Context, report *backupv1.JobReport) error {
 	data, err := protojson.Marshal(report)
 	if err != nil {
 		return err
 	}
 
 	id := uuid.New().String()
-	return r.db.InsertBufferedReport(id, string(data))
+	return r.db.InsertBufferedReport(ctx, id, string(data))
 }
 
 // FlushNow triggers an immediate flush of buffered reports.
@@ -79,7 +79,7 @@ func (r *Reporter) flush(ctx context.Context) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	reports, err := r.db.ListPendingReports()
+	reports, err := r.db.ListPendingReports(ctx)
 	if err != nil {
 		slog.Error("error listing pending reports", "source", "reporter", "error", err)
 		return
@@ -95,7 +95,7 @@ func (r *Reporter) flush(ctx context.Context) {
 		// Drop reports that have exceeded max attempts.
 		if br.Attempts >= maxFlushAttempts {
 			slog.Warn("dropping report after max attempts", "source", "reporter", "report_id", br.ID, "attempts", br.Attempts, "last_error", br.LastError)
-			if err := r.db.DeleteReport(br.ID); err != nil {
+			if err := r.db.DeleteReport(ctx, br.ID); err != nil {
 				slog.Error("error deleting expired report", "source", "reporter", "report_id", br.ID, "error", err)
 			}
 			continue
@@ -104,17 +104,17 @@ func (r *Reporter) flush(ctx context.Context) {
 		var report backupv1.JobReport
 		if err := protojson.Unmarshal([]byte(br.Payload), &report); err != nil {
 			slog.Error("error unmarshaling report", "source", "reporter", "report_id", br.ID, "error", err)
-			_ = r.db.IncrementAttempts(br.ID, err.Error())
+			_ = r.db.IncrementAttempts(ctx, br.ID, err.Error())
 			continue
 		}
 
 		if err := r.grpc.ReportJob(ctx, &report); err != nil {
 			slog.Error("error sending report", "source", "reporter", "report_id", br.ID, "error", err)
-			_ = r.db.IncrementAttempts(br.ID, err.Error())
+			_ = r.db.IncrementAttempts(ctx, br.ID, err.Error())
 			continue
 		}
 
-		if err := r.db.DeleteReport(br.ID); err != nil {
+		if err := r.db.DeleteReport(ctx, br.ID); err != nil {
 			slog.Error("error deleting report", "source", "reporter", "report_id", br.ID, "error", err)
 		} else {
 			slog.Info("successfully sent report", "source", "reporter", "report_id", br.ID)

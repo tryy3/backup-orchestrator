@@ -148,6 +148,7 @@ func run() error {
 			finishedAt = report.FinishedAt.AsTime().Format(time.RFC3339)
 		}
 		if err := db.InsertLocalJob(
+			ctx,
 			report.JobId, report.PlanName, report.Type, report.Status,
 			startedAt, finishedAt, report.LogTail,
 		); err != nil {
@@ -159,7 +160,7 @@ func run() error {
 		defer deliveryCancel()
 		if err := grpcClient.ReportJob(deliveryCtx, report); err != nil {
 			slog.Warn("direct report delivery failed, buffering", "source", "agent", "error", err)
-			if bufErr := rep.BufferReport(report); bufErr != nil {
+			if bufErr := rep.BufferReport(ctx, report); bufErr != nil {
 				slog.Error("error buffering report", "source", "agent", "error", bufErr)
 			}
 		} else {
