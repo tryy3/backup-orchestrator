@@ -69,4 +69,8 @@ func TestCommandTimeout(t *testing.T) {
 		t.Errorf("backup timeout (%v) must be longer than browse_fs timeout (%v)",
 			defaultBackupCommandTimeout, defaultBrowseFSCommandTimeout)
 	}
+	if defaultRestoreCommandTimeout <= defaultBrowseFSCommandTimeout {
+		t.Errorf("restore timeout (%v) must be longer than browse_fs timeout (%v)",
+			defaultRestoreCommandTimeout, defaultBrowseFSCommandTimeout)
+	}
 }
