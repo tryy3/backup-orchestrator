@@ -231,6 +231,16 @@ If you see `core.hooksPath is set locally`, run `lefthook install --reset-hooks-
 
 ---
 
+## Contributing
+
+Contribution guidelines live in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+That file covers PR expectations, labels, release-note usage, and other contributor workflow rules.
+
+For the complete end-to-end lifecycle — issue → branch → PR → merge → release — see [docs/workflow.md](docs/workflow.md).
+
+---
+
 ## License
 
 [MIT](LICENSE)
