@@ -23,6 +23,11 @@ type JobStatus struct {
 // JobStatusFunc returns the current running job status, or nil if idle.
 type JobStatusFunc func() *JobStatus
 
+// outboundChSize is the buffer size for the channel that serialises all
+// outbound stream.Send calls. 32 matches the server-side send channel and
+// provides enough headroom for bursts of config acks / command results.
+const outboundChSize = 32
+
 // StreamHandler manages the bidirectional Connect stream lifecycle.
 type StreamHandler struct {
 	client            *Client
@@ -80,10 +85,14 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 	// outboundCh funnels all messages from the recv goroutine (config acks,
 	// command results) into the single send goroutine so that stream.Send is
 	// never called concurrently.
-	outboundCh := make(chan *backupv1.AgentMessage, 32)
+	outboundCh := make(chan *backupv1.AgentMessage, outboundChSize)
 
 	errCh := make(chan error, 2)
 	var wg sync.WaitGroup
+
+	// handlerWg tracks in-flight handler goroutines (handleConfig,
+	// handleCommand) so we can wait for them before closing the stream.
+	var handlerWg sync.WaitGroup
 
 	// Start send goroutine: owns all stream.Send calls.
 	wg.Add(1)
@@ -118,10 +127,20 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 			select {
 			case <-runCtx.Done():
 				flushLogs()
+				// Drain remaining outbound messages from in-flight handlers.
+				for msg := range outboundCh {
+					if err := stream.Send(msg); err != nil {
+						slog.Error("error sending outbound message during drain", "source", "stream", "error", err)
+					}
+				}
 				// Close the send side of the stream.
 				_ = stream.CloseSend()
 				return
-			case msg := <-outboundCh:
+			case msg, ok := <-outboundCh:
+				if !ok {
+					// Channel closed during shutdown; already drained above.
+					return
+				}
 				if err := stream.Send(msg); err != nil {
 					slog.Error("error sending outbound message", "source", "stream", "error", err)
 				}
@@ -162,10 +181,18 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 				s.handleApproval(payload.Approval)
 
 			case *backupv1.ServerMessage_Config:
-				go s.handleConfig(outboundCh, payload.Config)
+				handlerWg.Add(1)
+				go func() {
+					defer handlerWg.Done()
+					s.handleConfig(outboundCh, payload.Config)
+				}()
 
 			case *backupv1.ServerMessage_Command:
-				go s.handleCommand(outboundCh, payload.Command)
+				handlerWg.Add(1)
+				go func() {
+					defer handlerWg.Done()
+					s.handleCommand(outboundCh, payload.Command)
+				}()
 
 			default:
 				slog.Warn("unknown server message type", "source", "stream", "type", fmt.Sprintf("%T", payload))
@@ -183,6 +210,12 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 
 	// Cancel derived context to signal the other goroutine, then wait.
 	runCancel()
+
+	// Wait for in-flight handler goroutines so their outbound messages
+	// are enqueued before we drain the channel.
+	handlerWg.Wait()
+	close(outboundCh)
+
 	wg.Wait()
 	return retErr
 }
