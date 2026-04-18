@@ -474,7 +474,7 @@ func TestHeartbeatTickerResetOnIntervalUpdate(t *testing.T) {
 	sh := &StreamHandler{
 		client:            &Client{client: mockClient},
 		identity:          id,
-		heartbeatInterval: 500 * time.Millisecond, // slow: won't fire during the observation window
+		heartbeatInterval: 500 * time.Millisecond, // slow enough that no extra ticks fire during the ~300 ms observation window
 		intervalUpdateCh:  intervalUpdateCh,
 		liveLogCh:         make(chan *backupv1.LogEntry),
 	}
@@ -491,17 +491,19 @@ func TestHeartbeatTickerResetOnIntervalUpdate(t *testing.T) {
 	// Signal the send goroutine to switch to a fast interval.
 	intervalUpdateCh <- 50 * time.Millisecond
 
-	// Wait long enough to collect several ticks at the new interval but far
-	// less than one tick at the old 500 ms interval.
+	// Wait long enough to collect several ticks at the new 50 ms interval.
+	// At 50 ms / tick over ~300 ms we expect ~6 ticks, so 4 is a generous
+	// lower bound that accommodates scheduler jitter without making the test
+	// brittle.
 	time.Sleep(300 * time.Millisecond)
 
 	cancel()
 	time.Sleep(20 * time.Millisecond)
 
 	newHeartbeats := countHeartbeats(ms.getSent()) - initialCount
-	// At 50 ms interval over ~300 ms we expect at least 3 heartbeats.
-	if newHeartbeats < 3 {
-		t.Errorf("after ticker reset to 50ms, got %d new heartbeats in ~300ms; expected at least 3", newHeartbeats)
+	// At 50 ms interval over ~300 ms we expect at least 4 heartbeats.
+	if newHeartbeats < 4 {
+		t.Errorf("after ticker reset to 50ms, got %d new heartbeats in ~300ms; expected at least 4", newHeartbeats)
 	}
 }
 
