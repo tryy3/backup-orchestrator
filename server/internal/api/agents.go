@@ -21,23 +21,23 @@ import (
 // agentResponse is the API response DTO that omits rclone_config and exposes
 // has_rclone_config instead.
 type agentResponse struct {
-	ID              string                       `json:"id"`
-	Name            string                       `json:"name"`
-	Hostname        string                       `json:"hostname"`
-	OS              *string                      `json:"os,omitempty"`
-	Status          string                       `json:"status"`
-	APIKey          *string                      `json:"api_key,omitempty"`
-	AgentVersion    *string                      `json:"agent_version,omitempty"`
-	ResticVersion   *string                      `json:"restic_version,omitempty"`
-	RcloneVersion   *string                      `json:"rclone_version,omitempty"`
-	HasRcloneConfig bool                         `json:"has_rclone_config"`
-	LastHeartbeat   *time.Time                   `json:"last_heartbeat,omitempty"`
-	LastJobAt       *time.Time                   `json:"last_job_at,omitempty"`
-	ConfigVersion   int                          `json:"config_version"`
-	ConfigAppliedAt *time.Time                   `json:"config_applied_at,omitempty"`
-	CommandTimeouts *configpush.CommandTimeouts  `json:"command_timeouts,omitempty"`
-	CreatedAt       time.Time                    `json:"created_at"`
-	UpdatedAt       time.Time                    `json:"updated_at"`
+	ID              string                      `json:"id"`
+	Name            string                      `json:"name"`
+	Hostname        string                      `json:"hostname"`
+	OS              *string                     `json:"os,omitempty"`
+	Status          string                      `json:"status"`
+	APIKey          *string                     `json:"api_key,omitempty"`
+	AgentVersion    *string                     `json:"agent_version,omitempty"`
+	ResticVersion   *string                     `json:"restic_version,omitempty"`
+	RcloneVersion   *string                     `json:"rclone_version,omitempty"`
+	HasRcloneConfig bool                        `json:"has_rclone_config"`
+	LastHeartbeat   *time.Time                  `json:"last_heartbeat,omitempty"`
+	LastJobAt       *time.Time                  `json:"last_job_at,omitempty"`
+	ConfigVersion   int                         `json:"config_version"`
+	ConfigAppliedAt *time.Time                  `json:"config_applied_at,omitempty"`
+	CommandTimeouts *configpush.CommandTimeouts `json:"command_timeouts,omitempty"`
+	CreatedAt       time.Time                   `json:"created_at"`
+	UpdatedAt       time.Time                   `json:"updated_at"`
 }
 
 func toAgentResponse(a *database.Agent) agentResponse {
