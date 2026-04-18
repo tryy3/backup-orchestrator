@@ -45,7 +45,6 @@ const (
 type StreamHandler struct {
 	client            *Client
 	identity          *identity.Identity
-	identityMu        sync.RWMutex
 	onApproval        func(agentID, apiKey string)
 	onConfig          func(cfg *backupv1.AgentConfig)
 	onCommand         func(ctx context.Context, cmd *backupv1.Command) *backupv1.CommandResult
@@ -300,10 +299,8 @@ func (s *StreamHandler) sendHeartbeat(stream backupv1.BackupService_ConnectClien
 		}
 	}
 
-	s.identityMu.RLock()
 	agentID := s.identity.AgentID
-	apiKey := s.identity.APIKey
-	s.identityMu.RUnlock()
+	apiKey := s.identity.GetAPIKey()
 
 	msg := &backupv1.AgentMessage{
 		AgentId: agentID,
@@ -316,10 +313,8 @@ func (s *StreamHandler) sendHeartbeat(stream backupv1.BackupService_ConnectClien
 }
 
 func (s *StreamHandler) sendLiveLogs(stream backupv1.BackupService_ConnectClient, jobID string, entries []*backupv1.LogEntry) error {
-	s.identityMu.RLock()
 	agentID := s.identity.AgentID
-	apiKey := s.identity.APIKey
-	s.identityMu.RUnlock()
+	apiKey := s.identity.GetAPIKey()
 
 	msg := &backupv1.AgentMessage{
 		AgentId: agentID,
@@ -349,10 +344,8 @@ func extractJobID(entry *backupv1.LogEntry) string {
 func (s *StreamHandler) handleApproval(approval *backupv1.Approval) {
 	slog.Info("received approval", "source", "stream", "status", approval.GetStatus())
 	if approval.GetStatus() == backupv1.AgentStatus_AGENT_STATUS_APPROVED {
-		s.identityMu.Lock()
-		s.identity.APIKey = approval.GetApiKey()
+		s.identity.SetAPIKey(approval.GetApiKey())
 		agentID := s.identity.AgentID
-		s.identityMu.Unlock()
 
 		if s.onApproval != nil {
 			s.onApproval(agentID, approval.GetApiKey())
@@ -381,10 +374,8 @@ func (s *StreamHandler) handleConfig(outboundCh chan<- *backupv1.AgentMessage, c
 		s.onConfig(cfg)
 	}
 
-	s.identityMu.RLock()
 	agentID := s.identity.AgentID
-	apiKey := s.identity.APIKey
-	s.identityMu.RUnlock()
+	apiKey := s.identity.GetAPIKey()
 
 	// Enqueue config ack for the send goroutine.
 	ack := &backupv1.AgentMessage{
@@ -420,10 +411,8 @@ func (s *StreamHandler) handleCommand(ctx context.Context, outboundCh chan<- *ba
 		}
 	}
 
-	s.identityMu.RLock()
 	agentID := s.identity.AgentID
-	apiKey := s.identity.APIKey
-	s.identityMu.RUnlock()
+	apiKey := s.identity.GetAPIKey()
 
 	// Enqueue command result for the send goroutine.
 	msg := &backupv1.AgentMessage{

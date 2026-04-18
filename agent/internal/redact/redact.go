@@ -16,6 +16,15 @@ var sensitivePatterns = []string{
 	"credential",
 }
 
+// String replaces all literal occurrences of sensitive in s with *****.
+// If sensitive is empty, s is returned unchanged.
+func String(s, sensitive string) string {
+	if sensitive == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, sensitive, mask)
+}
+
 // isSensitive returns true if name contains any sensitive pattern
 // (case-insensitive).
 func isSensitive(name string) bool {

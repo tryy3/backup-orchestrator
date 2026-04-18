@@ -158,11 +158,6 @@ func newBufconnClient(t *testing.T) (*Client, *stubServer) {
 	return c, srv
 }
 
-// noopOnCommand is a test helper for the ctx-aware onCommand callback.
-func noopOnCommand(_ context.Context, cmd *backupv1.Command) *backupv1.CommandResult {
-	return &backupv1.CommandResult{CommandId: cmd.GetCommandId(), Success: true}
-}
-
 // closeAfterFirstMsg is a test server that closes the stream after the first message.
 type closeAfterFirstMsg struct {
 	backupv1.UnimplementedBackupServiceServer
@@ -194,7 +189,8 @@ func TestSendSerialisation(t *testing.T) {
 
 	// Wire up a StreamHandler that uses our mock client.
 	liveLogCh := make(chan *backupv1.LogEntry, 64)
-	id := &identity.Identity{AgentID: "test-agent", APIKey: "test-key"}
+	id := &identity.Identity{AgentID: "test-agent"}
+	id.SetAPIKey("test-key")
 	sh := &StreamHandler{
 		client: &Client{
 			client: mockClient,
@@ -319,7 +315,8 @@ func TestSendSerialisation(t *testing.T) {
 // TestHandleConfigEnqueuesAck verifies handleConfig enqueues a config ack
 // on the outbound channel rather than calling stream.Send directly.
 func TestHandleConfigEnqueuesAck(t *testing.T) {
-	id := &identity.Identity{AgentID: "agent-1", APIKey: "key-1"}
+	id := &identity.Identity{AgentID: "agent-1"}
+	id.SetAPIKey("key-1")
 	sh := &StreamHandler{
 		identity:          id,
 		heartbeatInterval: 30 * time.Second,
@@ -364,7 +361,8 @@ func TestHandleConfigEnqueuesAck(t *testing.T) {
 // TestHandleCommandEnqueuesResult verifies handleCommand enqueues a command
 // result on the outbound channel.
 func TestHandleCommandEnqueuesResult(t *testing.T) {
-	id := &identity.Identity{AgentID: "agent-2", APIKey: "key-2"}
+	id := &identity.Identity{AgentID: "agent-2"}
+	id.SetAPIKey("key-2")
 	sh := &StreamHandler{
 		identity:          id,
 		heartbeatInterval: 30 * time.Second,
@@ -417,7 +415,9 @@ func TestRun_CancelUnblocksRecv(t *testing.T) {
 		&identity.Identity{AgentID: "test-agent"},
 		func(agentID, apiKey string) {},
 		func(cfg *backupv1.AgentConfig) {},
-		noopOnCommand,
+		func(_ context.Context, cmd *backupv1.Command) *backupv1.CommandResult {
+			return &backupv1.CommandResult{CommandId: cmd.GetCommandId(), Success: true}
+		},
 		nil,
 		liveLogCh,
 	)
@@ -486,7 +486,9 @@ func TestRun_ServerDisconnect(t *testing.T) {
 		&identity.Identity{AgentID: "test-agent"},
 		func(agentID, apiKey string) {},
 		func(cfg *backupv1.AgentConfig) {},
-		noopOnCommand,
+		func(_ context.Context, cmd *backupv1.Command) *backupv1.CommandResult {
+			return &backupv1.CommandResult{CommandId: cmd.GetCommandId(), Success: true}
+		},
 		nil,
 		liveLogCh,
 	)
@@ -522,100 +524,100 @@ func TestRun_ServerDisconnect(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCommandTimeout_Defaults(t *testing.T) {
-	sh := NewStreamHandler(nil, &identity.Identity{}, nil, nil, nil, nil, nil)
+sh := NewStreamHandler(nil, &identity.Identity{}, nil, nil, nil, nil, nil)
 
-	tests := []struct {
-		name string
-		cmd  *backupv1.Command
-		want time.Duration
-	}{
-		{
-			name: "trigger_backup gets long timeout",
-			cmd: &backupv1.Command{
-				Action: &backupv1.Command_TriggerBackup{TriggerBackup: &backupv1.TriggerBackup{}},
-			},
-			want: defaultBackupCommandTimeout,
-		},
-		{
-			name: "trigger_restore gets long timeout",
-			cmd: &backupv1.Command{
-				Action: &backupv1.Command_TriggerRestore{TriggerRestore: &backupv1.TriggerRestore{}},
-			},
-			want: defaultRestoreCommandTimeout,
-		},
-		{
-			name: "list_snapshots gets medium timeout",
-			cmd: &backupv1.Command{
-				Action: &backupv1.Command_ListSnapshots{ListSnapshots: &backupv1.ListSnapshots{}},
-			},
-			want: defaultListSnapshotsTimeout,
-		},
-		{
-			name: "browse_snapshot gets medium timeout",
-			cmd: &backupv1.Command{
-				Action: &backupv1.Command_BrowseSnapshot{BrowseSnapshot: &backupv1.BrowseSnapshot{}},
-			},
-			want: defaultBrowseSnapshotTimeout,
-		},
-		{
-			name: "browse_filesystem gets short timeout",
-			cmd: &backupv1.Command{
-				Action: &backupv1.Command_BrowseFilesystem{BrowseFilesystem: &backupv1.BrowseFilesystem{}},
-			},
-			want: defaultBrowseFSCommandTimeout,
-		},
-		{
-			name: "unknown action gets default timeout",
-			cmd:  &backupv1.Command{},
-			want: defaultCommandTimeout,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := sh.commandTimeout(tt.cmd)
-			if got != tt.want {
-				t.Errorf("commandTimeout() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+tests := []struct {
+name string
+cmd  *backupv1.Command
+want time.Duration
+}{
+{
+name: "trigger_backup gets long timeout",
+cmd: &backupv1.Command{
+Action: &backupv1.Command_TriggerBackup{TriggerBackup: &backupv1.TriggerBackup{}},
+},
+want: defaultBackupCommandTimeout,
+},
+{
+name: "trigger_restore gets long timeout",
+cmd: &backupv1.Command{
+Action: &backupv1.Command_TriggerRestore{TriggerRestore: &backupv1.TriggerRestore{}},
+},
+want: defaultRestoreCommandTimeout,
+},
+{
+name: "list_snapshots gets medium timeout",
+cmd: &backupv1.Command{
+Action: &backupv1.Command_ListSnapshots{ListSnapshots: &backupv1.ListSnapshots{}},
+},
+want: defaultListSnapshotsTimeout,
+},
+{
+name: "browse_snapshot gets medium timeout",
+cmd: &backupv1.Command{
+Action: &backupv1.Command_BrowseSnapshot{BrowseSnapshot: &backupv1.BrowseSnapshot{}},
+},
+want: defaultBrowseSnapshotTimeout,
+},
+{
+name: "browse_filesystem gets short timeout",
+cmd: &backupv1.Command{
+Action: &backupv1.Command_BrowseFilesystem{BrowseFilesystem: &backupv1.BrowseFilesystem{}},
+},
+want: defaultBrowseFSCommandTimeout,
+},
+{
+name: "unknown action gets default timeout",
+cmd:  &backupv1.Command{},
+want: defaultCommandTimeout,
+},
+}
+for _, tt := range tests {
+t.Run(tt.name, func(t *testing.T) {
+got := sh.commandTimeout(tt.cmd)
+if got != tt.want {
+t.Errorf("commandTimeout() = %v, want %v", got, tt.want)
+}
+})
+}
 
-	// Sanity: backup/restore must be strictly longer than browse timeouts, so
-	// a short browse-kind default can't ever apply to a long-running backup.
-	if defaultBackupCommandTimeout <= defaultBrowseFSCommandTimeout {
-		t.Errorf("backup timeout (%v) must be longer than browse_fs timeout (%v)",
-			defaultBackupCommandTimeout, defaultBrowseFSCommandTimeout)
-	}
-	if defaultRestoreCommandTimeout <= defaultBrowseFSCommandTimeout {
-		t.Errorf("restore timeout (%v) must be longer than browse_fs timeout (%v)",
-			defaultRestoreCommandTimeout, defaultBrowseFSCommandTimeout)
-	}
+// Sanity: backup/restore must be strictly longer than browse timeouts, so
+// a short browse-kind default can't ever apply to a long-running backup.
+if defaultBackupCommandTimeout <= defaultBrowseFSCommandTimeout {
+t.Errorf("backup timeout (%v) must be longer than browse_fs timeout (%v)",
+defaultBackupCommandTimeout, defaultBrowseFSCommandTimeout)
+}
+if defaultRestoreCommandTimeout <= defaultBrowseFSCommandTimeout {
+t.Errorf("restore timeout (%v) must be longer than browse_fs timeout (%v)",
+defaultRestoreCommandTimeout, defaultBrowseFSCommandTimeout)
+}
 }
 
 // TestCommandTimeout_FromConfig verifies that handleConfig overrides the
 // per-kind defaults with values from AgentConfig.CommandTimeouts.
 func TestCommandTimeout_FromConfig(t *testing.T) {
-	sh := NewStreamHandler(nil, &identity.Identity{}, nil, nil, nil, nil, nil)
+sh := NewStreamHandler(nil, &identity.Identity{}, nil, nil, nil, nil, nil)
 
-	sh.applyCommandTimeouts(&backupv1.CommandTimeouts{
-		BackupSecs:           120,
-		RestoreSecs:          240,
-		ListSnapshotsSecs:    60,
-		BrowseSnapshotSecs:   30,
-		BrowseFilesystemSecs: 5,
-		DefaultSecs:          90,
-	})
+sh.applyCommandTimeouts(&backupv1.CommandTimeouts{
+BackupSecs:           120,
+RestoreSecs:          240,
+ListSnapshotsSecs:    60,
+BrowseSnapshotSecs:   30,
+BrowseFilesystemSecs: 5,
+DefaultSecs:          90,
+})
 
-	cases := map[time.Duration]*backupv1.Command{
-		120 * time.Second: {Action: &backupv1.Command_TriggerBackup{TriggerBackup: &backupv1.TriggerBackup{}}},
-		240 * time.Second: {Action: &backupv1.Command_TriggerRestore{TriggerRestore: &backupv1.TriggerRestore{}}},
-		60 * time.Second:  {Action: &backupv1.Command_ListSnapshots{ListSnapshots: &backupv1.ListSnapshots{}}},
-		30 * time.Second:  {Action: &backupv1.Command_BrowseSnapshot{BrowseSnapshot: &backupv1.BrowseSnapshot{}}},
-		5 * time.Second:   {Action: &backupv1.Command_BrowseFilesystem{BrowseFilesystem: &backupv1.BrowseFilesystem{}}},
-		90 * time.Second:  {},
-	}
-	for want, cmd := range cases {
-		if got := sh.commandTimeout(cmd); got != want {
-			t.Errorf("commandTimeout() = %v, want %v", got, want)
-		}
-	}
+cases := map[time.Duration]*backupv1.Command{
+120 * time.Second: {Action: &backupv1.Command_TriggerBackup{TriggerBackup: &backupv1.TriggerBackup{}}},
+240 * time.Second: {Action: &backupv1.Command_TriggerRestore{TriggerRestore: &backupv1.TriggerRestore{}}},
+60 * time.Second:  {Action: &backupv1.Command_ListSnapshots{ListSnapshots: &backupv1.ListSnapshots{}}},
+30 * time.Second:  {Action: &backupv1.Command_BrowseSnapshot{BrowseSnapshot: &backupv1.BrowseSnapshot{}}},
+5 * time.Second:   {Action: &backupv1.Command_BrowseFilesystem{BrowseFilesystem: &backupv1.BrowseFilesystem{}}},
+90 * time.Second:  {},
+}
+for want, cmd := range cases {
+if got := sh.commandTimeout(cmd); got != want {
+t.Errorf("commandTimeout() = %v, want %v", got, want)
+}
+}
 }

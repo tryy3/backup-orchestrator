@@ -278,3 +278,39 @@ func TestTriggerNow_PlanNotFound(t *testing.T) {
 	// Should not panic with nil plans.
 	s.TriggerNow("nonexistent", nil, nil, nil)
 }
+
+// TestSchedulerUsesUTC verifies that cron entries are scheduled relative to
+// UTC, not the host's local timezone. The next-fire time for a schedule that
+// runs at the top of every minute must fall within the current UTC minute,
+// regardless of what TZ is set on the host.
+func TestSchedulerUsesUTC(t *testing.T) {
+	s := New(context.Background(), nil, nil)
+	defer s.Stop()
+	s.Start()
+
+	plans := []*backupv1.BackupPlan{
+		{Id: "p1", Name: "every-minute", Enabled: true, Schedule: "* * * * *"},
+	}
+	s.UpdateSchedule(plans, nil, nil)
+
+	s.mu.Lock()
+	entryID, ok := s.entryIDs["p1"]
+	s.mu.Unlock()
+	if !ok {
+		t.Fatal("expected cron entry for plan p1")
+	}
+
+	entry := s.cron.Entry(entryID)
+	nextUTC := entry.Next
+
+	// The next fire time must be expressed in UTC.
+	if nextUTC.Location() != time.UTC {
+		t.Errorf("cron next-fire location = %v, want UTC", nextUTC.Location())
+	}
+
+	// It must fire within the next minute from now (UTC).
+	now := time.Now().UTC()
+	if nextUTC.Before(now) || nextUTC.After(now.Add(time.Minute)) {
+		t.Errorf("next fire time %v is not within the next UTC minute (now=%v)", nextUTC, now)
+	}
+}
