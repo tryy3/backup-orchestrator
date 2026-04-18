@@ -414,7 +414,8 @@ func countHeartbeats(msgs []*backupv1.AgentMessage) int {
 // new heartbeat interval on intervalUpdateCh so the send goroutine can reset
 // its ticker.
 func TestHandleConfigSignalsIntervalUpdate(t *testing.T) {
-	id := &identity.Identity{AgentID: "agent-1", APIKey: "key-1"}
+	id := &identity.Identity{AgentID: "agent-1"}
+	id.SetAPIKey("key-1")
 	sh := &StreamHandler{
 		identity:          id,
 		heartbeatInterval: 30 * time.Second,
@@ -442,7 +443,8 @@ func TestHandleConfigSignalsIntervalUpdate(t *testing.T) {
 // TestHandleConfigNoSignalWhenIntervalUnchanged verifies that handleConfig
 // does not send on intervalUpdateCh when HeartbeatIntervalSecs is zero (not set).
 func TestHandleConfigNoSignalWhenIntervalUnchanged(t *testing.T) {
-	id := &identity.Identity{AgentID: "agent-1", APIKey: "key-1"}
+	id := &identity.Identity{AgentID: "agent-1"}
+	id.SetAPIKey("key-1")
 	sh := &StreamHandler{
 		identity:          id,
 		heartbeatInterval: 30 * time.Second,
@@ -473,7 +475,8 @@ func TestHeartbeatTickerResetOnIntervalUpdate(t *testing.T) {
 	mockClient := &mockBackupServiceClient{stream: ms}
 
 	intervalUpdateCh := make(chan time.Duration, 1)
-	id := &identity.Identity{AgentID: "test-agent", APIKey: "test-key"}
+	id := &identity.Identity{AgentID: "test-agent"}
+	id.SetAPIKey("test-key")
 	sh := &StreamHandler{
 		client:            &Client{client: mockClient},
 		identity:          id,
