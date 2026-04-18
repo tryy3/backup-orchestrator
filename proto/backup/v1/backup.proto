@@ -126,12 +126,12 @@ message AgentConfig {
 // A field set to 0 (or unset) means the agent should use its compiled-in
 // default for that command kind.
 message CommandTimeouts {
-  int32 backup_secs = 1;             // TriggerBackup
-  int32 restore_secs = 2;            // TriggerRestore
-  int32 list_snapshots_secs = 3;     // ListSnapshots
-  int32 browse_snapshot_secs = 4;    // BrowseSnapshot
-  int32 browse_filesystem_secs = 5;  // BrowseFilesystem
-  int32 default_secs = 6;            // unknown/future kinds
+  int32 backup_secs = 1; // TriggerBackup
+  int32 restore_secs = 2; // TriggerRestore
+  int32 list_snapshots_secs = 3; // ListSnapshots
+  int32 browse_snapshot_secs = 4; // BrowseSnapshot
+  int32 browse_filesystem_secs = 5; // BrowseFilesystem
+  int32 default_secs = 6; // unknown/future kinds
 }
 
 message Command {
