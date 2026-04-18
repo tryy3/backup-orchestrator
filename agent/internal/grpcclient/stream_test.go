@@ -189,7 +189,8 @@ func TestSendSerialisation(t *testing.T) {
 
 	// Wire up a StreamHandler that uses our mock client.
 	liveLogCh := make(chan *backupv1.LogEntry, 64)
-	id := &identity.Identity{AgentID: "test-agent", APIKey: "test-key"}
+	id := &identity.Identity{AgentID: "test-agent"}
+	id.SetAPIKey("test-key")
 	sh := &StreamHandler{
 		client: &Client{
 			client: mockClient,
@@ -314,7 +315,8 @@ func TestSendSerialisation(t *testing.T) {
 // TestHandleConfigEnqueuesAck verifies handleConfig enqueues a config ack
 // on the outbound channel rather than calling stream.Send directly.
 func TestHandleConfigEnqueuesAck(t *testing.T) {
-	id := &identity.Identity{AgentID: "agent-1", APIKey: "key-1"}
+	id := &identity.Identity{AgentID: "agent-1"}
+	id.SetAPIKey("key-1")
 	sh := &StreamHandler{
 		identity:          id,
 		heartbeatInterval: 30 * time.Second,
@@ -359,7 +361,8 @@ func TestHandleConfigEnqueuesAck(t *testing.T) {
 // TestHandleCommandEnqueuesResult verifies handleCommand enqueues a command
 // result on the outbound channel.
 func TestHandleCommandEnqueuesResult(t *testing.T) {
-	id := &identity.Identity{AgentID: "agent-2", APIKey: "key-2"}
+	id := &identity.Identity{AgentID: "agent-2"}
+	id.SetAPIKey("key-2")
 	sh := &StreamHandler{
 		identity:          id,
 		heartbeatInterval: 30 * time.Second,
