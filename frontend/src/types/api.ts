@@ -130,7 +130,7 @@ export interface Job {
   plan_name: string
   type: 'backup' | 'forget' | 'prune' | 'restore'
   trigger: 'scheduled' | 'manual'
-  status: 'planned' | 'running' | 'success' | 'partial' | 'failed'
+  status: 'planned' | 'running' | 'success' | 'partial' | 'failed' | 'aborted'
   started_at: string
   finished_at: string | null
   log_tail: string | null

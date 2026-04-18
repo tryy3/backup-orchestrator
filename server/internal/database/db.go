@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/tryy3/backup-orchestrator/server/internal/crypto"
@@ -161,7 +161,7 @@ func (db *DB) migrateRepositoryPasswords(ctx context.Context) error {
 		}
 	}
 	if len(updates) > 0 {
-		log.Printf("Encrypted %d repository password(s)", len(updates))
+		slog.Info("encrypted repository passwords", "count", len(updates))
 	}
 	return nil
 }
@@ -201,7 +201,7 @@ func (db *DB) migrateAgentRcloneConfigs(ctx context.Context) error {
 		}
 	}
 	if len(updates) > 0 {
-		log.Printf("Encrypted %d agent rclone config(s)", len(updates))
+		slog.Info("encrypted agent rclone configs", "count", len(updates))
 	}
 	return nil
 }

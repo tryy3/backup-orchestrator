@@ -63,7 +63,13 @@ func NewStreamHandler(
 // It returns when the stream disconnects or the context is cancelled.
 // The caller is responsible for reconnection with exponential backoff.
 func (s *StreamHandler) Run(ctx context.Context) error {
-	stream, err := s.client.client.Connect(ctx)
+	// Per-attempt context: cancelling this also cancels the underlying stream,
+	// which makes stream.Recv() return immediately instead of blocking until
+	// a TCP timeout on half-open connections.
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	defer streamCancel()
+
+	stream, err := s.client.client.Connect(streamCtx)
 	if err != nil {
 		return fmt.Errorf("opening connect stream: %w", err)
 	}
@@ -72,10 +78,6 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 	if err := s.sendHeartbeat(stream); err != nil {
 		return fmt.Errorf("sending initial heartbeat: %w", err)
 	}
-
-	// Derived context so we can signal both goroutines to stop when Run exits.
-	runCtx, runCancel := context.WithCancel(ctx)
-	defer runCancel()
 
 	errCh := make(chan error, 2)
 	var wg sync.WaitGroup
@@ -111,7 +113,7 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 
 		for {
 			select {
-			case <-runCtx.Done():
+			case <-streamCtx.Done():
 				flushLogs()
 				// Close the send side of the stream.
 				_ = stream.CloseSend()
@@ -172,8 +174,8 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 		retErr = ctx.Err()
 	}
 
-	// Cancel derived context to signal the other goroutine, then wait.
-	runCancel()
+	// Cancel stream context to unblock Recv and signal the other goroutine, then wait.
+	streamCancel()
 	wg.Wait()
 	return retErr
 }

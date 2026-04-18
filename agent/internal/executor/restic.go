@@ -1,17 +1,88 @@
 package executor
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tryy3/backup-orchestrator/agent/internal/redact"
 )
+
+// Bounds applied to subprocess output capture so that very long-running
+// restic invocations (e.g. backups of millions of files) cannot grow the
+// agent's resident memory unboundedly.
+const (
+	// maxStdoutBytes caps the stdout retained by runRestic for callers
+	// that consume the output as a single string (snapshots, ls, …).
+	// Backup streams output and never retains all stdout in memory.
+	maxStdoutBytes = 1 << 20 // 1 MiB
+	// maxStderrBytes caps the stderr retained from any restic invocation.
+	maxStderrBytes = 4 << 10 // 4 KiB
+	// maxScannerLineBytes is the maximum length of a single line read
+	// from restic's stdout/stderr. restic's `backup --json` status
+	// messages can include the current file paths and may exceed the
+	// default bufio.Scanner limit (64 KiB).
+	maxScannerLineBytes = 1 << 20 // 1 MiB
+	// maxBackupTailLines caps the number of non-status stdout lines
+	// retained from a `restic backup --json` run for diagnostics when
+	// the summary message is missing (e.g. on failure).
+	maxBackupTailLines = 200
+)
+
+// tailBuffer is an io.Writer that retains only the last `max` bytes of
+// what is written to it. It is safe for concurrent writes, which is
+// required because we drain stdout and stderr from separate goroutines.
+type tailBuffer struct {
+	mu        sync.Mutex
+	max       int
+	buf       []byte
+	truncated bool
+}
+
+func newTailBuffer(_max int) *tailBuffer {
+	return &tailBuffer{max: _max}
+}
+
+// Write appends p, keeping at most `max` trailing bytes.
+func (t *tailBuffer) Write(p []byte) (int, error) {
+	n := len(p)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.buf)+n <= t.max {
+		t.buf = append(t.buf, p...)
+		return n, nil
+	}
+	t.truncated = true
+	if n >= t.max {
+		// p alone exceeds the cap; keep only its tail.
+		t.buf = append(t.buf[:0], p[n-t.max:]...)
+		return n, nil
+	}
+	// Drop oldest bytes from t.buf to make room for p.
+	keep := t.max - n
+	copy(t.buf, t.buf[len(t.buf)-keep:])
+	t.buf = t.buf[:keep]
+	t.buf = append(t.buf, p...)
+	return n, nil
+}
+
+// String returns the captured tail, prefixed with a truncation marker
+// if any data was discarded.
+func (t *tailBuffer) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.truncated {
+		return "...[truncated]...\n" + string(t.buf)
+	}
+	return string(t.buf)
+}
 
 // Repository represents a restic backup repository.
 type Repository struct {
@@ -81,6 +152,11 @@ type resticSummary struct {
 }
 
 // Backup runs restic backup with the given parameters and returns parsed results.
+//
+// Stdout is parsed line-by-line incrementally so that the agent does not
+// retain restic's per-file `status` messages in memory; only the final
+// `summary` struct (and a small bounded tail of recent diagnostic lines
+// in case of failure) is kept.
 func (r *ResticExecutor) Backup(ctx context.Context, repo Repository, paths, excludes, tags []string, logger *slog.Logger) (*BackupResult, error) {
 	args := make([]string, 0, 4+2*len(tags)+2*len(excludes)+len(paths))
 	args = append(args, "backup", "--json", "--repo", repo.Path)
@@ -93,39 +169,60 @@ func (r *ResticExecutor) Backup(ctx context.Context, repo Repository, paths, exc
 	}
 	args = append(args, paths...)
 
+	var (
+		summary    resticSummary
+		foundSum   bool
+		tail       = make([]string, 0, maxBackupTailLines)
+		linesSeen  int
+		statusSeen int
+	)
+	addTail := func(line string) {
+		if len(tail) < maxBackupTailLines {
+			tail = append(tail, line)
+			return
+		}
+		// Ring: drop the oldest entry.
+		copy(tail, tail[1:])
+		tail[len(tail)-1] = line
+	}
+
 	start := time.Now()
-	stdout, stderr, err := r.runRestic(ctx, repo, args, logger)
+	stderr, err := r.streamRestic(ctx, repo, args, logger, func(line []byte) {
+		linesSeen++
+		// Try to interpret the line as a JSON message from restic.
+		var msg struct {
+			MessageType string `json:"message_type"`
+		}
+		if jerr := json.Unmarshal(line, &msg); jerr != nil {
+			// Non-JSON line (e.g. plain progress); keep a small tail.
+			addTail(string(line))
+			return
+		}
+		switch msg.MessageType {
+		case "status":
+			// High-volume per-file progress messages — discard.
+			statusSeen++
+		case "summary":
+			if jerr := json.Unmarshal(line, &summary); jerr == nil {
+				foundSum = true
+			} else {
+				addTail(string(line))
+			}
+		default:
+			// "error", "verbose_status", unknown types → keep for diagnostics.
+			addTail(string(line))
+		}
+	})
 	durationMs := time.Since(start).Milliseconds()
 
 	if err != nil {
 		return nil, fmt.Errorf("restic backup: %w\nstderr: %s", err, stderr)
 	}
 
-	// Parse JSON summary from stdout. Restic outputs multiple JSON lines;
-	// the summary line has message_type "summary".
-	var summary resticSummary
-	found := false
-	for _, line := range strings.Split(stdout, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var msg struct {
-			MessageType string `json:"message_type"`
-		}
-		if err := json.Unmarshal([]byte(line), &msg); err != nil {
-			continue
-		}
-		if msg.MessageType == "summary" {
-			if err := json.Unmarshal([]byte(line), &summary); err != nil {
-				return nil, fmt.Errorf("parsing restic summary: %w", err)
-			}
-			found = true
-			break
-		}
-	}
-	if !found {
-		return nil, fmt.Errorf("restic backup did not produce a summary message\nstdout: %s", stdout)
+	if !foundSum {
+		tailStr := strings.Join(tail, "\n")
+		return nil, fmt.Errorf("restic backup did not produce a summary message (%d lines, %d status updates)\nstdout tail: %s",
+			linesSeen, statusSeen, tailStr)
 	}
 
 	return &BackupResult{
@@ -272,13 +369,38 @@ func (r *ResticExecutor) EnsureRepo(ctx context.Context, repo Repository, logger
 	return nil
 }
 
-// runRestic executes a restic command with the correct environment variables.
+// runRestic executes a restic command and returns its stdout/stderr as
+// strings, with each output stream capped to a fixed size to bound the
+// agent's memory usage. Callers that need to consume large amounts of
+// stdout incrementally should use streamRestic instead.
 func (r *ResticExecutor) runRestic(ctx context.Context, repo Repository, args []string, logger *slog.Logger) (stdout, stderr string, err error) {
+	stdoutBuf := newTailBuffer(maxStdoutBytes)
+	stderr, err = r.streamRestic(ctx, repo, args, logger, func(line []byte) {
+		// Re-append the newline so callers that re-split on "\n" still
+		// work, and so JSON-per-line consumers see the original framing.
+		_, _ = stdoutBuf.Write(line)
+		_, _ = stdoutBuf.Write([]byte{'\n'})
+	})
+	return stdoutBuf.String(), stderr, err
+}
+
+// streamRestic runs a restic command, invoking onStdoutLine for each line
+// of stdout. Stderr is captured into a bounded tail buffer (last
+// maxStderrBytes bytes) and returned as a string. The caller is
+// responsible for not retaining stdout lines beyond what they need.
+//
+// onStdoutLine is invoked from a single goroutine and the byte slice
+// passed to it is only valid for the duration of the call.
+func (r *ResticExecutor) streamRestic(ctx context.Context, repo Repository, args []string, logger *slog.Logger, onStdoutLine func(line []byte)) (stderr string, err error) {
 	cmd := exec.CommandContext(ctx, "restic", args...)
 
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
+	stderrBuf := newTailBuffer(maxStderrBytes)
+	cmd.Stderr = stderrBuf
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("restic stdout pipe: %w", err)
+	}
 
 	// Set extra environment variables.
 	var extraEnv []string
@@ -296,8 +418,26 @@ func (r *ResticExecutor) runRestic(ctx context.Context, repo Repository, args []
 		"env", redact.Env(extraEnv),
 	)
 
-	err = cmd.Run()
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("restic start: %w", err)
+	}
+
+	scanner := bufio.NewScanner(stdoutPipe)
+	scanner.Buffer(make([]byte, 64*1024), maxScannerLineBytes)
+	for scanner.Scan() {
+		if onStdoutLine != nil {
+			onStdoutLine(scanner.Bytes())
+		}
+	}
+	// Drain any remainder if the scanner stopped on a too-long line so the
+	// child does not block forever writing to a full pipe. We do not
+	// surface this content (it would defeat the bound), only discard it.
+	if scanErr := scanner.Err(); scanErr != nil {
+		_, _ = io.Copy(io.Discard, stdoutPipe)
+	}
+
+	waitErr := cmd.Wait()
 	// Scrub the repository password from stderr before returning, so that it
 	// cannot appear in error messages or the persisted job log tail.
-	return stdoutBuf.String(), redact.String(stderrBuf.String(), repo.Password), err
+	return redact.String(stderrBuf.String(), repo.Password), waitErr
 }
