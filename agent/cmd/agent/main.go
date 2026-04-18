@@ -237,8 +237,11 @@ func run() error {
 				)
 			},
 			// onCommand: dispatch to executor.
-			func(cmd *backupv1.Command) *backupv1.CommandResult {
-				return handleCommand(ctx, cmd, sched, resticExec, &configMu, &currentConfig, id)
+			// cmdCtx is a per-command context derived from the stream's runCtx
+			// with a kind-specific timeout; handlers must honor it so hung
+			// restic/rclone invocations cannot block the recv loop.
+			func(cmdCtx context.Context, cmd *backupv1.Command) *backupv1.CommandResult {
+				return handleCommand(cmdCtx, cmd, sched, resticExec, &configMu, &currentConfig, id)
 			},
 			// jobStatus: report current running job for heartbeats.
 			sched.JobStatusFunc(),

@@ -58,6 +58,7 @@ func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolv
 		r.Delete("/agents/{id}", deleteAgentHandler(db))
 		r.Get("/agents/{id}/rclone", getRcloneHandler(db))
 		r.Put("/agents/{id}/rclone", updateRcloneHandler(db, resolver))
+		r.Put("/agents/{id}/command-timeouts", updateAgentCommandTimeoutsHandler(db, resolver))
 
 		// Repositories
 		r.Get("/repositories", listRepositoriesHandler(db))

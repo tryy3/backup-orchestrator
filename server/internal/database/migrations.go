@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 )
 
@@ -24,6 +25,7 @@ CREATE TABLE IF NOT EXISTS agents (
     last_job_at     DATETIME,
     config_version  INTEGER NOT NULL DEFAULT 0,
     config_applied_at DATETIME,
+    command_timeouts TEXT,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -176,6 +178,46 @@ CREATE INDEX IF NOT EXISTS idx_job_hook_results_job_id ON job_hook_results(job_i
 func (db *DB) migrate(ctx context.Context) error {
 	if _, err := db.ExecContext(ctx, migrationSQL); err != nil {
 		return fmt.Errorf("execute migration SQL: %w", err)
+	}
+	if err := db.addColumnIfMissing(ctx, "agents", "command_timeouts", "TEXT"); err != nil {
+		return fmt.Errorf("add agents.command_timeouts column: %w", err)
+	}
+	return nil
+}
+
+// addColumnIfMissing adds a column to a table if it doesn't already exist.
+// SQLite has no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so we inspect
+// PRAGMA table_info and only run ALTER when the column is absent.
+func (db *DB) addColumnIfMissing(ctx context.Context, table, column, columnType string) error {
+	rows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return fmt.Errorf("query table info for %s: %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var (
+		cid     int
+		name    string
+		ctype   string
+		notnull int
+		dflt    sql.NullString
+		pk      int
+	)
+	for rows.Next() {
+		if scanErr := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); scanErr != nil {
+			return fmt.Errorf("scan column info: %w", scanErr)
+		}
+		if name == column {
+			return nil // column already exists
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate table info: %w", err)
+	}
+
+	stmt := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, columnType)
+	if _, err := db.ExecContext(ctx, stmt); err != nil {
+		return fmt.Errorf("alter table %s add %s: %w", table, column, err)
 	}
 	return nil
 }

@@ -20,6 +20,12 @@ var settingsKeys = []string{
 	"max_heatmap_runs",
 	"default_hook_timeout_seconds",
 	"file_browser_blocked_paths",
+	"command_timeout_backup_seconds",
+	"command_timeout_restore_seconds",
+	"command_timeout_list_snapshots_seconds",
+	"command_timeout_browse_snapshot_seconds",
+	"command_timeout_browse_filesystem_seconds",
+	"command_timeout_default_seconds",
 }
 
 func getSettingsHandler(db *database.DB) http.HandlerFunc {

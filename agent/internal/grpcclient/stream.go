@@ -28,18 +28,34 @@ type JobStatusFunc func() *JobStatus
 // provides enough headroom for bursts of config acks / command results.
 const outboundChSize = 32
 
+// Default per-command timeouts. Commands that can legitimately run for a long
+// time (e.g. restic backup/restore against slow remote backends) get a much
+// larger budget than lookup-style commands. These are the fallbacks used when
+// the server has not pushed CommandTimeouts in AgentConfig.
+const (
+	defaultCommandTimeout         = 5 * time.Minute
+	defaultBackupCommandTimeout   = 24 * time.Hour
+	defaultRestoreCommandTimeout  = 24 * time.Hour
+	defaultBrowseFSCommandTimeout = 30 * time.Second
+	defaultListSnapshotsTimeout   = 5 * time.Minute
+	defaultBrowseSnapshotTimeout  = 5 * time.Minute
+)
+
 // StreamHandler manages the bidirectional Connect stream lifecycle.
 type StreamHandler struct {
 	client            *Client
 	identity          *identity.Identity
 	onApproval        func(agentID, apiKey string)
 	onConfig          func(cfg *backupv1.AgentConfig)
-	onCommand         func(cmd *backupv1.Command) *backupv1.CommandResult
+	onCommand         func(ctx context.Context, cmd *backupv1.Command) *backupv1.CommandResult
 	jobStatusFn       JobStatusFunc
 	liveLogCh         <-chan *backupv1.LogEntry // receives live log entries from running jobs
 	heartbeatInterval time.Duration
 	heartbeatMu       sync.RWMutex
-	intervalUpdateCh  chan time.Duration // signals the send goroutine to reset the heartbeat ticker
+	// cmdTimeouts holds server-pushed per-command timeout overrides; nil means
+	// fall back to the package-level defaults.
+	cmdTimeouts   *backupv1.CommandTimeouts
+	cmdTimeoutsMu sync.RWMutex
 }
 
 // NewStreamHandler creates a new StreamHandler.
@@ -48,7 +64,7 @@ func NewStreamHandler(
 	id *identity.Identity,
 	onApproval func(agentID, apiKey string),
 	onConfig func(cfg *backupv1.AgentConfig),
-	onCommand func(cmd *backupv1.Command) *backupv1.CommandResult,
+	onCommand func(ctx context.Context, cmd *backupv1.Command) *backupv1.CommandResult,
 	jobStatusFn JobStatusFunc,
 	liveLogCh <-chan *backupv1.LogEntry,
 ) *StreamHandler {
@@ -61,8 +77,48 @@ func NewStreamHandler(
 		jobStatusFn:       jobStatusFn,
 		liveLogCh:         liveLogCh,
 		heartbeatInterval: 30 * time.Second,
-		intervalUpdateCh:  make(chan time.Duration, 1),
 	}
+}
+
+// commandTimeout returns the per-command deadline to apply based on the
+// command kind, honoring server-pushed overrides if present. Browse/list
+// commands default to short timeouts so a single hung lookup does not tie up
+// a worker for long; backup/restore get a much larger budget since they can
+// run for hours against remote backends.
+func (s *StreamHandler) commandTimeout(cmd *backupv1.Command) time.Duration {
+	s.cmdTimeoutsMu.RLock()
+	overrides := s.cmdTimeouts
+	s.cmdTimeoutsMu.RUnlock()
+
+	pickSecs := func(override int32, fallback time.Duration) time.Duration {
+		if override > 0 {
+			return time.Duration(override) * time.Second
+		}
+		return fallback
+	}
+
+	switch cmd.GetAction().(type) {
+	case *backupv1.Command_TriggerBackup:
+		return pickSecs(overrides.GetBackupSecs(), defaultBackupCommandTimeout)
+	case *backupv1.Command_TriggerRestore:
+		return pickSecs(overrides.GetRestoreSecs(), defaultRestoreCommandTimeout)
+	case *backupv1.Command_ListSnapshots:
+		return pickSecs(overrides.GetListSnapshotsSecs(), defaultListSnapshotsTimeout)
+	case *backupv1.Command_BrowseSnapshot:
+		return pickSecs(overrides.GetBrowseSnapshotSecs(), defaultBrowseSnapshotTimeout)
+	case *backupv1.Command_BrowseFilesystem:
+		return pickSecs(overrides.GetBrowseFilesystemSecs(), defaultBrowseFSCommandTimeout)
+	default:
+		return pickSecs(overrides.GetDefaultSecs(), defaultCommandTimeout)
+	}
+}
+
+// applyCommandTimeouts stores command timeout overrides pushed by the server.
+// A nil argument clears any previously stored overrides (reverting to defaults).
+func (s *StreamHandler) applyCommandTimeouts(t *backupv1.CommandTimeouts) {
+	s.cmdTimeoutsMu.Lock()
+	s.cmdTimeouts = t
+	s.cmdTimeoutsMu.Unlock()
 }
 
 // Run opens the Connect stream, sends heartbeats, and dispatches server messages.
@@ -152,8 +208,6 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 					errCh <- fmt.Errorf("sending heartbeat: %w", err)
 					return
 				}
-			case newInterval := <-s.intervalUpdateCh:
-				ticker.Reset(newInterval)
 			case entry, ok := <-s.liveLogCh:
 				if !ok {
 					flushLogs()
@@ -196,7 +250,7 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 				handlerWg.Add(1)
 				go func() {
 					defer handlerWg.Done()
-					s.handleCommand(outboundCh, payload.Command)
+					s.handleCommand(streamCtx, outboundCh, payload.Command)
 				}()
 
 			default:
@@ -306,19 +360,15 @@ func (s *StreamHandler) handleConfig(outboundCh chan<- *backupv1.AgentMessage, c
 
 	// Apply heartbeat interval if provided.
 	if hb := cfg.GetHeartbeatIntervalSecs(); hb > 0 {
-		newInterval := time.Duration(hb) * time.Second
 		s.heartbeatMu.Lock()
-		s.heartbeatInterval = newInterval
+		s.heartbeatInterval = time.Duration(hb) * time.Second
 		s.heartbeatMu.Unlock()
 		slog.Info("heartbeat interval updated", "source", "stream", "interval_secs", hb)
-		// Signal the send goroutine to reset the heartbeat ticker.
-		// Non-blocking: if a pending update is already queued the send
-		// goroutine will consume it shortly.
-		select {
-		case s.intervalUpdateCh <- newInterval:
-		default:
-		}
 	}
+
+	// Apply per-command timeout overrides if provided. A nil value reverts
+	// to the built-in defaults.
+	s.applyCommandTimeouts(cfg.GetCommandTimeouts())
 
 	if s.onConfig != nil {
 		s.onConfig(cfg)
@@ -341,12 +391,18 @@ func (s *StreamHandler) handleConfig(outboundCh chan<- *backupv1.AgentMessage, c
 	outboundCh <- ack
 }
 
-func (s *StreamHandler) handleCommand(outboundCh chan<- *backupv1.AgentMessage, cmd *backupv1.Command) {
+func (s *StreamHandler) handleCommand(ctx context.Context, outboundCh chan<- *backupv1.AgentMessage, cmd *backupv1.Command) {
 	slog.Info("received command", "source", "stream", "command_id", cmd.GetCommandId())
+
+	// Per-command timeout: derived from the stream context so a stream
+	// shutdown also cancels the command. Defaults are kind-specific; the
+	// server can override them via AgentConfig.command_timeouts.
+	cmdCtx, cancel := context.WithTimeout(ctx, s.commandTimeout(cmd))
+	defer cancel()
 
 	var result *backupv1.CommandResult
 	if s.onCommand != nil {
-		result = s.onCommand(cmd)
+		result = s.onCommand(cmdCtx, cmd)
 	} else {
 		result = &backupv1.CommandResult{
 			CommandId: cmd.GetCommandId(),
@@ -366,5 +422,10 @@ func (s *StreamHandler) handleCommand(outboundCh chan<- *backupv1.AgentMessage, 
 			CommandResult: result,
 		},
 	}
-	outboundCh <- msg
+	select {
+	case outboundCh <- msg:
+	case <-ctx.Done():
+		// Stream shut down before we could enqueue — result would be
+		// undeliverable anyway.
+	}
 }

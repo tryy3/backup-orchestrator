@@ -14,6 +14,7 @@ export interface Agent {
   last_job_at: string | null
   config_version: number
   config_applied_at: string | null
+  command_timeouts?: CommandTimeouts | null
   created_at: string
   updated_at: string
 }
@@ -196,6 +197,12 @@ export interface Settings {
   max_heatmap_runs?: number
   default_hook_timeout_seconds?: number
   file_browser_blocked_paths?: string[]
+  command_timeout_backup_seconds?: number
+  command_timeout_restore_seconds?: number
+  command_timeout_list_snapshots_seconds?: number
+  command_timeout_browse_snapshot_seconds?: number
+  command_timeout_browse_filesystem_seconds?: number
+  command_timeout_default_seconds?: number
 }
 
 /** Default values for global settings (used when no value is stored server-side). */
@@ -208,7 +215,29 @@ export const SETTINGS_DEFAULTS = {
   max_heatmap_runs: 30,
   default_hook_timeout_seconds: 60,
   file_browser_blocked_paths: ['/proc', '/sys', '/dev', '/run/credentials', '/selinux', '/cgroup'],
+  // Per-command timeouts (seconds). 0 means "use the agent's compiled-in
+  // default": 86400 for backup/restore, 300 for list/browse snapshots, 30 for
+  // browse filesystem, 300 for unknown.
+  command_timeout_backup_seconds: 86400,
+  command_timeout_restore_seconds: 86400,
+  command_timeout_list_snapshots_seconds: 300,
+  command_timeout_browse_snapshot_seconds: 300,
+  command_timeout_browse_filesystem_seconds: 30,
+  command_timeout_default_seconds: 300,
 } as const
+
+/**
+ * Per-agent override of the global command-timeout settings. Each field is in
+ * seconds; 0 / undefined means "fall back to the global setting".
+ */
+export interface CommandTimeouts {
+  backup_secs?: number
+  restore_secs?: number
+  list_snapshots_secs?: number
+  browse_snapshot_secs?: number
+  browse_filesystem_secs?: number
+  default_secs?: number
+}
 
 export interface ServerVersion {
   version: string
