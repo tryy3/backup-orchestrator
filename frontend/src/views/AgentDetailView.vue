@@ -126,6 +126,57 @@ async function saveRclone() {
   saving.value = false
 }
 
+// Per-agent command timeout overrides. Each field is in seconds; 0 / empty
+// means "fall back to the global setting".
+const timeoutsOpen = ref(false)
+const timeoutBackup = ref<number | null>(null)
+const timeoutRestore = ref<number | null>(null)
+const timeoutListSnapshots = ref<number | null>(null)
+const timeoutBrowseSnapshot = ref<number | null>(null)
+const timeoutBrowseFs = ref<number | null>(null)
+const timeoutDefault = ref<number | null>(null)
+const timeoutsSaved = ref(false)
+
+function loadTimeoutsFromAgent() {
+  const ct = agent.value?.command_timeouts
+  timeoutBackup.value = ct?.backup_secs ?? null
+  timeoutRestore.value = ct?.restore_secs ?? null
+  timeoutListSnapshots.value = ct?.list_snapshots_secs ?? null
+  timeoutBrowseSnapshot.value = ct?.browse_snapshot_secs ?? null
+  timeoutBrowseFs.value = ct?.browse_filesystem_secs ?? null
+  timeoutDefault.value = ct?.default_secs ?? null
+}
+
+function toggleTimeouts() {
+  timeoutsOpen.value = !timeoutsOpen.value
+  if (timeoutsOpen.value) {
+    loadTimeoutsFromAgent()
+  }
+}
+
+async function saveTimeouts() {
+  const payload = {
+    backup_secs: timeoutBackup.value || 0,
+    restore_secs: timeoutRestore.value || 0,
+    list_snapshots_secs: timeoutListSnapshots.value || 0,
+    browse_snapshot_secs: timeoutBrowseSnapshot.value || 0,
+    browse_filesystem_secs: timeoutBrowseFs.value || 0,
+    default_secs: timeoutDefault.value || 0,
+  }
+  // If all zero, send null to clear the override.
+  const allZero = Object.values(payload).every((v) => v === 0)
+  await agentsStore.updateCommandTimeouts(agentId.value, allZero ? null : payload)
+  timeoutsSaved.value = true
+  setTimeout(() => { timeoutsSaved.value = false }, 3000)
+}
+
+async function clearTimeouts() {
+  await agentsStore.updateCommandTimeouts(agentId.value, null)
+  loadTimeoutsFromAgent()
+  timeoutsSaved.value = true
+  setTimeout(() => { timeoutsSaved.value = false }, 3000)
+}
+
 </script>
 
 <template>
@@ -287,6 +338,80 @@ async function saveRclone() {
               @click="saveRclone"
             >
               {{ saving ? 'Saving...' : 'Save Config' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Per-agent command timeout overrides (collapsible) -->
+      <div class="rounded-lg border border-surface-700 bg-surface-900">
+        <button
+          class="flex w-full items-center justify-between px-4 py-3 text-sm text-slate-400 transition-colors hover:text-slate-200"
+          @click="toggleTimeouts"
+        >
+          <span class="font-medium">
+            Command Timeouts Override
+            <span v-if="agent.command_timeouts" class="ml-2 rounded bg-cyan-500/10 px-1.5 py-0.5 text-xs text-cyan-400">custom</span>
+          </span>
+          <svg
+            :class="['h-4 w-4 transition-transform', timeoutsOpen ? 'rotate-180' : '']"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
+        <div v-if="timeoutsOpen" class="space-y-4 border-t border-surface-700 p-4">
+          <p class="text-xs text-slate-500">
+            Override the global per-command timeouts for this agent. Leave a field empty (or 0)
+            to use the global setting from the Settings page.
+          </p>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-slate-400">Backup (seconds)</label>
+              <input v-model.number="timeoutBackup" type="number" min="0" placeholder="global" class="mt-1 w-full rounded border border-surface-600 bg-surface-950 px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400">Restore (seconds)</label>
+              <input v-model.number="timeoutRestore" type="number" min="0" placeholder="global" class="mt-1 w-full rounded border border-surface-600 bg-surface-950 px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400">List Snapshots (seconds)</label>
+              <input v-model.number="timeoutListSnapshots" type="number" min="0" placeholder="global" class="mt-1 w-full rounded border border-surface-600 bg-surface-950 px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400">Browse Snapshot (seconds)</label>
+              <input v-model.number="timeoutBrowseSnapshot" type="number" min="0" placeholder="global" class="mt-1 w-full rounded border border-surface-600 bg-surface-950 px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400">Browse Filesystem (seconds)</label>
+              <input v-model.number="timeoutBrowseFs" type="number" min="0" placeholder="global" class="mt-1 w-full rounded border border-surface-600 bg-surface-950 px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400">Default (seconds)</label>
+              <input v-model.number="timeoutDefault" type="number" min="0" placeholder="global" class="mt-1 w-full rounded border border-surface-600 bg-surface-950 px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+            </div>
+          </div>
+          <div v-if="timeoutsSaved" class="rounded border border-green-500/20 bg-green-500/10 px-3 py-2 text-xs text-green-400">
+            Command timeouts saved.
+          </div>
+          <div class="flex justify-end gap-2">
+            <button
+              v-if="agent.command_timeouts"
+              class="rounded-md bg-slate-500/10 px-4 py-2 text-sm font-medium text-slate-300 ring-1 ring-slate-500/30 transition-colors hover:bg-slate-500/20 disabled:opacity-50"
+              :disabled="agentsStore.saving"
+              @click="clearTimeouts"
+            >
+              Reset to Global
+            </button>
+            <button
+              class="rounded-md bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-400 ring-1 ring-cyan-500/30 transition-colors hover:bg-cyan-500/20 disabled:opacity-50"
+              :disabled="agentsStore.saving"
+              @click="saveTimeouts"
+            >
+              {{ agentsStore.saving ? 'Saving...' : 'Save Overrides' }}
             </button>
           </div>
         </div>

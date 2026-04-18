@@ -119,6 +119,19 @@ message AgentConfig {
   string rclone_config = 5; // raw INI text
   int32 heartbeat_interval_secs = 6; // seconds between heartbeats (0 = use agent default)
   repeated string file_browser_blocked_paths = 7; // paths the file browser refuses to list
+  CommandTimeouts command_timeouts = 8; // per-command timeouts (0 fields = use agent default)
+}
+
+// CommandTimeouts overrides the agent's built-in per-command deadlines.
+// A field set to 0 (or unset) means the agent should use its compiled-in
+// default for that command kind.
+message CommandTimeouts {
+  int32 backup_secs = 1; // TriggerBackup
+  int32 restore_secs = 2; // TriggerRestore
+  int32 list_snapshots_secs = 3; // ListSnapshots
+  int32 browse_snapshot_secs = 4; // BrowseSnapshot
+  int32 browse_filesystem_secs = 5; // BrowseFilesystem
+  int32 default_secs = 6; // unknown/future kinds
 }
 
 message Command {

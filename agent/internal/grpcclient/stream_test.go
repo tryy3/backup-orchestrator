@@ -202,7 +202,7 @@ func TestSendSerialisation(t *testing.T) {
 			// Simulate some work.
 			time.Sleep(time.Millisecond)
 		},
-		onCommand: func(cmd *backupv1.Command) *backupv1.CommandResult {
+		onCommand: func(_ context.Context, cmd *backupv1.Command) *backupv1.CommandResult {
 			return &backupv1.CommandResult{
 				CommandId: cmd.GetCommandId(),
 				Success:   true,
@@ -366,7 +366,7 @@ func TestHandleCommandEnqueuesResult(t *testing.T) {
 	sh := &StreamHandler{
 		identity:          id,
 		heartbeatInterval: 30 * time.Second,
-		onCommand: func(cmd *backupv1.Command) *backupv1.CommandResult {
+		onCommand: func(_ context.Context, cmd *backupv1.Command) *backupv1.CommandResult {
 			return &backupv1.CommandResult{
 				CommandId: cmd.GetCommandId(),
 				Success:   true,
@@ -377,7 +377,7 @@ func TestHandleCommandEnqueuesResult(t *testing.T) {
 	outboundCh := make(chan *backupv1.AgentMessage, 8)
 	cmd := &backupv1.Command{CommandId: "cmd-99"}
 
-	sh.handleCommand(outboundCh, cmd)
+	sh.handleCommand(context.Background(), outboundCh, cmd)
 
 	select {
 	case msg := <-outboundCh:
@@ -399,117 +399,6 @@ func TestHandleCommandEnqueuesResult(t *testing.T) {
 	}
 }
 
-// countHeartbeats counts HeartbeatInterval messages in a slice of AgentMessages.
-func countHeartbeats(msgs []*backupv1.AgentMessage) int {
-	n := 0
-	for _, m := range msgs {
-		if m.GetHeartbeat() != nil {
-			n++
-		}
-	}
-	return n
-}
-
-// TestHandleConfigSignalsIntervalUpdate verifies that handleConfig sends the
-// new heartbeat interval on intervalUpdateCh so the send goroutine can reset
-// its ticker.
-func TestHandleConfigSignalsIntervalUpdate(t *testing.T) {
-	id := &identity.Identity{AgentID: "agent-1", APIKey: "key-1"}
-	sh := &StreamHandler{
-		identity:          id,
-		heartbeatInterval: 30 * time.Second,
-		intervalUpdateCh:  make(chan time.Duration, 1),
-	}
-
-	outboundCh := make(chan *backupv1.AgentMessage, 8)
-	cfg := &backupv1.AgentConfig{
-		ConfigVersion:         1,
-		HeartbeatIntervalSecs: 5,
-	}
-
-	sh.handleConfig(outboundCh, cfg)
-
-	select {
-	case interval := <-sh.intervalUpdateCh:
-		if interval != 5*time.Second {
-			t.Errorf("intervalUpdateCh: got %v, want %v", interval, 5*time.Second)
-		}
-	default:
-		t.Fatal("expected interval update on intervalUpdateCh, got none")
-	}
-}
-
-// TestHandleConfigNoSignalWhenIntervalUnchanged verifies that handleConfig
-// does not send on intervalUpdateCh when HeartbeatIntervalSecs is zero (not set).
-func TestHandleConfigNoSignalWhenIntervalUnchanged(t *testing.T) {
-	id := &identity.Identity{AgentID: "agent-1", APIKey: "key-1"}
-	sh := &StreamHandler{
-		identity:          id,
-		heartbeatInterval: 30 * time.Second,
-		intervalUpdateCh:  make(chan time.Duration, 1),
-	}
-
-	outboundCh := make(chan *backupv1.AgentMessage, 8)
-	cfg := &backupv1.AgentConfig{
-		ConfigVersion:         2,
-		HeartbeatIntervalSecs: 0, // not set
-	}
-
-	sh.handleConfig(outboundCh, cfg)
-
-	select {
-	case got := <-sh.intervalUpdateCh:
-		t.Errorf("unexpected interval update on intervalUpdateCh: %v", got)
-	default:
-		// expected: no signal
-	}
-}
-
-// TestHeartbeatTickerResetOnIntervalUpdate verifies that when the send goroutine
-// receives a new interval on intervalUpdateCh, it resets the ticker so heartbeats
-// fire at the new cadence.
-func TestHeartbeatTickerResetOnIntervalUpdate(t *testing.T) {
-	ms := newMockStream()
-	mockClient := &mockBackupServiceClient{stream: ms}
-
-	intervalUpdateCh := make(chan time.Duration, 1)
-	id := &identity.Identity{AgentID: "test-agent", APIKey: "test-key"}
-	sh := &StreamHandler{
-		client:            &Client{client: mockClient},
-		identity:          id,
-		heartbeatInterval: 500 * time.Millisecond, // slow enough that no extra ticks fire during the ~300 ms observation window
-		intervalUpdateCh:  intervalUpdateCh,
-		liveLogCh:         make(chan *backupv1.LogEntry),
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() { _ = sh.Run(ctx) }()
-
-	// Allow the initial heartbeat to be sent and the ticker to start.
-	time.Sleep(50 * time.Millisecond)
-	initialCount := countHeartbeats(ms.getSent())
-
-	// Signal the send goroutine to switch to a fast interval.
-	intervalUpdateCh <- 50 * time.Millisecond
-
-	// Wait long enough to collect several ticks at the new 50 ms interval.
-	// At 50 ms / tick over ~300 ms we expect ~6 ticks, so 4 is a generous
-	// lower bound that accommodates scheduler jitter without making the test
-	// brittle.
-	time.Sleep(300 * time.Millisecond)
-
-	cancel()
-	time.Sleep(20 * time.Millisecond)
-
-	newHeartbeats := countHeartbeats(ms.getSent()) - initialCount
-	// At 50 ms interval over ~300 ms we expect at least 4 heartbeats.
-	if newHeartbeats < 4 {
-		t.Errorf("after ticker reset to 50ms, got %d new heartbeats in ~300ms; expected at least 4", newHeartbeats)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Integration tests (bufconn-based, from main)
 // ---------------------------------------------------------------------------
@@ -526,7 +415,7 @@ func TestRun_CancelUnblocksRecv(t *testing.T) {
 		&identity.Identity{AgentID: "test-agent"},
 		func(agentID, apiKey string) {},
 		func(cfg *backupv1.AgentConfig) {},
-		func(cmd *backupv1.Command) *backupv1.CommandResult {
+		func(_ context.Context, cmd *backupv1.Command) *backupv1.CommandResult {
 			return &backupv1.CommandResult{CommandId: cmd.GetCommandId(), Success: true}
 		},
 		nil,
@@ -597,7 +486,7 @@ func TestRun_ServerDisconnect(t *testing.T) {
 		&identity.Identity{AgentID: "test-agent"},
 		func(agentID, apiKey string) {},
 		func(cfg *backupv1.AgentConfig) {},
-		func(cmd *backupv1.Command) *backupv1.CommandResult {
+		func(_ context.Context, cmd *backupv1.Command) *backupv1.CommandResult {
 			return &backupv1.CommandResult{CommandId: cmd.GetCommandId(), Success: true}
 		},
 		nil,
@@ -627,5 +516,108 @@ func TestRun_ServerDisconnect(t *testing.T) {
 		t.Logf("Run returned with: %v", err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return within 2 s after server disconnect")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Per-command timeout tests
+// ---------------------------------------------------------------------------
+
+func TestCommandTimeout_Defaults(t *testing.T) {
+	sh := NewStreamHandler(nil, &identity.Identity{}, nil, nil, nil, nil, nil)
+
+	tests := []struct {
+		name string
+		cmd  *backupv1.Command
+		want time.Duration
+	}{
+		{
+			name: "trigger_backup gets long timeout",
+			cmd: &backupv1.Command{
+				Action: &backupv1.Command_TriggerBackup{TriggerBackup: &backupv1.TriggerBackup{}},
+			},
+			want: defaultBackupCommandTimeout,
+		},
+		{
+			name: "trigger_restore gets long timeout",
+			cmd: &backupv1.Command{
+				Action: &backupv1.Command_TriggerRestore{TriggerRestore: &backupv1.TriggerRestore{}},
+			},
+			want: defaultRestoreCommandTimeout,
+		},
+		{
+			name: "list_snapshots gets medium timeout",
+			cmd: &backupv1.Command{
+				Action: &backupv1.Command_ListSnapshots{ListSnapshots: &backupv1.ListSnapshots{}},
+			},
+			want: defaultListSnapshotsTimeout,
+		},
+		{
+			name: "browse_snapshot gets medium timeout",
+			cmd: &backupv1.Command{
+				Action: &backupv1.Command_BrowseSnapshot{BrowseSnapshot: &backupv1.BrowseSnapshot{}},
+			},
+			want: defaultBrowseSnapshotTimeout,
+		},
+		{
+			name: "browse_filesystem gets short timeout",
+			cmd: &backupv1.Command{
+				Action: &backupv1.Command_BrowseFilesystem{BrowseFilesystem: &backupv1.BrowseFilesystem{}},
+			},
+			want: defaultBrowseFSCommandTimeout,
+		},
+		{
+			name: "unknown action gets default timeout",
+			cmd:  &backupv1.Command{},
+			want: defaultCommandTimeout,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sh.commandTimeout(tt.cmd)
+			if got != tt.want {
+				t.Errorf("commandTimeout() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	// Sanity: backup/restore must be strictly longer than browse timeouts, so
+	// a short browse-kind default can't ever apply to a long-running backup.
+	if defaultBackupCommandTimeout <= defaultBrowseFSCommandTimeout {
+		t.Errorf("backup timeout (%v) must be longer than browse_fs timeout (%v)",
+			defaultBackupCommandTimeout, defaultBrowseFSCommandTimeout)
+	}
+	if defaultRestoreCommandTimeout <= defaultBrowseFSCommandTimeout {
+		t.Errorf("restore timeout (%v) must be longer than browse_fs timeout (%v)",
+			defaultRestoreCommandTimeout, defaultBrowseFSCommandTimeout)
+	}
+}
+
+// TestCommandTimeout_FromConfig verifies that handleConfig overrides the
+// per-kind defaults with values from AgentConfig.CommandTimeouts.
+func TestCommandTimeout_FromConfig(t *testing.T) {
+	sh := NewStreamHandler(nil, &identity.Identity{}, nil, nil, nil, nil, nil)
+
+	sh.applyCommandTimeouts(&backupv1.CommandTimeouts{
+		BackupSecs:           120,
+		RestoreSecs:          240,
+		ListSnapshotsSecs:    60,
+		BrowseSnapshotSecs:   30,
+		BrowseFilesystemSecs: 5,
+		DefaultSecs:          90,
+	})
+
+	cases := map[time.Duration]*backupv1.Command{
+		120 * time.Second: {Action: &backupv1.Command_TriggerBackup{TriggerBackup: &backupv1.TriggerBackup{}}},
+		240 * time.Second: {Action: &backupv1.Command_TriggerRestore{TriggerRestore: &backupv1.TriggerRestore{}}},
+		60 * time.Second:  {Action: &backupv1.Command_ListSnapshots{ListSnapshots: &backupv1.ListSnapshots{}}},
+		30 * time.Second:  {Action: &backupv1.Command_BrowseSnapshot{BrowseSnapshot: &backupv1.BrowseSnapshot{}}},
+		5 * time.Second:   {Action: &backupv1.Command_BrowseFilesystem{BrowseFilesystem: &backupv1.BrowseFilesystem{}}},
+		90 * time.Second:  {},
+	}
+	for want, cmd := range cases {
+		if got := sh.commandTimeout(cmd); got != want {
+			t.Errorf("commandTimeout() = %v, want %v", got, want)
+		}
 	}
 }

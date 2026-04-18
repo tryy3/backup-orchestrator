@@ -27,6 +27,12 @@ const healthThresholdWarning = ref<number>(SETTINGS_DEFAULTS.health_threshold_wa
 const maxHeatmapRuns = ref<number>(SETTINGS_DEFAULTS.max_heatmap_runs)
 const defaultHookTimeout = ref<number>(SETTINGS_DEFAULTS.default_hook_timeout_seconds)
 const blockedPaths = ref<string>(SETTINGS_DEFAULTS.file_browser_blocked_paths.join('\n'))
+const cmdTimeoutBackup = ref<number>(SETTINGS_DEFAULTS.command_timeout_backup_seconds)
+const cmdTimeoutRestore = ref<number>(SETTINGS_DEFAULTS.command_timeout_restore_seconds)
+const cmdTimeoutListSnapshots = ref<number>(SETTINGS_DEFAULTS.command_timeout_list_snapshots_seconds)
+const cmdTimeoutBrowseSnapshot = ref<number>(SETTINGS_DEFAULTS.command_timeout_browse_snapshot_seconds)
+const cmdTimeoutBrowseFs = ref<number>(SETTINGS_DEFAULTS.command_timeout_browse_filesystem_seconds)
+const cmdTimeoutDefault = ref<number>(SETTINGS_DEFAULTS.command_timeout_default_seconds)
 
 const saving = ref(false)
 const saved = ref(false)
@@ -49,6 +55,12 @@ onMounted(async () => {
     defaultHookTimeout.value = store.settings.default_hook_timeout_seconds ?? SETTINGS_DEFAULTS.default_hook_timeout_seconds
     const bp = store.settings.file_browser_blocked_paths ?? SETTINGS_DEFAULTS.file_browser_blocked_paths
     blockedPaths.value = bp.join('\n')
+    cmdTimeoutBackup.value = store.settings.command_timeout_backup_seconds ?? SETTINGS_DEFAULTS.command_timeout_backup_seconds
+    cmdTimeoutRestore.value = store.settings.command_timeout_restore_seconds ?? SETTINGS_DEFAULTS.command_timeout_restore_seconds
+    cmdTimeoutListSnapshots.value = store.settings.command_timeout_list_snapshots_seconds ?? SETTINGS_DEFAULTS.command_timeout_list_snapshots_seconds
+    cmdTimeoutBrowseSnapshot.value = store.settings.command_timeout_browse_snapshot_seconds ?? SETTINGS_DEFAULTS.command_timeout_browse_snapshot_seconds
+    cmdTimeoutBrowseFs.value = store.settings.command_timeout_browse_filesystem_seconds ?? SETTINGS_DEFAULTS.command_timeout_browse_filesystem_seconds
+    cmdTimeoutDefault.value = store.settings.command_timeout_default_seconds ?? SETTINGS_DEFAULTS.command_timeout_default_seconds
   }
   try {
     serverVersion.value = await api.version.get()
@@ -74,6 +86,12 @@ async function handleSave() {
     max_heatmap_runs: maxHeatmapRuns.value,
     default_hook_timeout_seconds: defaultHookTimeout.value,
     file_browser_blocked_paths: paths,
+    command_timeout_backup_seconds: cmdTimeoutBackup.value,
+    command_timeout_restore_seconds: cmdTimeoutRestore.value,
+    command_timeout_list_snapshots_seconds: cmdTimeoutListSnapshots.value,
+    command_timeout_browse_snapshot_seconds: cmdTimeoutBrowseSnapshot.value,
+    command_timeout_browse_filesystem_seconds: cmdTimeoutBrowseFs.value,
+    command_timeout_default_seconds: cmdTimeoutDefault.value,
   })
   saving.value = false
   if (ok) {
@@ -231,6 +249,67 @@ async function handleSave() {
               class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-xs text-slate-300 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
               placeholder="/proc&#10;/sys&#10;/dev"
             />
+          </div>
+        </div>
+      </div>
+
+      <!-- Per-command Timeouts section -->
+      <div class="rounded border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-2 text-lg font-semibold text-slate-100">Agent Command Timeouts</h3>
+        <p class="mb-4 text-sm text-slate-400">
+          Maximum time the agent will wait for each gRPC command before cancelling it.
+          Long-running commands like backup and restore should get generous values; lookup commands can be tighter.
+          These act as global defaults — they can be overridden per agent on the agent detail page.
+        </p>
+
+        <div class="grid grid-cols-2 gap-5">
+          <div>
+            <label class="block text-sm font-medium text-slate-300">Backup</label>
+            <p class="mt-0.5 text-xs text-slate-500">restic backup runs.</p>
+            <div class="mt-1 flex items-center gap-2">
+              <input v-model.number="cmdTimeoutBackup" type="number" min="60" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
+              <span class="text-sm text-slate-500">seconds</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300">Restore</label>
+            <p class="mt-0.5 text-xs text-slate-500">restic restore runs.</p>
+            <div class="mt-1 flex items-center gap-2">
+              <input v-model.number="cmdTimeoutRestore" type="number" min="60" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
+              <span class="text-sm text-slate-500">seconds</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300">List Snapshots</label>
+            <p class="mt-0.5 text-xs text-slate-500">restic snapshots lookups.</p>
+            <div class="mt-1 flex items-center gap-2">
+              <input v-model.number="cmdTimeoutListSnapshots" type="number" min="5" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
+              <span class="text-sm text-slate-500">seconds</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300">Browse Snapshot</label>
+            <p class="mt-0.5 text-xs text-slate-500">restic ls inside a snapshot.</p>
+            <div class="mt-1 flex items-center gap-2">
+              <input v-model.number="cmdTimeoutBrowseSnapshot" type="number" min="5" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
+              <span class="text-sm text-slate-500">seconds</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300">Browse Filesystem</label>
+            <p class="mt-0.5 text-xs text-slate-500">Local filesystem listings on the agent.</p>
+            <div class="mt-1 flex items-center gap-2">
+              <input v-model.number="cmdTimeoutBrowseFs" type="number" min="1" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
+              <span class="text-sm text-slate-500">seconds</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300">Default (other)</label>
+            <p class="mt-0.5 text-xs text-slate-500">Fallback for unknown command kinds.</p>
+            <div class="mt-1 flex items-center gap-2">
+              <input v-model.number="cmdTimeoutDefault" type="number" min="5" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
+              <span class="text-sm text-slate-500">seconds</span>
+            </div>
           </div>
         </div>
       </div>
