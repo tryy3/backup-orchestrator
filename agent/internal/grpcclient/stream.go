@@ -23,6 +23,11 @@ type JobStatus struct {
 // JobStatusFunc returns the current running job status, or nil if idle.
 type JobStatusFunc func() *JobStatus
 
+// outboundChSize is the buffer size for the channel that serialises all
+// outbound stream.Send calls. 32 matches the server-side send channel and
+// provides enough headroom for bursts of config acks / command results.
+const outboundChSize = 32
+
 // StreamHandler manages the bidirectional Connect stream lifecycle.
 type StreamHandler struct {
 	client            *Client
@@ -79,10 +84,19 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 		return fmt.Errorf("sending initial heartbeat: %w", err)
 	}
 
+	// outboundCh funnels all messages from the recv goroutine (config acks,
+	// command results) into the single send goroutine so that stream.Send is
+	// never called concurrently.
+	outboundCh := make(chan *backupv1.AgentMessage, outboundChSize)
+
 	errCh := make(chan error, 2)
 	var wg sync.WaitGroup
 
-	// Start send goroutine: heartbeats at configured interval + live log forwarding.
+	// handlerWg tracks in-flight handler goroutines (handleConfig,
+	// handleCommand) so we can wait for them before closing the stream.
+	var handlerWg sync.WaitGroup
+
+	// Start send goroutine: owns all stream.Send calls.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -115,9 +129,23 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 			select {
 			case <-streamCtx.Done():
 				flushLogs()
+				// Drain remaining outbound messages from in-flight handlers.
+				for msg := range outboundCh {
+					if err := stream.Send(msg); err != nil {
+						slog.Error("error sending outbound message during drain", "source", "stream", "error", err)
+					}
+				}
 				// Close the send side of the stream.
 				_ = stream.CloseSend()
 				return
+			case msg, ok := <-outboundCh:
+				if !ok {
+					// Channel closed during shutdown; already drained above.
+					return
+				}
+				if err := stream.Send(msg); err != nil {
+					slog.Error("error sending outbound message", "source", "stream", "error", err)
+				}
 			case <-ticker.C:
 				if err := s.sendHeartbeat(stream); err != nil {
 					errCh <- fmt.Errorf("sending heartbeat: %w", err)
@@ -155,10 +183,18 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 				s.handleApproval(payload.Approval)
 
 			case *backupv1.ServerMessage_Config:
-				s.handleConfig(stream, payload.Config)
+				handlerWg.Add(1)
+				go func() {
+					defer handlerWg.Done()
+					s.handleConfig(outboundCh, payload.Config)
+				}()
 
 			case *backupv1.ServerMessage_Command:
-				s.handleCommand(stream, payload.Command)
+				handlerWg.Add(1)
+				go func() {
+					defer handlerWg.Done()
+					s.handleCommand(outboundCh, payload.Command)
+				}()
 
 			default:
 				slog.Warn("unknown server message type", "source", "stream", "type", fmt.Sprintf("%T", payload))
@@ -174,8 +210,14 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 		retErr = ctx.Err()
 	}
 
-	// Cancel stream context to unblock Recv and signal the other goroutine, then wait.
+	// Cancel stream context to unblock Recv and signal the other goroutine.
 	streamCancel()
+
+	// Wait for in-flight handler goroutines so their outbound messages
+	// are enqueued before we drain the channel.
+	handlerWg.Wait()
+	close(outboundCh)
+
 	wg.Wait()
 	return retErr
 }
@@ -262,7 +304,7 @@ func (s *StreamHandler) handleApproval(approval *backupv1.Approval) {
 	}
 }
 
-func (s *StreamHandler) handleConfig(stream backupv1.BackupService_ConnectClient, cfg *backupv1.AgentConfig) {
+func (s *StreamHandler) handleConfig(outboundCh chan<- *backupv1.AgentMessage, cfg *backupv1.AgentConfig) {
 	slog.Info("received config", "source", "stream", "config_version", cfg.GetConfigVersion())
 
 	// Apply heartbeat interval if provided.
@@ -282,7 +324,7 @@ func (s *StreamHandler) handleConfig(stream backupv1.BackupService_ConnectClient
 	apiKey := s.identity.APIKey
 	s.identityMu.RUnlock()
 
-	// Send config ack.
+	// Enqueue config ack for the send goroutine.
 	ack := &backupv1.AgentMessage{
 		AgentId: agentID,
 		ApiKey:  apiKey,
@@ -293,12 +335,10 @@ func (s *StreamHandler) handleConfig(stream backupv1.BackupService_ConnectClient
 			},
 		},
 	}
-	if err := stream.Send(ack); err != nil {
-		slog.Error("error sending config ack", "source", "stream", "error", err)
-	}
+	outboundCh <- ack
 }
 
-func (s *StreamHandler) handleCommand(stream backupv1.BackupService_ConnectClient, cmd *backupv1.Command) {
+func (s *StreamHandler) handleCommand(outboundCh chan<- *backupv1.AgentMessage, cmd *backupv1.Command) {
 	slog.Info("received command", "source", "stream", "command_id", cmd.GetCommandId())
 
 	var result *backupv1.CommandResult
@@ -317,7 +357,7 @@ func (s *StreamHandler) handleCommand(stream backupv1.BackupService_ConnectClien
 	apiKey := s.identity.APIKey
 	s.identityMu.RUnlock()
 
-	// Send command result.
+	// Enqueue command result for the send goroutine.
 	msg := &backupv1.AgentMessage{
 		AgentId: agentID,
 		ApiKey:  apiKey,
@@ -325,7 +365,5 @@ func (s *StreamHandler) handleCommand(stream backupv1.BackupService_ConnectClien
 			CommandResult: result,
 		},
 	}
-	if err := stream.Send(msg); err != nil {
-		slog.Error("error sending command result", "source", "stream", "error", err)
-	}
+	outboundCh <- msg
 }
