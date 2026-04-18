@@ -90,7 +90,9 @@ func TestStreamRestic_StderrIsBounded(t *testing.T) {
 	// Use a password that does not appear in the generated content so that
 	// the redact.String pass does not expand the already-truncated tail.
 	r := newFakeRestic(t, `awk 'BEGIN{for(i=0;i<32000;i++)printf "x"}' 1>&2; exit 0`)
-	stderr, err := r.streamRestic(context.Background(), Repository{Password: "TESTPASSWORD"}, []string{"snapshots"}, discardLogger(), func(line []byte) {})
+	// Use "zz" (not present in the awk-generated content) so redact.String
+	// leaves the already-truncated tail at its original size.
+	stderr, err := r.streamRestic(context.Background(), Repository{Password: "zz"}, []string{"snapshots"}, discardLogger(), func(line []byte) {})
 	if err != nil {
 		t.Fatalf("streamRestic: %v", err)
 	}
