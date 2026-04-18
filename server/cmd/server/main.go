@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -20,24 +20,29 @@ import (
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		slog.Error("failed to load config", "error", err)
+		os.Exit(1)
 	}
 
 	// Open database.
 	db, err := database.New(cfg.DBPath, cfg.EncryptionKey)
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+		slog.Error("failed to open database", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("Database opened at %s", cfg.DBPath)
+	slog.Info("database opened", "path", cfg.DBPath)
 
 	grpcLis, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", ":"+cfg.GRPCPort)
 	if err != nil {
 		_ = db.Close()
-		log.Fatalf("Failed to listen on gRPC port %s: %v", cfg.GRPCPort, err)
+		slog.Error("failed to listen on gRPC port", "port", cfg.GRPCPort, "error", err)
+		os.Exit(1)
 	}
 	defer func() { _ = db.Close() }()
 
@@ -65,17 +70,19 @@ func main() {
 
 	// Start gRPC server.
 	go func() {
-		log.Printf("gRPC server listening on :%s", cfg.GRPCPort)
+		slog.Info("gRPC server listening", "port", cfg.GRPCPort)
 		if err := grpcSrv.Serve(grpcLis); err != nil {
-			log.Fatalf("gRPC server failed: %v", err)
+			slog.Error("gRPC server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	// Start HTTP server.
 	go func() {
-		log.Printf("HTTP server listening on :%s", cfg.HTTPPort)
+		slog.Info("HTTP server listening", "port", cfg.HTTPPort)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("HTTP server failed: %v", err)
+			slog.Error("HTTP server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -83,7 +90,7 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigCh
-	log.Printf("Received signal %v, shutting down...", sig)
+	slog.Info("received signal, shutting down", "signal", sig)
 
 	// Graceful shutdown.
 	grpcDone := make(chan struct{})
@@ -94,25 +101,25 @@ func main() {
 	select {
 	case <-grpcDone:
 	case <-time.After(15 * time.Second):
-		log.Println("gRPC graceful stop timed out, forcing stop")
+		slog.Warn("gRPC graceful stop timed out, forcing stop")
 		grpcSrv.Stop()
 	}
-	log.Println("gRPC server stopped")
+	slog.Info("gRPC server stopped")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpSrv.Shutdown(ctx); err != nil {
-		log.Printf("HTTP server shutdown error: %v", err)
+		slog.Error("HTTP server shutdown error", "error", err)
 	}
-	log.Println("HTTP server stopped")
+	slog.Info("HTTP server stopped")
 
 	// Shut down agent manager (closes all agent send channels).
 	mgr.Close()
-	log.Println("Agent manager stopped")
+	slog.Info("agent manager stopped")
 
 	// Shut down event hub (closes all WebSocket client channels).
 	hub.Close()
-	log.Println("Event hub stopped")
+	slog.Info("event hub stopped")
 
-	log.Println("Server shutdown complete")
+	slog.Info("server shutdown complete")
 }
