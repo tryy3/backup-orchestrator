@@ -152,17 +152,7 @@ func run() error {
 			slog.Error("error recording local job", "source", "agent", "error", err)
 		}
 
-		// Try direct delivery first, buffer on failure.
-		deliveryCtx, deliveryCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer deliveryCancel()
-		if err := grpcClient.ReportJob(deliveryCtx, report); err != nil {
-			slog.Warn("direct report delivery failed, buffering", "source", "agent", "error", err)
-			if bufErr := rep.BufferReport(report); bufErr != nil {
-				slog.Error("error buffering report", "source", "agent", "error", bufErr)
-			}
-		} else {
-			slog.Info("report delivered successfully", "source", "agent", "job_id", report.JobId)
-		}
+		deliverReport(ctx, grpcClient, rep, report)
 	}
 
 	// Step 9: Create Scheduler.
@@ -507,4 +497,30 @@ func findRepo(repos []*backupv1.Repository, id string) *backupv1.Repository {
 		}
 	}
 	return nil
+}
+
+// jobReporter delivers a job report to the server.
+type jobReporter interface {
+	ReportJob(ctx context.Context, report *backupv1.JobReport) error
+}
+
+// reportBufferer persists a job report locally for later delivery.
+type reportBufferer interface {
+	BufferReport(report *backupv1.JobReport) error
+}
+
+// deliverReport attempts direct delivery of a job report, deriving the
+// delivery timeout from ctx so that agent shutdown cancels the RPC promptly.
+// On failure it falls back to local buffering for delivery on the next run.
+func deliverReport(ctx context.Context, deliverer jobReporter, buf reportBufferer, report *backupv1.JobReport) {
+	deliveryCtx, deliveryCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer deliveryCancel()
+	if err := deliverer.ReportJob(deliveryCtx, report); err != nil {
+		slog.Warn("direct report delivery failed, buffering", "source", "agent", "error", err)
+		if bufErr := buf.BufferReport(report); bufErr != nil {
+			slog.Error("error buffering report", "source", "agent", "error", bufErr)
+		}
+	} else {
+		slog.Info("report delivered successfully", "source", "agent", "job_id", report.JobId)
+	}
 }
