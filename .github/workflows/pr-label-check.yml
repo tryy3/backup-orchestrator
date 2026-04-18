@@ -1,7 +1,7 @@
 name: PR Label Check
 
 on:
-  pull_request_target:
+  pull_request:
     types:
       - opened
       - edited
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   validate-labels:
-    name: Validate required labels
+    name: PR Label Check
     runs-on: ubuntu-latest
     steps:
       - name: Validate PR labels
