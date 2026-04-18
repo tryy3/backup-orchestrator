@@ -23,6 +23,39 @@ type JobStatus struct {
 // JobStatusFunc returns the current running job status, or nil if idle.
 type JobStatusFunc func() *JobStatus
 
+// Default per-command timeouts. Commands that can legitimately run for a long
+// time (e.g. restic backup/restore against slow remote backends) get a much
+// larger budget than lookup-style commands.
+const (
+	defaultCommandTimeout         = 5 * time.Minute
+	defaultBackupCommandTimeout   = 24 * time.Hour
+	defaultRestoreCommandTimeout  = 24 * time.Hour
+	defaultBrowseFSCommandTimeout = 30 * time.Second
+	defaultListSnapshotsTimeout   = 5 * time.Minute
+	defaultBrowseSnapshotTimeout  = 5 * time.Minute
+)
+
+// commandTimeout returns the per-command deadline to apply based on the
+// command kind. Browse/list commands default to short timeouts so a single
+// hung lookup does not tie up a worker for long; backup/restore get a much
+// larger budget since they can run for hours against remote backends.
+func commandTimeout(cmd *backupv1.Command) time.Duration {
+	switch cmd.GetAction().(type) {
+	case *backupv1.Command_TriggerBackup:
+		return defaultBackupCommandTimeout
+	case *backupv1.Command_TriggerRestore:
+		return defaultRestoreCommandTimeout
+	case *backupv1.Command_ListSnapshots:
+		return defaultListSnapshotsTimeout
+	case *backupv1.Command_BrowseSnapshot:
+		return defaultBrowseSnapshotTimeout
+	case *backupv1.Command_BrowseFilesystem:
+		return defaultBrowseFSCommandTimeout
+	default:
+		return defaultCommandTimeout
+	}
+}
+
 // StreamHandler manages the bidirectional Connect stream lifecycle.
 type StreamHandler struct {
 	client            *Client
@@ -30,11 +63,19 @@ type StreamHandler struct {
 	identityMu        sync.RWMutex
 	onApproval        func(agentID, apiKey string)
 	onConfig          func(cfg *backupv1.AgentConfig)
-	onCommand         func(cmd *backupv1.Command) *backupv1.CommandResult
+	onCommand         func(ctx context.Context, cmd *backupv1.Command) *backupv1.CommandResult
 	jobStatusFn       JobStatusFunc
 	liveLogCh         <-chan *backupv1.LogEntry // receives live log entries from running jobs
 	heartbeatInterval time.Duration
 	heartbeatMu       sync.RWMutex
+	// sendMu serializes writes to the stream. gRPC streams are not safe for
+	// concurrent Send calls, and command results are now sent from per-command
+	// goroutines in addition to heartbeats (send loop) and config acks
+	// (recv loop).
+	sendMu sync.Mutex
+	// inflight tracks per-command goroutines so Run can wait for them to
+	// finish (or observe their context cancellation) before returning.
+	inflight sync.WaitGroup
 }
 
 // NewStreamHandler creates a new StreamHandler.
@@ -43,7 +84,7 @@ func NewStreamHandler(
 	id *identity.Identity,
 	onApproval func(agentID, apiKey string),
 	onConfig func(cfg *backupv1.AgentConfig),
-	onCommand func(cmd *backupv1.Command) *backupv1.CommandResult,
+	onCommand func(ctx context.Context, cmd *backupv1.Command) *backupv1.CommandResult,
 	jobStatusFn JobStatusFunc,
 	liveLogCh <-chan *backupv1.LogEntry,
 ) *StreamHandler {
@@ -57,6 +98,15 @@ func NewStreamHandler(
 		liveLogCh:         liveLogCh,
 		heartbeatInterval: 30 * time.Second,
 	}
+}
+
+// safeSend serializes concurrent stream.Send calls. gRPC client streams are
+// not safe for concurrent writes so every outbound message must go through
+// this helper.
+func (s *StreamHandler) safeSend(stream backupv1.BackupService_ConnectClient, msg *backupv1.AgentMessage) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	return stream.Send(msg)
 }
 
 // Run opens the Connect stream, sends heartbeats, and dispatches server messages.
@@ -156,7 +206,7 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 				s.handleConfig(stream, payload.Config)
 
 			case *backupv1.ServerMessage_Command:
-				s.handleCommand(stream, payload.Command)
+				s.handleCommand(runCtx, stream, payload.Command)
 
 			default:
 				slog.Warn("unknown server message type", "source", "stream", "type", fmt.Sprintf("%T", payload))
@@ -175,6 +225,9 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 	// Cancel derived context to signal the other goroutine, then wait.
 	runCancel()
 	wg.Wait()
+	// Wait for in-flight per-command goroutines. Their contexts are derived
+	// from runCtx so they have already been signalled to cancel.
+	s.inflight.Wait()
 	return retErr
 }
 
@@ -210,7 +263,7 @@ func (s *StreamHandler) sendHeartbeat(stream backupv1.BackupService_ConnectClien
 			Heartbeat: hb,
 		},
 	}
-	return stream.Send(msg)
+	return s.safeSend(stream, msg)
 }
 
 func (s *StreamHandler) sendLiveLogs(stream backupv1.BackupService_ConnectClient, jobID string, entries []*backupv1.LogEntry) error {
@@ -229,7 +282,7 @@ func (s *StreamHandler) sendLiveLogs(stream backupv1.BackupService_ConnectClient
 			},
 		},
 	}
-	return stream.Send(msg)
+	return s.safeSend(stream, msg)
 }
 
 // extractJobID looks for a "job_id" attribute in the log entry's JSON attributes.
@@ -291,39 +344,54 @@ func (s *StreamHandler) handleConfig(stream backupv1.BackupService_ConnectClient
 			},
 		},
 	}
-	if err := stream.Send(ack); err != nil {
+	if err := s.safeSend(stream, ack); err != nil {
 		slog.Error("error sending config ack", "source", "stream", "error", err)
 	}
 }
 
-func (s *StreamHandler) handleCommand(stream backupv1.BackupService_ConnectClient, cmd *backupv1.Command) {
+func (s *StreamHandler) handleCommand(ctx context.Context, stream backupv1.BackupService_ConnectClient, cmd *backupv1.Command) {
 	slog.Info("received command", "source", "stream", "command_id", cmd.GetCommandId())
 
-	var result *backupv1.CommandResult
-	if s.onCommand != nil {
-		result = s.onCommand(cmd)
-	} else {
-		result = &backupv1.CommandResult{
-			CommandId: cmd.GetCommandId(),
-			Success:   false,
-			Error:     "no command handler registered",
+	// Dispatch the command in its own goroutine so the recv loop keeps
+	// draining ServerMessages while this command runs. Each command gets a
+	// per-kind timeout so a single hung restic/rclone invocation cannot
+	// wedge the agent forever.
+	s.inflight.Add(1)
+	go func() {
+		defer s.inflight.Done()
+
+		cmdCtx, cancel := context.WithTimeout(ctx, commandTimeout(cmd))
+		defer cancel()
+
+		var result *backupv1.CommandResult
+		if s.onCommand != nil {
+			result = s.onCommand(cmdCtx, cmd)
+		} else {
+			result = &backupv1.CommandResult{
+				CommandId: cmd.GetCommandId(),
+				Success:   false,
+				Error:     "no command handler registered",
+			}
 		}
-	}
 
-	s.identityMu.RLock()
-	agentID := s.identity.AgentID
-	apiKey := s.identity.APIKey
-	s.identityMu.RUnlock()
+		s.identityMu.RLock()
+		agentID := s.identity.AgentID
+		apiKey := s.identity.APIKey
+		s.identityMu.RUnlock()
 
-	// Send command result.
-	msg := &backupv1.AgentMessage{
-		AgentId: agentID,
-		ApiKey:  apiKey,
-		Payload: &backupv1.AgentMessage_CommandResult{
-			CommandResult: result,
-		},
-	}
-	if err := stream.Send(msg); err != nil {
-		slog.Error("error sending command result", "source", "stream", "error", err)
-	}
+		msg := &backupv1.AgentMessage{
+			AgentId: agentID,
+			ApiKey:  apiKey,
+			Payload: &backupv1.AgentMessage_CommandResult{
+				CommandResult: result,
+			},
+		}
+		if err := s.safeSend(stream, msg); err != nil {
+			slog.Error("error sending command result",
+				"source", "stream",
+				"command_id", cmd.GetCommandId(),
+				"error", err,
+			)
+		}
+	}()
 }
