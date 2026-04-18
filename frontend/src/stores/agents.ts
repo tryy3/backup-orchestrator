@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, onScopeDispose } from 'vue'
 import { agents as api } from '../api/client'
 import { subscribe } from '../api/websocket'
-import type { Agent } from '../types/api'
+import type { Agent, CommandTimeouts } from '../types/api'
 import { SETTINGS_DEFAULTS } from '../types/api'
 
 /**
@@ -107,6 +107,21 @@ export const useAgentsStore = defineStore('agents', () => {
     }
   }
 
+  async function updateCommandTimeouts(id: string, timeouts: CommandTimeouts | null) {
+    saving.value = true
+    error.value = null
+    try {
+      const updated = await api.updateCommandTimeouts(id, timeouts)
+      if (current.value?.id === id) {
+        current.value = updated
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving.value = false
+    }
+  }
+
   // Subscribe to WebSocket events for live agent updates.
   const unsubs: (() => void)[] = []
 
@@ -151,5 +166,5 @@ export const useAgentsStore = defineStore('agents', () => {
     unsubs.forEach((fn) => fn())
   })
 
-  return { list, current, loading, saving, error, fetchAll, fetchOne, approve, reject, remove, updateRclone, fetchRcloneConfig }
+  return { list, current, loading, saving, error, fetchAll, fetchOne, approve, reject, remove, updateRclone, fetchRcloneConfig, updateCommandTimeouts }
 })

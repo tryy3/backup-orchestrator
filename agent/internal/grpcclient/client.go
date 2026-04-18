@@ -2,12 +2,14 @@ package grpcclient
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/tryy3/backup-orchestrator/agent/internal/config"
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
 	"github.com/tryy3/backup-orchestrator/agent/internal/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 )
 
 // AgentVersion holds the agent binary version from build-time metadata.
@@ -32,6 +34,11 @@ func New(cfg *config.Config) (*Client, error) {
 	conn, err := grpc.NewClient(
 		cfg.ServerURL,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                30 * time.Second, // ping if no activity for 30 s
+			Timeout:             10 * time.Second, // wait 10 s for ping ack
+			PermitWithoutStream: true,             // keep probing even when idle
+		}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dialing server at %s: %w", cfg.ServerURL, err)

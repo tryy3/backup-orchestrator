@@ -17,6 +17,7 @@ import type {
   RestoreRequest,
   FilesystemEntry,
   TriggerResponse,
+  CommandTimeouts,
 } from '../types/api'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
@@ -67,6 +68,11 @@ export const agents = {
     request<void>(`/agents/${id}/rclone`, {
       method: 'PUT',
       body: JSON.stringify({ rclone_config: config }),
+    }),
+  updateCommandTimeouts: (id: string, timeouts: CommandTimeouts | null) =>
+    request<Agent>(`/agents/${id}/command-timeouts`, {
+      method: 'PUT',
+      body: JSON.stringify(timeouts),
     }),
   browseFs: (agentId: string, path: string, signal?: AbortSignal) =>
     request<FilesystemEntry[]>(`/agents/${agentId}/fs?path=${encodeURIComponent(path)}`, { signal }),

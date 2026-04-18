@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -21,26 +21,27 @@ import (
 // agentResponse is the API response DTO that omits rclone_config and exposes
 // has_rclone_config instead.
 type agentResponse struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	Hostname        string     `json:"hostname"`
-	OS              *string    `json:"os,omitempty"`
-	Status          string     `json:"status"`
-	APIKey          *string    `json:"api_key,omitempty"`
-	AgentVersion    *string    `json:"agent_version,omitempty"`
-	ResticVersion   *string    `json:"restic_version,omitempty"`
-	RcloneVersion   *string    `json:"rclone_version,omitempty"`
-	HasRcloneConfig bool       `json:"has_rclone_config"`
-	LastHeartbeat   *time.Time `json:"last_heartbeat,omitempty"`
-	LastJobAt       *time.Time `json:"last_job_at,omitempty"`
-	ConfigVersion   int        `json:"config_version"`
-	ConfigAppliedAt *time.Time `json:"config_applied_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID              string                       `json:"id"`
+	Name            string                       `json:"name"`
+	Hostname        string                       `json:"hostname"`
+	OS              *string                      `json:"os,omitempty"`
+	Status          string                       `json:"status"`
+	APIKey          *string                      `json:"api_key,omitempty"`
+	AgentVersion    *string                      `json:"agent_version,omitempty"`
+	ResticVersion   *string                      `json:"restic_version,omitempty"`
+	RcloneVersion   *string                      `json:"rclone_version,omitempty"`
+	HasRcloneConfig bool                         `json:"has_rclone_config"`
+	LastHeartbeat   *time.Time                   `json:"last_heartbeat,omitempty"`
+	LastJobAt       *time.Time                   `json:"last_job_at,omitempty"`
+	ConfigVersion   int                          `json:"config_version"`
+	ConfigAppliedAt *time.Time                   `json:"config_applied_at,omitempty"`
+	CommandTimeouts *configpush.CommandTimeouts  `json:"command_timeouts,omitempty"`
+	CreatedAt       time.Time                    `json:"created_at"`
+	UpdatedAt       time.Time                    `json:"updated_at"`
 }
 
 func toAgentResponse(a *database.Agent) agentResponse {
-	return agentResponse{
+	resp := agentResponse{
 		ID:              a.ID,
 		Name:            a.Name,
 		Hostname:        a.Hostname,
@@ -58,6 +59,13 @@ func toAgentResponse(a *database.Agent) agentResponse {
 		CreatedAt:       a.CreatedAt,
 		UpdatedAt:       a.UpdatedAt,
 	}
+	if a.CommandTimeouts != nil && *a.CommandTimeouts != "" {
+		var ct configpush.CommandTimeouts
+		if err := json.Unmarshal([]byte(*a.CommandTimeouts), &ct); err == nil {
+			resp.CommandTimeouts = &ct
+		}
+	}
+	return resp
 }
 
 func listAgentsHandler(db *database.DB) http.HandlerFunc {
@@ -127,14 +135,14 @@ func approveAgentHandler(db *database.DB, cmdr AgentCommander, resolver *configp
 			// Push initial config to the newly approved agent.
 			go func() {
 				if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
-					log.Printf("failed to push config to agent %s after approval: %v", id, err)
+					slog.Error("failed to push config to agent after approval", "agent_id", id, "error", err)
 				}
 			}()
 		}
 
 		agent, err := db.GetAgent(r.Context(), id)
 		if err != nil {
-			log.Printf("Failed to reload agent %s after approval: %v", id, err)
+			slog.Error("failed to reload agent after approval", "agent_id", id, "error", err)
 		}
 		writeJSON(w, http.StatusOK, toAgentResponse(agent))
 	}
@@ -167,7 +175,7 @@ func rejectAgentHandler(db *database.DB, cmdr AgentCommander) http.HandlerFunc {
 
 		agent, err := db.GetAgent(r.Context(), id)
 		if err != nil {
-			log.Printf("Failed to reload agent %s after rejection: %v", id, err)
+			slog.Error("failed to reload agent after rejection", "agent_id", id, "error", err)
 		}
 		writeJSON(w, http.StatusOK, toAgentResponse(agent))
 	}
@@ -229,13 +237,73 @@ func updateRcloneHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 		// Push updated config to agent.
 		go func() {
 			if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
-				log.Printf("failed to push config to agent %s after rclone update: %v", id, err)
+				slog.Error("failed to push config to agent after rclone update", "agent_id", id, "error", err)
 			}
 		}()
 
 		agent, err := db.GetAgent(r.Context(), id)
 		if err != nil {
-			log.Printf("Failed to reload agent %s after rclone update: %v", id, err)
+			slog.Error("failed to reload agent after rclone update", "agent_id", id, "error", err)
+		}
+		writeJSON(w, http.StatusOK, toAgentResponse(agent))
+	}
+}
+
+// updateAgentCommandTimeoutsHandler stores per-agent overrides of the global
+// command timeout settings. Sending null or an empty body clears the override
+// (the agent will fall back to the global settings or its compiled-in defaults).
+func updateAgentCommandTimeoutsHandler(db *database.DB, resolver *configpush.Resolver) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+
+		// Accept either a CommandTimeouts object or null to clear the override.
+		var input *configpush.CommandTimeouts
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		// Validate: each provided value must be non-negative.
+		if input != nil {
+			vals := []int32{
+				input.BackupSecs, input.RestoreSecs, input.ListSnapshotsSecs,
+				input.BrowseSnapshotSecs, input.BrowseFilesystemSecs, input.DefaultSecs,
+			}
+			for _, v := range vals {
+				if v < 0 {
+					writeError(w, http.StatusBadRequest, "command timeout values must be non-negative")
+					return
+				}
+			}
+		}
+
+		var stored *string
+		if input != nil {
+			b, err := json.Marshal(input)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			s := string(b)
+			stored = &s
+		}
+
+		if err := db.UpdateCommandTimeouts(r.Context(), id, stored); err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+
+		// Push updated config so the agent picks up the new timeouts immediately.
+		go func() {
+			if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
+				slog.Error("failed to push config to agent after command timeouts update", "agent_id", id, "error", err)
+			}
+		}()
+
+		agent, err := db.GetAgent(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
 		}
 		writeJSON(w, http.StatusOK, toAgentResponse(agent))
 	}

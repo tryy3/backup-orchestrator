@@ -62,3 +62,5 @@ data/
 # project specific stufff
 tmp/
 tmp-*
+server/server
+agent/agent

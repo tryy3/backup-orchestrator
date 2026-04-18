@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -58,6 +58,7 @@ func NewRouter(db *database.DB, cmdr AgentCommander, resolver *configpush.Resolv
 		r.Delete("/agents/{id}", deleteAgentHandler(db))
 		r.Get("/agents/{id}/rclone", getRcloneHandler(db))
 		r.Put("/agents/{id}/rclone", updateRcloneHandler(db, resolver))
+		r.Put("/agents/{id}/command-timeouts", updateAgentCommandTimeoutsHandler(db, resolver))
 
 		// Repositories
 		r.Get("/repositories", listRepositoriesHandler(db))
@@ -179,7 +180,7 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("writeJSON encode error: %v", err)
+		slog.Error("writeJSON encode error", "error", err)
 	}
 }
 

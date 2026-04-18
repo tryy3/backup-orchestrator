@@ -25,7 +25,8 @@ type JobStatusFunc func() *JobStatus
 
 // Default per-command timeouts. Commands that can legitimately run for a long
 // time (e.g. restic backup/restore against slow remote backends) get a much
-// larger budget than lookup-style commands.
+// larger budget than lookup-style commands. These are the fallbacks used when
+// the server has not pushed CommandTimeouts in AgentConfig.
 const (
 	defaultCommandTimeout         = 5 * time.Minute
 	defaultBackupCommandTimeout   = 24 * time.Hour
@@ -36,24 +37,44 @@ const (
 )
 
 // commandTimeout returns the per-command deadline to apply based on the
-// command kind. Browse/list commands default to short timeouts so a single
-// hung lookup does not tie up a worker for long; backup/restore get a much
-// larger budget since they can run for hours against remote backends.
-func commandTimeout(cmd *backupv1.Command) time.Duration {
+// command kind, honoring server-pushed overrides if present. Browse/list
+// commands default to short timeouts so a single hung lookup does not tie up
+// a worker for long; backup/restore get a much larger budget since they can
+// run for hours against remote backends.
+func (s *StreamHandler) commandTimeout(cmd *backupv1.Command) time.Duration {
+	s.cmdTimeoutsMu.RLock()
+	overrides := s.cmdTimeouts
+	s.cmdTimeoutsMu.RUnlock()
+
+	pickSecs := func(override int32, fallback time.Duration) time.Duration {
+		if override > 0 {
+			return time.Duration(override) * time.Second
+		}
+		return fallback
+	}
+
 	switch cmd.GetAction().(type) {
 	case *backupv1.Command_TriggerBackup:
-		return defaultBackupCommandTimeout
+		return pickSecs(overrides.GetBackupSecs(), defaultBackupCommandTimeout)
 	case *backupv1.Command_TriggerRestore:
-		return defaultRestoreCommandTimeout
+		return pickSecs(overrides.GetRestoreSecs(), defaultRestoreCommandTimeout)
 	case *backupv1.Command_ListSnapshots:
-		return defaultListSnapshotsTimeout
+		return pickSecs(overrides.GetListSnapshotsSecs(), defaultListSnapshotsTimeout)
 	case *backupv1.Command_BrowseSnapshot:
-		return defaultBrowseSnapshotTimeout
+		return pickSecs(overrides.GetBrowseSnapshotSecs(), defaultBrowseSnapshotTimeout)
 	case *backupv1.Command_BrowseFilesystem:
-		return defaultBrowseFSCommandTimeout
+		return pickSecs(overrides.GetBrowseFilesystemSecs(), defaultBrowseFSCommandTimeout)
 	default:
-		return defaultCommandTimeout
+		return pickSecs(overrides.GetDefaultSecs(), defaultCommandTimeout)
 	}
+}
+
+// applyCommandTimeouts stores command timeout overrides pushed by the server.
+// A nil argument clears any previously stored overrides (reverting to defaults).
+func (s *StreamHandler) applyCommandTimeouts(t *backupv1.CommandTimeouts) {
+	s.cmdTimeoutsMu.Lock()
+	s.cmdTimeouts = t
+	s.cmdTimeoutsMu.Unlock()
 }
 
 // StreamHandler manages the bidirectional Connect stream lifecycle.
@@ -76,6 +97,10 @@ type StreamHandler struct {
 	// inflight tracks per-command goroutines so Run can wait for them to
 	// finish (or observe their context cancellation) before returning.
 	inflight sync.WaitGroup
+	// cmdTimeouts holds server-pushed per-command timeout overrides; nil means
+	// fall back to the package-level defaults.
+	cmdTimeouts   *backupv1.CommandTimeouts
+	cmdTimeoutsMu sync.RWMutex
 }
 
 // NewStreamHandler creates a new StreamHandler.
@@ -113,7 +138,13 @@ func (s *StreamHandler) safeSend(stream backupv1.BackupService_ConnectClient, ms
 // It returns when the stream disconnects or the context is cancelled.
 // The caller is responsible for reconnection with exponential backoff.
 func (s *StreamHandler) Run(ctx context.Context) error {
-	stream, err := s.client.client.Connect(ctx)
+	// Per-attempt context: cancelling this also cancels the underlying stream,
+	// which makes stream.Recv() return immediately instead of blocking until
+	// a TCP timeout on half-open connections.
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	defer streamCancel()
+
+	stream, err := s.client.client.Connect(streamCtx)
 	if err != nil {
 		return fmt.Errorf("opening connect stream: %w", err)
 	}
@@ -122,10 +153,6 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 	if err := s.sendHeartbeat(stream); err != nil {
 		return fmt.Errorf("sending initial heartbeat: %w", err)
 	}
-
-	// Derived context so we can signal both goroutines to stop when Run exits.
-	runCtx, runCancel := context.WithCancel(ctx)
-	defer runCancel()
 
 	errCh := make(chan error, 2)
 	var wg sync.WaitGroup
@@ -161,7 +188,7 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 
 		for {
 			select {
-			case <-runCtx.Done():
+			case <-streamCtx.Done():
 				flushLogs()
 				// Close the send side of the stream.
 				_ = stream.CloseSend()
@@ -206,7 +233,7 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 				s.handleConfig(stream, payload.Config)
 
 			case *backupv1.ServerMessage_Command:
-				s.handleCommand(runCtx, stream, payload.Command)
+				s.handleCommand(streamCtx, stream, payload.Command)
 
 			default:
 				slog.Warn("unknown server message type", "source", "stream", "type", fmt.Sprintf("%T", payload))
@@ -222,11 +249,11 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 		retErr = ctx.Err()
 	}
 
-	// Cancel derived context to signal the other goroutine, then wait.
-	runCancel()
+	// Cancel stream context to unblock Recv and signal the other goroutine, then wait.
+	streamCancel()
 	wg.Wait()
 	// Wait for in-flight per-command goroutines. Their contexts are derived
-	// from runCtx so they have already been signalled to cancel.
+	// from streamCtx so they have already been signalled to cancel.
 	s.inflight.Wait()
 	return retErr
 }
@@ -324,6 +351,10 @@ func (s *StreamHandler) handleConfig(stream backupv1.BackupService_ConnectClient
 		slog.Info("heartbeat interval updated", "source", "stream", "interval_secs", hb)
 	}
 
+	// Apply per-command timeout overrides if provided. A nil value reverts
+	// to the built-in defaults.
+	s.applyCommandTimeouts(cfg.GetCommandTimeouts())
+
 	if s.onConfig != nil {
 		s.onConfig(cfg)
 	}
@@ -360,7 +391,7 @@ func (s *StreamHandler) handleCommand(ctx context.Context, stream backupv1.Backu
 	go func() {
 		defer s.inflight.Done()
 
-		cmdCtx, cancel := context.WithTimeout(ctx, commandTimeout(cmd))
+		cmdCtx, cancel := context.WithTimeout(ctx, s.commandTimeout(cmd))
 		defer cancel()
 
 		var result *backupv1.CommandResult

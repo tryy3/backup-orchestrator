@@ -2,7 +2,7 @@ package api
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -20,7 +20,7 @@ func websocketHandler(hub *events.Hub) http.HandlerFunc {
 			InsecureSkipVerify: true,
 		})
 		if err != nil {
-			log.Printf("WebSocket accept error: %v", err)
+			slog.Error("WebSocket accept error", "error", err)
 			return
 		}
 		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "server closing") }()
@@ -55,7 +55,7 @@ func websocketHandler(hub *events.Hub) http.HandlerFunc {
 				err := conn.Write(writeCtx, websocket.MessageText, data)
 				cancel()
 				if err != nil {
-					log.Printf("WebSocket write error for client %s: %v", clientID, err)
+					slog.Error("WebSocket write error", "client_id", clientID, "error", err)
 					return
 				}
 			}

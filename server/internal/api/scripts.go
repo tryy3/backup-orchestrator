@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -108,12 +108,12 @@ func deleteScriptHandler(db *database.DB) http.HandlerFunc {
 func pushConfigToAgentsUsingScript(ctx context.Context, db *database.DB, resolver *configpush.Resolver, scriptID string) {
 	agentIDs, err := db.AgentIDsUsingScript(ctx, scriptID)
 	if err != nil {
-		log.Printf("error finding agents for script %s: %v", scriptID, err)
+		slog.Error("error finding agents for script", "script_id", scriptID, "error", err)
 		return
 	}
 	for _, agentID := range agentIDs {
 		if err := resolver.PushConfigToAgent(ctx, agentID); err != nil {
-			log.Printf("failed to push config to agent %s for script %s: %v", agentID, scriptID, err)
+			slog.Error("failed to push config to agent for script", "agent_id", agentID, "script_id", scriptID, "error", err)
 		}
 	}
 }

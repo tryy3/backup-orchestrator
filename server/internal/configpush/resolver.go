@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 
 	backupv1 "github.com/tryy3/backup-orchestrator/server/internal/gen/backup/v1"
 
@@ -115,8 +115,16 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 	}
 	if bpVal != nil {
 		if parseErr := json.Unmarshal([]byte(*bpVal), &blockedPaths); parseErr != nil {
-			log.Printf("Warning: failed to parse file_browser_blocked_paths setting: %v", parseErr)
+			slog.Warn("failed to parse file_browser_blocked_paths setting", "error", parseErr)
 		}
+	}
+
+	// Build per-command timeouts: start from globals, then layer the per-agent
+	// override (if any) on top. Zero-valued fields mean "use the agent's
+	// compiled-in default" so callers only need to set non-default values.
+	commandTimeouts, err := r.resolveCommandTimeouts(ctx, agent)
+	if err != nil {
+		return fmt.Errorf("resolve command timeouts: %w", err)
 	}
 
 	// Build protobuf repositories.
@@ -163,7 +171,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		// Resolve hooks for this plan.
 		hooks, hookErr := r.db.ListHooks(ctx, p.ID)
 		if hookErr != nil {
-			log.Printf("Failed to load hooks for plan %s: %v", p.ID, hookErr)
+			slog.Error("failed to load hooks for plan", "plan_id", p.ID, "error", hookErr)
 			continue
 		}
 
@@ -178,7 +186,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 				// Resolve from script.
 				script, scriptErr := r.db.GetScript(ctx, *h.ScriptID)
 				if scriptErr != nil || script == nil {
-					log.Printf("Failed to resolve script %s for hook %s: %v", *h.ScriptID, h.ID, scriptErr)
+					slog.Error("failed to resolve script for hook", "script_id", *h.ScriptID, "hook_id", h.ID, "error", scriptErr)
 					continue
 				}
 				resolved.Name = script.Name
@@ -234,6 +242,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		DefaultRetention:        defaultRetention,
 		HeartbeatIntervalSecs:   heartbeatInterval,
 		FileBrowserBlockedPaths: blockedPaths,
+		CommandTimeouts:         commandTimeouts,
 	}
 	if agent.RcloneConfig != nil {
 		config.RcloneConfig = *agent.RcloneConfig
@@ -250,7 +259,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		return fmt.Errorf("send config to agent %s: %w", agentID, err)
 	}
 
-	log.Printf("Pushed config version %d to agent %s", version, agentID)
+	slog.Info("pushed config to agent", "config_version", version, "agent_id", agentID)
 	return nil
 }
 
@@ -258,15 +267,122 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 func (r *Resolver) PushConfigToAllAgents(ctx context.Context) {
 	agents, err := r.db.ListAgents(ctx)
 	if err != nil {
-		log.Printf("Failed to list agents for config push: %v", err)
+		slog.Error("failed to list agents for config push", "error", err)
 		return
 	}
 
 	for _, a := range agents {
 		if a.Status == "approved" && r.mgr.IsOnline(a.ID) {
 			if err := r.PushConfigToAgent(ctx, a.ID); err != nil {
-				log.Printf("Failed to push config to agent %s: %v", a.ID, err)
+				slog.Error("failed to push config to agent", "agent_id", a.ID, "error", err)
 			}
 		}
 	}
+}
+
+// CommandTimeouts mirrors backupv1.CommandTimeouts as a JSON-friendly struct
+// so it can be persisted in the agents.command_timeouts column and accepted
+// from the API. A zero/missing field means "use the agent's compiled-in
+// default".
+type CommandTimeouts struct {
+	BackupSecs           int32 `json:"backup_secs,omitempty"`
+	RestoreSecs          int32 `json:"restore_secs,omitempty"`
+	ListSnapshotsSecs    int32 `json:"list_snapshots_secs,omitempty"`
+	BrowseSnapshotSecs   int32 `json:"browse_snapshot_secs,omitempty"`
+	BrowseFilesystemSecs int32 `json:"browse_filesystem_secs,omitempty"`
+	DefaultSecs          int32 `json:"default_secs,omitempty"`
+}
+
+// commandTimeoutSettingKeys maps the proto field index to its global setting key.
+var commandTimeoutSettingKeys = map[string]string{
+	"backup":            "command_timeout_backup_seconds",
+	"restore":           "command_timeout_restore_seconds",
+	"list_snapshots":    "command_timeout_list_snapshots_seconds",
+	"browse_snapshot":   "command_timeout_browse_snapshot_seconds",
+	"browse_filesystem": "command_timeout_browse_filesystem_seconds",
+	"default":           "command_timeout_default_seconds",
+}
+
+// resolveCommandTimeouts loads the global command-timeout settings from the
+// settings table, then layers any per-agent override (stored as JSON in
+// agents.command_timeouts) on top. Returns nil if no values are configured
+// at either level so the agent falls back to its own defaults.
+func (r *Resolver) resolveCommandTimeouts(ctx context.Context, agent *database.Agent) (*backupv1.CommandTimeouts, error) {
+	loadInt := func(key string) (int32, error) {
+		val, err := r.db.GetSetting(ctx, key)
+		if err != nil {
+			return 0, err
+		}
+		if val == nil {
+			return 0, nil
+		}
+		var n int32
+		if parseErr := json.Unmarshal([]byte(*val), &n); parseErr != nil || n <= 0 {
+			return 0, nil
+		}
+		return n, nil
+	}
+
+	merged := &CommandTimeouts{}
+	for field, key := range commandTimeoutSettingKeys {
+		n, err := loadInt(key)
+		if err != nil {
+			return nil, fmt.Errorf("get %s: %w", key, err)
+		}
+		switch field {
+		case "backup":
+			merged.BackupSecs = n
+		case "restore":
+			merged.RestoreSecs = n
+		case "list_snapshots":
+			merged.ListSnapshotsSecs = n
+		case "browse_snapshot":
+			merged.BrowseSnapshotSecs = n
+		case "browse_filesystem":
+			merged.BrowseFilesystemSecs = n
+		case "default":
+			merged.DefaultSecs = n
+		}
+	}
+
+	if agent.CommandTimeouts != nil && *agent.CommandTimeouts != "" {
+		var override CommandTimeouts
+		if err := json.Unmarshal([]byte(*agent.CommandTimeouts), &override); err != nil {
+			slog.Warn("failed to parse per-agent command_timeouts", "agent_id", agent.ID, "error", err)
+		} else {
+			if override.BackupSecs > 0 {
+				merged.BackupSecs = override.BackupSecs
+			}
+			if override.RestoreSecs > 0 {
+				merged.RestoreSecs = override.RestoreSecs
+			}
+			if override.ListSnapshotsSecs > 0 {
+				merged.ListSnapshotsSecs = override.ListSnapshotsSecs
+			}
+			if override.BrowseSnapshotSecs > 0 {
+				merged.BrowseSnapshotSecs = override.BrowseSnapshotSecs
+			}
+			if override.BrowseFilesystemSecs > 0 {
+				merged.BrowseFilesystemSecs = override.BrowseFilesystemSecs
+			}
+			if override.DefaultSecs > 0 {
+				merged.DefaultSecs = override.DefaultSecs
+			}
+		}
+	}
+
+	// If everything is zero, return nil so the agent uses its built-in defaults.
+	if merged.BackupSecs == 0 && merged.RestoreSecs == 0 && merged.ListSnapshotsSecs == 0 &&
+		merged.BrowseSnapshotSecs == 0 && merged.BrowseFilesystemSecs == 0 && merged.DefaultSecs == 0 {
+		return nil, nil
+	}
+
+	return &backupv1.CommandTimeouts{
+		BackupSecs:           merged.BackupSecs,
+		RestoreSecs:          merged.RestoreSecs,
+		ListSnapshotsSecs:    merged.ListSnapshotsSecs,
+		BrowseSnapshotSecs:   merged.BrowseSnapshotSecs,
+		BrowseFilesystemSecs: merged.BrowseFilesystemSecs,
+		DefaultSecs:          merged.DefaultSecs,
+	}, nil
 }
