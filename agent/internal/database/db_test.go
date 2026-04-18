@@ -15,6 +15,59 @@ func openTestDB(t *testing.T) *DB {
 	return db
 }
 
+func TestOpen_WALMode(t *testing.T) {
+	db := openTestDB(t)
+	var journalMode string
+	if err := db.db.QueryRowContext(context.Background(), "PRAGMA journal_mode").Scan(&journalMode); err != nil {
+		t.Fatalf("PRAGMA journal_mode: %v", err)
+	}
+	if journalMode != "wal" {
+		t.Errorf("journal_mode: got %q, want %q", journalMode, "wal")
+	}
+}
+
+func TestOpen_BusyTimeout(t *testing.T) {
+	db := openTestDB(t)
+	var timeout int
+	if err := db.db.QueryRowContext(context.Background(), "PRAGMA busy_timeout").Scan(&timeout); err != nil {
+		t.Fatalf("PRAGMA busy_timeout: %v", err)
+	}
+	if timeout != 5000 {
+		t.Errorf("busy_timeout: got %d, want 5000", timeout)
+	}
+}
+
+func TestOpen_SynchronousNormal(t *testing.T) {
+	db := openTestDB(t)
+	var synchronous int
+	if err := db.db.QueryRowContext(context.Background(), "PRAGMA synchronous").Scan(&synchronous); err != nil {
+		t.Fatalf("PRAGMA synchronous: %v", err)
+	}
+	// 1 = NORMAL
+	if synchronous != 1 {
+		t.Errorf("synchronous: got %d, want 1 (NORMAL)", synchronous)
+	}
+}
+
+func TestOpen_ForeignKeys(t *testing.T) {
+	db := openTestDB(t)
+	var fk int
+	if err := db.db.QueryRowContext(context.Background(), "PRAGMA foreign_keys").Scan(&fk); err != nil {
+		t.Fatalf("PRAGMA foreign_keys: %v", err)
+	}
+	if fk != 1 {
+		t.Errorf("foreign_keys: got %d, want 1", fk)
+	}
+}
+
+func TestOpen_ConnectionPool(t *testing.T) {
+	db := openTestDB(t)
+	stats := db.db.Stats()
+	if stats.MaxOpenConnections != 1 {
+		t.Errorf("MaxOpenConnections: got %d, want 1", stats.MaxOpenConnections)
+	}
+}
+
 func TestOpenAndMigrate(t *testing.T) {
 	db := openTestDB(t)
 	// Tables should exist after Open.
