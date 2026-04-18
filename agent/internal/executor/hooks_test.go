@@ -232,16 +232,14 @@ func TestExpandTemplate_ShellInjectionPrevented(t *testing.T) {
 		Error:    "$(touch /tmp/pwned)",
 	}
 	expanded := expandTemplate(`notify --plan={{.PlanName}} --error={{.Error}}`, hctx)
-	// The shell must see the values as single-quoted literals, not raw shell.
-	if strings.Contains(expanded, `rm -rf /`) && !strings.Contains(expanded, `'`) {
-		t.Errorf("injection not prevented; expanded = %q", expanded)
+	// The literal values must appear as shell-safe single-quoted tokens.
+	wantPlan := shellQuote(hctx.PlanName)
+	wantError := shellQuote(hctx.Error)
+	if !strings.Contains(expanded, wantPlan) {
+		t.Errorf("PlanName not shell-quoted; want %q in %q", wantPlan, expanded)
 	}
-	// Verify the literal values are quoted.
-	if !strings.Contains(expanded, shellQuote(hctx.PlanName)) {
-		t.Errorf("PlanName not shell-quoted in %q", expanded)
-	}
-	if !strings.Contains(expanded, shellQuote(hctx.Error)) {
-		t.Errorf("Error not shell-quoted in %q", expanded)
+	if !strings.Contains(expanded, wantError) {
+		t.Errorf("Error not shell-quoted; want %q in %q", wantError, expanded)
 	}
 }
 

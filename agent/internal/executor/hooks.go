@@ -38,7 +38,7 @@ func hookEnv(hctx *HookContext) []string {
 	env := make([]string, 0, 20)
 
 	for _, entry := range os.Environ() {
-		k, _, _ := strings.Cut(entry, "=")
+		k, _, _ := strings.Cut(entry, "=") // found bool not needed; we only need the key
 		if safeEnvNames[k] || strings.HasPrefix(k, "LC_") {
 			env = append(env, entry)
 		}
