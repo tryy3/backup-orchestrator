@@ -146,6 +146,7 @@ func run() error {
 			finishedAt = report.FinishedAt.AsTime().Format(time.RFC3339)
 		}
 		if err := db.InsertLocalJob(
+			ctx,
 			report.JobId, report.PlanName, report.Type, report.Status,
 			startedAt, finishedAt, report.LogTail,
 		); err != nil {
@@ -509,7 +510,7 @@ type jobReporter interface {
 
 // reportBufferer persists a job report locally for later delivery.
 type reportBufferer interface {
-	BufferReport(report *backupv1.JobReport) error
+	BufferReport(ctx context.Context, report *backupv1.JobReport) error
 }
 
 // deliverReport attempts direct delivery of a job report, deriving the
@@ -520,7 +521,7 @@ func deliverReport(ctx context.Context, deliverer jobReporter, buf reportBuffere
 	defer deliveryCancel()
 	if err := deliverer.ReportJob(deliveryCtx, report); err != nil {
 		slog.Warn("direct report delivery failed, buffering", "source", "agent", "error", err)
-		if bufErr := buf.BufferReport(report); bufErr != nil {
+		if bufErr := buf.BufferReport(ctx, report); bufErr != nil {
 			slog.Error("error buffering report", "source", "agent", "error", bufErr)
 		}
 	} else {

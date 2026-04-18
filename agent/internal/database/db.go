@@ -108,8 +108,8 @@ func (d *DB) migrate() error {
 }
 
 // InsertBufferedReport stores a job report for later delivery.
-func (d *DB) InsertBufferedReport(id, payload string) error {
-	_, err := d.db.ExecContext(context.Background(),
+func (d *DB) InsertBufferedReport(ctx context.Context, id, payload string) error {
+	_, err := d.db.ExecContext(ctx,
 		"INSERT INTO buffered_reports (id, payload) VALUES (?, ?)",
 		id, payload,
 	)
@@ -120,8 +120,8 @@ func (d *DB) InsertBufferedReport(id, payload string) error {
 }
 
 // ListPendingReports returns all unsent buffered reports.
-func (d *DB) ListPendingReports() ([]BufferedReport, error) {
-	rows, err := d.db.QueryContext(context.Background(),
+func (d *DB) ListPendingReports(ctx context.Context) ([]BufferedReport, error) {
+	rows, err := d.db.QueryContext(ctx,
 		"SELECT id, payload, attempts, COALESCE(last_error, '') FROM buffered_reports ORDER BY created_at ASC",
 	)
 	if err != nil {
@@ -132,7 +132,7 @@ func (d *DB) ListPendingReports() ([]BufferedReport, error) {
 	var reports []BufferedReport
 	for rows.Next() {
 		var r BufferedReport
-		if err := rows.Scan(&r.ID, &r.Payload, &r.Attempts, &r.LastError); err != nil {
+		if err = rows.Scan(&r.ID, &r.Payload, &r.Attempts, &r.LastError); err != nil {
 			return nil, fmt.Errorf("scanning buffered report: %w", err)
 		}
 		reports = append(reports, r)
@@ -141,8 +141,8 @@ func (d *DB) ListPendingReports() ([]BufferedReport, error) {
 }
 
 // DeleteReport removes a successfully sent report.
-func (d *DB) DeleteReport(id string) error {
-	_, err := d.db.ExecContext(context.Background(), "DELETE FROM buffered_reports WHERE id = ?", id)
+func (d *DB) DeleteReport(ctx context.Context, id string) error {
+	_, err := d.db.ExecContext(ctx, "DELETE FROM buffered_reports WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("deleting report: %w", err)
 	}
@@ -150,8 +150,8 @@ func (d *DB) DeleteReport(id string) error {
 }
 
 // IncrementAttempts increments the attempt count and records the last error.
-func (d *DB) IncrementAttempts(id, lastError string) error {
-	_, err := d.db.ExecContext(context.Background(),
+func (d *DB) IncrementAttempts(ctx context.Context, id, lastError string) error {
+	_, err := d.db.ExecContext(ctx,
 		"UPDATE buffered_reports SET attempts = attempts + 1, last_error = ? WHERE id = ?",
 		lastError, id,
 	)
@@ -162,8 +162,8 @@ func (d *DB) IncrementAttempts(id, lastError string) error {
 }
 
 // InsertLocalJob records a job execution in local history.
-func (d *DB) InsertLocalJob(id, planName, jobType, status, startedAt, finishedAt, logTail string) error {
-	_, err := d.db.ExecContext(context.Background(),
+func (d *DB) InsertLocalJob(ctx context.Context, id, planName, jobType, status, startedAt, finishedAt, logTail string) error {
+	_, err := d.db.ExecContext(ctx,
 		`INSERT INTO local_jobs (id, plan_name, type, status, started_at, finished_at, log_tail)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id, planName, jobType, status, startedAt, finishedAt, logTail,
@@ -186,8 +186,8 @@ type LocalJob struct {
 }
 
 // ListLocalJobs returns recent local job records.
-func (d *DB) ListLocalJobs(limit, offset int) ([]LocalJob, error) {
-	rows, err := d.db.QueryContext(context.Background(),
+func (d *DB) ListLocalJobs(ctx context.Context, limit, offset int) ([]LocalJob, error) {
+	rows, err := d.db.QueryContext(ctx,
 		`SELECT id, plan_name, type, status, started_at, COALESCE(finished_at, ''), COALESCE(log_tail, '')
 		 FROM local_jobs ORDER BY started_at DESC LIMIT ? OFFSET ?`,
 		limit, offset,
@@ -200,7 +200,7 @@ func (d *DB) ListLocalJobs(limit, offset int) ([]LocalJob, error) {
 	var jobs []LocalJob
 	for rows.Next() {
 		var j LocalJob
-		if err := rows.Scan(&j.ID, &j.PlanName, &j.Type, &j.Status, &j.StartedAt, &j.FinishedAt, &j.LogTail); err != nil {
+		if err = rows.Scan(&j.ID, &j.PlanName, &j.Type, &j.Status, &j.StartedAt, &j.FinishedAt, &j.LogTail); err != nil {
 			return nil, fmt.Errorf("scanning local job: %w", err)
 		}
 		jobs = append(jobs, j)

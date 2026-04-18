@@ -35,6 +35,7 @@ func openTestDB(t *testing.T) *database.DB {
 func TestBufferReport(t *testing.T) {
 	db := openTestDB(t)
 	r := New(db, nil, 0)
+	ctx := t.Context()
 
 	report := &backupv1.JobReport{
 		JobId:   "j1",
@@ -43,11 +44,11 @@ func TestBufferReport(t *testing.T) {
 		Status:  "success",
 	}
 
-	if err := r.BufferReport(report); err != nil {
+	if err := r.BufferReport(ctx, report); err != nil {
 		t.Fatalf("BufferReport: %v", err)
 	}
 
-	reports, err := db.ListPendingReports()
+	reports, err := db.ListPendingReports(ctx)
 	if err != nil {
 		t.Fatalf("ListPendingReports: %v", err)
 	}
@@ -62,14 +63,15 @@ func TestBufferReport(t *testing.T) {
 func TestBufferReport_Multiple(t *testing.T) {
 	db := openTestDB(t)
 	r := New(db, nil, 0)
+	ctx := t.Context()
 
 	for i := 0; i < 3; i++ {
-		if err := r.BufferReport(&backupv1.JobReport{JobId: "j" + string(rune('1'+i))}); err != nil {
+		if err := r.BufferReport(ctx, &backupv1.JobReport{JobId: "j" + string(rune('1'+i))}); err != nil {
 			t.Fatalf("BufferReport %d: %v", i, err)
 		}
 	}
 
-	reports, err := db.ListPendingReports()
+	reports, err := db.ListPendingReports(ctx)
 	if err != nil {
 		t.Fatalf("ListPendingReports: %v", err)
 	}
@@ -106,12 +108,12 @@ func TestFlush_ConcurrentFlushSkipped(t *testing.T) {
 	r := New(db, nil, 0)
 	r.grpc = slow // inject slow reporter directly (same package)
 
+	ctx := context.Background()
+
 	// Buffer one report so flush has work to do.
-	if err := r.BufferReport(&backupv1.JobReport{JobId: "j1"}); err != nil {
+	if err := r.BufferReport(ctx, &backupv1.JobReport{JobId: "j1"}); err != nil {
 		t.Fatalf("BufferReport: %v", err)
 	}
-
-	ctx := context.Background()
 
 	// First flush — will block inside ReportJob.
 	go r.flush(ctx)

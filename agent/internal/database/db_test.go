@@ -82,15 +82,16 @@ func TestOpenAndMigrate(t *testing.T) {
 
 func TestBufferedReports_InsertListDelete(t *testing.T) {
 	db := openTestDB(t)
+	ctx := t.Context()
 
-	if err := db.InsertBufferedReport("r1", `{"job_id":"j1"}`); err != nil {
+	if err := db.InsertBufferedReport(ctx, "r1", `{"job_id":"j1"}`); err != nil {
 		t.Fatalf("InsertBufferedReport: %v", err)
 	}
-	if err := db.InsertBufferedReport("r2", `{"job_id":"j2"}`); err != nil {
+	if err := db.InsertBufferedReport(ctx, "r2", `{"job_id":"j2"}`); err != nil {
 		t.Fatalf("InsertBufferedReport: %v", err)
 	}
 
-	reports, err := db.ListPendingReports()
+	reports, err := db.ListPendingReports(ctx)
 	if err != nil {
 		t.Fatalf("ListPendingReports: %v", err)
 	}
@@ -101,11 +102,11 @@ func TestBufferedReports_InsertListDelete(t *testing.T) {
 		t.Errorf("unexpected report order: %v", reports)
 	}
 
-	if err = db.DeleteReport("r1"); err != nil {
+	if err = db.DeleteReport(ctx, "r1"); err != nil {
 		t.Fatalf("DeleteReport: %v", err)
 	}
 
-	reports, err = db.ListPendingReports()
+	reports, err = db.ListPendingReports(ctx)
 	if err != nil {
 		t.Fatalf("ListPendingReports: %v", err)
 	}
@@ -116,19 +117,20 @@ func TestBufferedReports_InsertListDelete(t *testing.T) {
 
 func TestBufferedReports_IncrementAttempts(t *testing.T) {
 	db := openTestDB(t)
+	ctx := t.Context()
 
-	if err := db.InsertBufferedReport("r1", `{}`); err != nil {
+	if err := db.InsertBufferedReport(ctx, "r1", `{}`); err != nil {
 		t.Fatalf("InsertBufferedReport: %v", err)
 	}
 
-	if err := db.IncrementAttempts("r1", "timeout"); err != nil {
+	if err := db.IncrementAttempts(ctx, "r1", "timeout"); err != nil {
 		t.Fatalf("IncrementAttempts: %v", err)
 	}
-	if err := db.IncrementAttempts("r1", "connection refused"); err != nil {
+	if err := db.IncrementAttempts(ctx, "r1", "connection refused"); err != nil {
 		t.Fatalf("IncrementAttempts: %v", err)
 	}
 
-	reports, err := db.ListPendingReports()
+	reports, err := db.ListPendingReports(ctx)
 	if err != nil {
 		t.Fatalf("ListPendingReports: %v", err)
 	}
@@ -142,15 +144,16 @@ func TestBufferedReports_IncrementAttempts(t *testing.T) {
 
 func TestLocalJobs_InsertAndList(t *testing.T) {
 	db := openTestDB(t)
+	ctx := t.Context()
 
-	if err := db.InsertLocalJob("j1", "daily", "backup", "success", "2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z", "log1"); err != nil {
+	if err := db.InsertLocalJob(ctx, "j1", "daily", "backup", "success", "2025-01-01T00:00:00Z", "2025-01-01T00:05:00Z", "log1"); err != nil {
 		t.Fatalf("InsertLocalJob: %v", err)
 	}
-	if err := db.InsertLocalJob("j2", "weekly", "backup", "failed", "2025-01-02T00:00:00Z", "2025-01-02T00:10:00Z", "log2"); err != nil {
+	if err := db.InsertLocalJob(ctx, "j2", "weekly", "backup", "failed", "2025-01-02T00:00:00Z", "2025-01-02T00:10:00Z", "log2"); err != nil {
 		t.Fatalf("InsertLocalJob: %v", err)
 	}
 
-	jobs, err := db.ListLocalJobs(10, 0)
+	jobs, err := db.ListLocalJobs(ctx, 10, 0)
 	if err != nil {
 		t.Fatalf("ListLocalJobs: %v", err)
 	}
@@ -168,16 +171,17 @@ func TestLocalJobs_InsertAndList(t *testing.T) {
 
 func TestLocalJobs_Pagination(t *testing.T) {
 	db := openTestDB(t)
+	ctx := t.Context()
 
 	for i := 0; i < 5; i++ {
 		id := "j" + string(rune('0'+i))
 		ts := "2025-01-0" + string(rune('1'+i)) + "T00:00:00Z"
-		if err := db.InsertLocalJob(id, "plan", "backup", "success", ts, ts, ""); err != nil {
+		if err := db.InsertLocalJob(ctx, id, "plan", "backup", "success", ts, ts, ""); err != nil {
 			t.Fatalf("InsertLocalJob: %v", err)
 		}
 	}
 
-	jobs, err := db.ListLocalJobs(2, 0)
+	jobs, err := db.ListLocalJobs(ctx, 2, 0)
 	if err != nil {
 		t.Fatalf("ListLocalJobs: %v", err)
 	}
@@ -185,7 +189,7 @@ func TestLocalJobs_Pagination(t *testing.T) {
 		t.Errorf("limit 2: got %d", len(jobs))
 	}
 
-	jobs, err = db.ListLocalJobs(10, 3)
+	jobs, err = db.ListLocalJobs(ctx, 10, 3)
 	if err != nil {
 		t.Fatalf("ListLocalJobs offset: %v", err)
 	}
@@ -196,7 +200,7 @@ func TestLocalJobs_Pagination(t *testing.T) {
 
 func TestListPendingReports_Empty(t *testing.T) {
 	db := openTestDB(t)
-	reports, err := db.ListPendingReports()
+	reports, err := db.ListPendingReports(t.Context())
 	if err != nil {
 		t.Fatalf("ListPendingReports: %v", err)
 	}
