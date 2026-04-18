@@ -60,6 +60,24 @@ lefthook install   # register hooks after first clone
 
 Hooks run `gofmt` (format check) and `go vet` on staged Go files. They are intentionally lightweight — heavy checks live in CI.
 
+## Local Development Notes
+
+- Local defaults are in `.env.dev`.
+- Override local values in `.env.dev.local` (git-ignored).
+- `just dev-server` sets `BACKUP_DB_PATH` to `tmp/server.db`.
+- `just dev-agent` sets `BACKUP_DATA_DIR` to `tmp/agent-data`.
+- `just dev-frontend` runs Vite with `/api` proxied to `localhost:8080`.
+
+Common dev commands:
+
+```bash
+just dev-server
+just dev-agent
+just dev-frontend
+just dev          # zellij layout for all services
+just dev-stop
+```
+
 ## Go Conventions
 - **No ORM** — raw SQL with `database/sql`, methods on `*DB` receiver
 - **SQLite driver** — `modernc.org/sqlite` (pure Go, no CGO)
@@ -76,6 +94,63 @@ Hooks run `gofmt` (format check) and `go vet` on staged Go files. They are inten
 - **Types** — shared API types in `src/types/api.ts`
 - **Components** — SFC with `<script setup lang="ts">`
 - **Styling** — Tailwind CSS utility classes
+
+## CI and PR Requirements
+
+Key workflows in `.github/workflows/`:
+
+- `ci.yml` — tests, fmt/vet checks, build, PR lint, and proto checks
+- `pr-label-check.yml` — enforces label policy on PRs
+- `release-drafter.yml` — maintains rolling draft release notes
+- `build-push.yml` — builds/pushes Docker images on `main` and tags
+
+PR label policy (enforced):
+
+- Exactly one `type/*` label
+- At least one `area/*` label
+- Optional `impact/*` labels for context
+
+PR checklist expectations:
+
+- Fill `.github/pull_request_template.md`
+- Complete the `release-note` fenced block
+- Use `NONE` for non-user-facing changes
+
+Recommended pre-PR validation:
+
+```bash
+just test
+just fmt
+just vet
+just lint
+```
+
+If proto changed:
+
+```bash
+just proto-gen
+just proto-lint
+just proto-breaking
+```
+
+## Release Workflow Notes
+
+- Squash merge is used; PR title becomes merge commit subject.
+- `release-drafter.yml` groups PRs into a draft release.
+- `refresh-release-draft.yml` can rebuild draft notes from PR `release-note` blocks (with optional AI summary).
+- Local helpers:
+
+```bash
+just release-notes
+just release-notes-polished
+```
+
+## Troubleshooting
+
+- If commands or tooling drift, start with `just --list`.
+- If generated code is stale, run `just proto-gen`.
+- If server build fails due to missing embedded assets, run `just build-frontend` (or create `server/internal/frontend/dist/index.html` stub for CI-like builds).
+- Reinstall hooks when needed: `lefthook install`.
 
 ## Key Design Decisions
 - Agent connects outbound to server (server is the only open port)
@@ -94,3 +169,5 @@ Hooks run `gofmt` (format check) and `go vet` on staged Go files. They are inten
 - `docs/multi-repo-strategy.md` — Independent backup strategy
 - `docs/agent-server-design.md` — Communication patterns and enrollment
 - `docs/open-questions.md` — Decided questions and version scope
+- `docs/workflow.md` — End-to-end contributor and release workflow
+- `docs/maintainer-guidelines.md` — Maintainer release and merge conventions
