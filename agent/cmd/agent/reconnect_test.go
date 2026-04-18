@@ -24,9 +24,6 @@ func (c *fakeClock) Advance(d time.Duration) {
 	c.t = c.t.Add(d)
 }
 
-// noopSleep is an instant sleep implementation for tests.
-func noopSleep(_ context.Context, _ time.Duration) {}
-
 // recordingSleep records each sleep duration for assertion in tests.
 func recordingSleep(durations *[]time.Duration) func(context.Context, time.Duration) {
 	return func(_ context.Context, d time.Duration) {
