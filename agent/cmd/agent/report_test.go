@@ -20,7 +20,7 @@ func (h *hangingReporter) ReportJob(ctx context.Context, _ *backupv1.JobReport) 
 // noopBufferer silently accepts buffered reports.
 type noopBufferer struct{}
 
-func (n *noopBufferer) BufferReport(_ *backupv1.JobReport) error { return nil }
+func (n *noopBufferer) BufferReport(_ context.Context, _ *backupv1.JobReport) error { return nil }
 
 // TestDeliverReport_CancelledParentReturnsPromptly verifies that deliverReport
 // returns well within the 10 s delivery timeout when the parent context is

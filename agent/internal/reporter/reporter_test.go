@@ -109,7 +109,7 @@ func TestFlush_ConcurrentFlushSkipped(t *testing.T) {
 	r.grpc = slow // inject slow reporter directly (same package)
 
 	// Buffer one report so flush has work to do.
-	if err := r.BufferReport(&backupv1.JobReport{JobId: "j1"}); err != nil {
+	if err := r.BufferReport(ctx, &backupv1.JobReport{JobId: "j1"}); err != nil {
 		t.Fatalf("BufferReport: %v", err)
 	}
 
