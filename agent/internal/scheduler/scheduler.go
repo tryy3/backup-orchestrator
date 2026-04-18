@@ -34,7 +34,7 @@ type Scheduler struct {
 func New(ctx context.Context, exec *executor.JobOrchestrator, reportFn ReportFunc) *Scheduler {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Scheduler{
-		cron:     cron.New(),
+		cron:     cron.New(cron.WithLocation(time.UTC)),
 		executor: exec,
 		reporter: reportFn,
 		entryIDs: make(map[string]cron.EntryID),
