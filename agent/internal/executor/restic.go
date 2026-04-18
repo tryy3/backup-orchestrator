@@ -297,5 +297,7 @@ func (r *ResticExecutor) runRestic(ctx context.Context, repo Repository, args []
 	)
 
 	err = cmd.Run()
-	return stdoutBuf.String(), stderrBuf.String(), err
+	// Scrub the repository password from stderr before returning, so that it
+	// cannot appear in error messages or the persisted job log tail.
+	return stdoutBuf.String(), redact.String(stderrBuf.String(), repo.Password), err
 }

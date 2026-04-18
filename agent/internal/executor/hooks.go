@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -11,6 +12,61 @@ import (
 
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
 )
+
+// safeEnvNames is the set of parent environment variable names that are safe
+// to inherit in hook subprocesses. Everything else (including RESTIC_PASSWORD,
+// RCLONE_CONFIG, and any other credentials) is stripped.
+var safeEnvNames = map[string]bool{
+	"PATH":      true,
+	"HOME":      true,
+	"USER":      true,
+	"LOGNAME":   true,
+	"SHELL":     true,
+	"LANG":      true,
+	"LC_ALL":    true,
+	"TMP":       true,
+	"TMPDIR":    true,
+	"TERM":      true,
+	"COLORTERM": true,
+}
+
+// hookEnv builds a minimal, safe environment for hook subprocesses.
+// Only a known set of parent env vars is forwarded (LC_* prefix is also
+// allowed). All BACKUP_* context variables are appended so that hook
+// commands can reference them as ordinary environment variables.
+func hookEnv(hctx *HookContext) []string {
+	env := make([]string, 0, 20)
+
+	for _, entry := range os.Environ() {
+		k, _, _ := strings.Cut(entry, "=")
+		if safeEnvNames[k] || strings.HasPrefix(k, "LC_") {
+			env = append(env, entry)
+		}
+	}
+
+	env = append(env,
+		"BACKUP_PLAN_NAME="+hctx.PlanName,
+		"BACKUP_HOSTNAME="+hctx.Hostname,
+		"BACKUP_STATUS="+hctx.Status,
+		"BACKUP_DURATION="+hctx.Duration,
+		"BACKUP_BYTES_ADDED="+hctx.BytesAdded,
+		"BACKUP_FILES_NEW="+hctx.FilesNew,
+		"BACKUP_FILES_CHANGED="+hctx.FilesChanged,
+		"BACKUP_SNAPSHOT_ID="+hctx.SnapshotID,
+		"BACKUP_ERROR="+hctx.Error,
+		"BACKUP_STARTED_AT="+hctx.StartedAt,
+		"BACKUP_FINISHED_AT="+hctx.FinishedAt,
+	)
+
+	return env
+}
+
+// shellQuote wraps s in POSIX single quotes so that it is treated as a
+// literal string by the shell. Any single quote within s is handled by
+// the standard end-quote/escaped-quote/begin-quote sequence.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
 
 // HookContext provides template variables for hook command expansion.
 type HookContext struct {
@@ -76,8 +132,10 @@ func RunHook(ctx context.Context, hook *backupv1.ResolvedHook, hctx *HookContext
 		"error", hctx.Error,
 	)
 
-	// Execute via sh -c.
+	// Execute via sh -c with a minimal, credential-free environment.
 	cmd := exec.CommandContext(hookCtx, "sh", "-c", expanded)
+	cmd.Env = hookEnv(hctx)
+	cmd.Dir = os.TempDir()
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
@@ -148,21 +206,23 @@ func RunHooks(ctx context.Context, hooks []*backupv1.ResolvedHook, event string,
 }
 
 // expandTemplate replaces HookContext placeholder variables in the command string.
-// Placeholders use {{.FieldName}} syntax and are replaced with their corresponding
-// HookContext field values. Unknown placeholders are left unchanged.
+// Placeholders use {{.FieldName}} syntax. Each substituted value is wrapped in
+// POSIX single quotes (shellQuote) so that values containing shell metacharacters
+// cannot break out of the argument and execute arbitrary commands.
+// Unknown placeholders are left unchanged.
 func expandTemplate(cmdStr string, hctx *HookContext) string {
 	r := strings.NewReplacer(
-		"{{.PlanName}}", hctx.PlanName,
-		"{{.Hostname}}", hctx.Hostname,
-		"{{.Status}}", hctx.Status,
-		"{{.Duration}}", hctx.Duration,
-		"{{.BytesAdded}}", hctx.BytesAdded,
-		"{{.FilesNew}}", hctx.FilesNew,
-		"{{.FilesChanged}}", hctx.FilesChanged,
-		"{{.SnapshotID}}", hctx.SnapshotID,
-		"{{.Error}}", hctx.Error,
-		"{{.StartedAt}}", hctx.StartedAt,
-		"{{.FinishedAt}}", hctx.FinishedAt,
+		"{{.PlanName}}", shellQuote(hctx.PlanName),
+		"{{.Hostname}}", shellQuote(hctx.Hostname),
+		"{{.Status}}", shellQuote(hctx.Status),
+		"{{.Duration}}", shellQuote(hctx.Duration),
+		"{{.BytesAdded}}", shellQuote(hctx.BytesAdded),
+		"{{.FilesNew}}", shellQuote(hctx.FilesNew),
+		"{{.FilesChanged}}", shellQuote(hctx.FilesChanged),
+		"{{.SnapshotID}}", shellQuote(hctx.SnapshotID),
+		"{{.Error}}", shellQuote(hctx.Error),
+		"{{.StartedAt}}", shellQuote(hctx.StartedAt),
+		"{{.FinishedAt}}", shellQuote(hctx.FinishedAt),
 	)
 	return r.Replace(cmdStr)
 }
