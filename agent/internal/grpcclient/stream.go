@@ -32,7 +32,6 @@ const outboundChSize = 32
 type StreamHandler struct {
 	client            *Client
 	identity          *identity.Identity
-	identityMu        sync.RWMutex
 	onApproval        func(agentID, apiKey string)
 	onConfig          func(cfg *backupv1.AgentConfig)
 	onCommand         func(cmd *backupv1.Command) *backupv1.CommandResult
@@ -40,6 +39,7 @@ type StreamHandler struct {
 	liveLogCh         <-chan *backupv1.LogEntry // receives live log entries from running jobs
 	heartbeatInterval time.Duration
 	heartbeatMu       sync.RWMutex
+	intervalUpdateCh  chan time.Duration // signals the send goroutine to reset the heartbeat ticker
 }
 
 // NewStreamHandler creates a new StreamHandler.
@@ -61,6 +61,7 @@ func NewStreamHandler(
 		jobStatusFn:       jobStatusFn,
 		liveLogCh:         liveLogCh,
 		heartbeatInterval: 30 * time.Second,
+		intervalUpdateCh:  make(chan time.Duration, 1),
 	}
 }
 
@@ -151,6 +152,8 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 					errCh <- fmt.Errorf("sending heartbeat: %w", err)
 					return
 				}
+			case newInterval := <-s.intervalUpdateCh:
+				ticker.Reset(newInterval)
 			case entry, ok := <-s.liveLogCh:
 				if !ok {
 					flushLogs()
@@ -242,10 +245,8 @@ func (s *StreamHandler) sendHeartbeat(stream backupv1.BackupService_ConnectClien
 		}
 	}
 
-	s.identityMu.RLock()
 	agentID := s.identity.AgentID
-	apiKey := s.identity.APIKey
-	s.identityMu.RUnlock()
+	apiKey := s.identity.GetAPIKey()
 
 	msg := &backupv1.AgentMessage{
 		AgentId: agentID,
@@ -258,10 +259,8 @@ func (s *StreamHandler) sendHeartbeat(stream backupv1.BackupService_ConnectClien
 }
 
 func (s *StreamHandler) sendLiveLogs(stream backupv1.BackupService_ConnectClient, jobID string, entries []*backupv1.LogEntry) error {
-	s.identityMu.RLock()
 	agentID := s.identity.AgentID
-	apiKey := s.identity.APIKey
-	s.identityMu.RUnlock()
+	apiKey := s.identity.GetAPIKey()
 
 	msg := &backupv1.AgentMessage{
 		AgentId: agentID,
@@ -291,10 +290,8 @@ func extractJobID(entry *backupv1.LogEntry) string {
 func (s *StreamHandler) handleApproval(approval *backupv1.Approval) {
 	slog.Info("received approval", "source", "stream", "status", approval.GetStatus())
 	if approval.GetStatus() == backupv1.AgentStatus_AGENT_STATUS_APPROVED {
-		s.identityMu.Lock()
-		s.identity.APIKey = approval.GetApiKey()
+		s.identity.SetAPIKey(approval.GetApiKey())
 		agentID := s.identity.AgentID
-		s.identityMu.Unlock()
 
 		if s.onApproval != nil {
 			s.onApproval(agentID, approval.GetApiKey())
@@ -309,20 +306,26 @@ func (s *StreamHandler) handleConfig(outboundCh chan<- *backupv1.AgentMessage, c
 
 	// Apply heartbeat interval if provided.
 	if hb := cfg.GetHeartbeatIntervalSecs(); hb > 0 {
+		newInterval := time.Duration(hb) * time.Second
 		s.heartbeatMu.Lock()
-		s.heartbeatInterval = time.Duration(hb) * time.Second
+		s.heartbeatInterval = newInterval
 		s.heartbeatMu.Unlock()
 		slog.Info("heartbeat interval updated", "source", "stream", "interval_secs", hb)
+		// Signal the send goroutine to reset the heartbeat ticker.
+		// Non-blocking: if a pending update is already queued the send
+		// goroutine will consume it shortly.
+		select {
+		case s.intervalUpdateCh <- newInterval:
+		default:
+		}
 	}
 
 	if s.onConfig != nil {
 		s.onConfig(cfg)
 	}
 
-	s.identityMu.RLock()
 	agentID := s.identity.AgentID
-	apiKey := s.identity.APIKey
-	s.identityMu.RUnlock()
+	apiKey := s.identity.GetAPIKey()
 
 	// Enqueue config ack for the send goroutine.
 	ack := &backupv1.AgentMessage{
@@ -352,10 +355,8 @@ func (s *StreamHandler) handleCommand(outboundCh chan<- *backupv1.AgentMessage, 
 		}
 	}
 
-	s.identityMu.RLock()
 	agentID := s.identity.AgentID
-	apiKey := s.identity.APIKey
-	s.identityMu.RUnlock()
+	apiKey := s.identity.GetAPIKey()
 
 	// Enqueue command result for the send goroutine.
 	msg := &backupv1.AgentMessage{

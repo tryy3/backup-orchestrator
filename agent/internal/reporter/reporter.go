@@ -3,7 +3,7 @@ package reporter
 import (
 	"context"
 	"log/slog"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,15 +13,21 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
+// jobReporter is the subset of grpcclient.Client used by Reporter.
+// Defined as an interface so it can be replaced in tests.
+type jobReporter interface {
+	ReportJob(ctx context.Context, report *backupv1.JobReport) error
+}
+
 // Reporter manages buffered job report delivery to the server.
 // It buffers reports locally in SQLite when the server is unreachable
 // and flushes them when connectivity is restored.
 type Reporter struct {
 	db       *database.DB
-	grpc     *grpcclient.Client
+	grpc     jobReporter
 	interval time.Duration
 	flushCh  chan struct{}
-	mu       sync.Mutex
+	flushing atomic.Bool
 }
 
 // New creates a new Reporter.
@@ -76,8 +82,11 @@ func (r *Reporter) FlushNow() {
 const maxFlushAttempts = 10
 
 func (r *Reporter) flush(ctx context.Context) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	if !r.flushing.CompareAndSwap(false, true) {
+		// Another flush is already in flight; skip this one.
+		return
+	}
+	defer r.flushing.Store(false)
 
 	reports, err := r.db.ListPendingReports(ctx)
 	if err != nil {

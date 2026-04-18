@@ -437,5 +437,7 @@ func (r *ResticExecutor) streamRestic(ctx context.Context, repo Repository, args
 	}
 
 	waitErr := cmd.Wait()
-	return stderrBuf.String(), waitErr
+	// Scrub the repository password from stderr before returning, so that it
+	// cannot appear in error messages or the persisted job log tail.
+	return redact.String(stderrBuf.String(), repo.Password), waitErr
 }

@@ -189,7 +189,8 @@ func TestSendSerialisation(t *testing.T) {
 
 	// Wire up a StreamHandler that uses our mock client.
 	liveLogCh := make(chan *backupv1.LogEntry, 64)
-	id := &identity.Identity{AgentID: "test-agent", APIKey: "test-key"}
+	id := &identity.Identity{AgentID: "test-agent"}
+	id.SetAPIKey("test-key")
 	sh := &StreamHandler{
 		client: &Client{
 			client: mockClient,
@@ -314,7 +315,8 @@ func TestSendSerialisation(t *testing.T) {
 // TestHandleConfigEnqueuesAck verifies handleConfig enqueues a config ack
 // on the outbound channel rather than calling stream.Send directly.
 func TestHandleConfigEnqueuesAck(t *testing.T) {
-	id := &identity.Identity{AgentID: "agent-1", APIKey: "key-1"}
+	id := &identity.Identity{AgentID: "agent-1"}
+	id.SetAPIKey("key-1")
 	sh := &StreamHandler{
 		identity:          id,
 		heartbeatInterval: 30 * time.Second,
@@ -359,7 +361,8 @@ func TestHandleConfigEnqueuesAck(t *testing.T) {
 // TestHandleCommandEnqueuesResult verifies handleCommand enqueues a command
 // result on the outbound channel.
 func TestHandleCommandEnqueuesResult(t *testing.T) {
-	id := &identity.Identity{AgentID: "agent-2", APIKey: "key-2"}
+	id := &identity.Identity{AgentID: "agent-2"}
+	id.SetAPIKey("key-2")
 	sh := &StreamHandler{
 		identity:          id,
 		heartbeatInterval: 30 * time.Second,
@@ -393,6 +396,117 @@ func TestHandleCommandEnqueuesResult(t *testing.T) {
 		}
 	default:
 		t.Fatal("expected a message on outboundCh")
+	}
+}
+
+// countHeartbeats counts HeartbeatInterval messages in a slice of AgentMessages.
+func countHeartbeats(msgs []*backupv1.AgentMessage) int {
+	n := 0
+	for _, m := range msgs {
+		if m.GetHeartbeat() != nil {
+			n++
+		}
+	}
+	return n
+}
+
+// TestHandleConfigSignalsIntervalUpdate verifies that handleConfig sends the
+// new heartbeat interval on intervalUpdateCh so the send goroutine can reset
+// its ticker.
+func TestHandleConfigSignalsIntervalUpdate(t *testing.T) {
+	id := &identity.Identity{AgentID: "agent-1", APIKey: "key-1"}
+	sh := &StreamHandler{
+		identity:          id,
+		heartbeatInterval: 30 * time.Second,
+		intervalUpdateCh:  make(chan time.Duration, 1),
+	}
+
+	outboundCh := make(chan *backupv1.AgentMessage, 8)
+	cfg := &backupv1.AgentConfig{
+		ConfigVersion:         1,
+		HeartbeatIntervalSecs: 5,
+	}
+
+	sh.handleConfig(outboundCh, cfg)
+
+	select {
+	case interval := <-sh.intervalUpdateCh:
+		if interval != 5*time.Second {
+			t.Errorf("intervalUpdateCh: got %v, want %v", interval, 5*time.Second)
+		}
+	default:
+		t.Fatal("expected interval update on intervalUpdateCh, got none")
+	}
+}
+
+// TestHandleConfigNoSignalWhenIntervalUnchanged verifies that handleConfig
+// does not send on intervalUpdateCh when HeartbeatIntervalSecs is zero (not set).
+func TestHandleConfigNoSignalWhenIntervalUnchanged(t *testing.T) {
+	id := &identity.Identity{AgentID: "agent-1", APIKey: "key-1"}
+	sh := &StreamHandler{
+		identity:          id,
+		heartbeatInterval: 30 * time.Second,
+		intervalUpdateCh:  make(chan time.Duration, 1),
+	}
+
+	outboundCh := make(chan *backupv1.AgentMessage, 8)
+	cfg := &backupv1.AgentConfig{
+		ConfigVersion:         2,
+		HeartbeatIntervalSecs: 0, // not set
+	}
+
+	sh.handleConfig(outboundCh, cfg)
+
+	select {
+	case got := <-sh.intervalUpdateCh:
+		t.Errorf("unexpected interval update on intervalUpdateCh: %v", got)
+	default:
+		// expected: no signal
+	}
+}
+
+// TestHeartbeatTickerResetOnIntervalUpdate verifies that when the send goroutine
+// receives a new interval on intervalUpdateCh, it resets the ticker so heartbeats
+// fire at the new cadence.
+func TestHeartbeatTickerResetOnIntervalUpdate(t *testing.T) {
+	ms := newMockStream()
+	mockClient := &mockBackupServiceClient{stream: ms}
+
+	intervalUpdateCh := make(chan time.Duration, 1)
+	id := &identity.Identity{AgentID: "test-agent", APIKey: "test-key"}
+	sh := &StreamHandler{
+		client:            &Client{client: mockClient},
+		identity:          id,
+		heartbeatInterval: 500 * time.Millisecond, // slow enough that no extra ticks fire during the ~300 ms observation window
+		intervalUpdateCh:  intervalUpdateCh,
+		liveLogCh:         make(chan *backupv1.LogEntry),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() { _ = sh.Run(ctx) }()
+
+	// Allow the initial heartbeat to be sent and the ticker to start.
+	time.Sleep(50 * time.Millisecond)
+	initialCount := countHeartbeats(ms.getSent())
+
+	// Signal the send goroutine to switch to a fast interval.
+	intervalUpdateCh <- 50 * time.Millisecond
+
+	// Wait long enough to collect several ticks at the new 50 ms interval.
+	// At 50 ms / tick over ~300 ms we expect ~6 ticks, so 4 is a generous
+	// lower bound that accommodates scheduler jitter without making the test
+	// brittle.
+	time.Sleep(300 * time.Millisecond)
+
+	cancel()
+	time.Sleep(20 * time.Millisecond)
+
+	newHeartbeats := countHeartbeats(ms.getSent()) - initialCount
+	// At 50 ms interval over ~300 ms we expect at least 4 heartbeats.
+	if newHeartbeats < 4 {
+		t.Errorf("after ticker reset to 50ms, got %d new heartbeats in ~300ms; expected at least 4", newHeartbeats)
 	}
 }
 

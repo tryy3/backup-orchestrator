@@ -4,6 +4,38 @@ import (
 	"testing"
 )
 
+func TestString_RedactsSensitiveValue(t *testing.T) {
+	got := String("restic failed: password=hunter2 is wrong", "hunter2")
+	want := "restic failed: password=***** is wrong"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestString_EmptySensitiveReturnsOriginal(t *testing.T) {
+	original := "some error message"
+	got := String(original, "")
+	if got != original {
+		t.Errorf("got %q, want %q", got, original)
+	}
+}
+
+func TestString_NoOccurrence(t *testing.T) {
+	got := String("nothing to see here", "hunter2")
+	want := "nothing to see here"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestString_MultipleOccurrences(t *testing.T) {
+	got := String("pw=abc pw=abc again=abc", "abc")
+	want := "pw=***** pw=***** again=*****"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 func TestEnv_RedactsSensitiveValues(t *testing.T) {
 	input := []string{
 		"RESTIC_PASSWORD=abc123",
