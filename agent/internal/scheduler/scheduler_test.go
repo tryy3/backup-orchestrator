@@ -148,6 +148,7 @@ func TestJobStatusFunc_Running(t *testing.T) {
 	status := fn()
 	if status == nil {
 		t.Fatal("expected non-nil job status")
+		return
 	}
 	if status.PlanName != "test-plan" {
 		t.Errorf("plan name: got %q, want %q", status.PlanName, "test-plan")
