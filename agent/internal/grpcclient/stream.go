@@ -82,11 +82,6 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 	errCh := make(chan error, 2)
 	var wg sync.WaitGroup
 
-	// streamCtx is used by the send goroutine to detect shutdown; it is also
-	// the context attached to the gRPC stream, so cancelling it unblocks Recv.
-	runCtx := streamCtx
-	runCancel := streamCancel
-
 	// Start send goroutine: heartbeats at configured interval + live log forwarding.
 	wg.Add(1)
 	go func() {
@@ -118,7 +113,7 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 
 		for {
 			select {
-			case <-runCtx.Done():
+			case <-streamCtx.Done():
 				flushLogs()
 				// Close the send side of the stream.
 				_ = stream.CloseSend()
@@ -179,8 +174,8 @@ func (s *StreamHandler) Run(ctx context.Context) error {
 		retErr = ctx.Err()
 	}
 
-	// Cancel derived context to signal the other goroutine, then wait.
-	runCancel()
+	// Cancel stream context to unblock Recv and signal the other goroutine, then wait.
+	streamCancel()
 	wg.Wait()
 	return retErr
 }
