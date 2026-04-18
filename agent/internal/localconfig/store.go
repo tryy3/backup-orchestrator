@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
 	"github.com/tryy3/backup-orchestrator/agent/internal/atomicfile"
+	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
