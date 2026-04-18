@@ -46,8 +46,8 @@ type tailBuffer struct {
 	truncated bool
 }
 
-func newTailBuffer(max int) *tailBuffer {
-	return &tailBuffer{max: max}
+func newTailBuffer(_max int) *tailBuffer {
+	return &tailBuffer{max: _max}
 }
 
 // Write appends p, keeping at most `max` trailing bytes.
