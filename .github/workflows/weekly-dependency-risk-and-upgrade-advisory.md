@@ -437,6 +437,7 @@ safe-outputs:
     labels: [report, dependencies]
   update-issue:
     max: 1
+    target: "*"
   add-comment:
     max: 1
 ---
