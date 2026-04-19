@@ -428,7 +428,7 @@ jobs:
       - name: Seed cache-memory sentinel
         run: "set -euo pipefail\nmkdir -p /tmp/gh-aw/cache-memory\nif [ ! -f /tmp/gh-aw/cache-memory/cache-memory-sentinel.json ]; then\n  cat > /tmp/gh-aw/cache-memory/cache-memory-sentinel.json <<'JSON'\n{\n  \"purpose\": \"Ensure cache-memory artifact upload has a visible file even before the repo accumulates state.\"\n}\nJSON\nfi\n"
       - name: Set up buf
-        uses: bufbuild/buf-action@91da6f6a1a2c877c182debad24ca0a8a9d848be7 # v1
+        uses: bufbuild/buf-action@fd21066df7214747548607aaa45548ba2b9bc1ff # v1
         with:
           setup_only: true
       - name: Install protoc plugins
