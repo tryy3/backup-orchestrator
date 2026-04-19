@@ -45,7 +45,7 @@ steps:
     run: |
       set -euo pipefail
       mkdir -p /tmp/gh-aw/agent
-      gh release list --limit 200 --json tagName,isDraft,isPrerelease,publishedAt,name,targetCommitish,url > /tmp/gh-aw/agent/releases.json
+      gh release list --limit 200 --json tagName,isDraft,isPrerelease,publishedAt,name > /tmp/gh-aw/agent/releases.json
       jq '[.[] | select(.isDraft == true)]' /tmp/gh-aw/agent/releases.json > /tmp/gh-aw/agent/draft-releases.json
 ---
 
