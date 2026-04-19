@@ -313,7 +313,10 @@ func (o *Outbox) deliver(ctx context.Context, item database.SpillItem, fromSpill
 	if errors.Is(err, context.Canceled) {
 		// Shutdown in progress: persist the item so we retry next start.
 		if !fromSpill {
-			if sErr := o.db.SpillEnqueue(ctx, item); sErr != nil {
+			spillCtx, spillCancel := context.WithTimeout(context.Background(), cfg.DeliveryTimeout)
+			sErr := o.db.SpillEnqueue(spillCtx, item)
+			spillCancel()
+			if sErr != nil {
 				o.logger.Error("spill on shutdown", "id", item.ID, "error", sErr)
 			}
 		}
