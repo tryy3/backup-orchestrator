@@ -85,7 +85,7 @@ steps:
     run: |
       set -euo pipefail
       mkdir -p /tmp/gh-aw/agent
-      unset GITHUB_API_URL GITHUB_GRAPHQL_URL GH_REPO NODE_EXTRA_CA_CERTS
+      unset GITHUB_API_URL GITHUB_GRAPHQL_URL GH_HOST GH_REPO NODE_EXTRA_CA_CERTS
       if [ -n "$FROM_TAG" ]; then
         python3 scripts/release-notes.py --from-tag "$FROM_TAG" --output /tmp/gh-aw/agent/notes.md
       else
