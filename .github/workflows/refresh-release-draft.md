@@ -43,23 +43,39 @@ safe-outputs:
 steps:
   - name: Snapshot draft releases
     env:
-      GH_TOKEN: ${{ github.token }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GITHUB_TOKEN: ${{ github.token }}
     run: |
       set -euo pipefail
       mkdir -p /tmp/gh-aw/agent
-      gh release list --limit 200 --json tagName,isDraft,isPrerelease,publishedAt,name > /tmp/gh-aw/agent/releases.json
       python3 - <<'PY'
       import json
+      import os
+      import urllib.request
       from pathlib import Path
+
+      repo = os.environ['GITHUB_REPOSITORY']
+      token = os.environ['GITHUB_TOKEN']
+      request = urllib.request.Request(
+          f'https://api.github.com/repos/{repo}/releases?per_page=100',
+          headers={
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+          },
+      )
+      with urllib.request.urlopen(request, timeout=60) as response:
+          releases = json.loads(response.read().decode('utf-8'))
 
       releases_path = Path('/tmp/gh-aw/agent/releases.json')
       drafts_path = Path('/tmp/gh-aw/agent/draft-releases.json')
-      releases = json.loads(releases_path.read_text())
+      releases_path.write_text(json.dumps(releases, indent=2) + '\n')
       drafts = [release for release in releases if release.get('isDraft') is True]
       drafts_path.write_text(json.dumps(drafts, indent=2) + '\n')
       print(f"Draft releases found: {len(drafts)}")
       for release in drafts:
-          print(f"- tagName={release.get('tagName')} name={release.get('name')}")
+          tag_name = release.get('tag_name') or release.get('tagName')
+          print(f"- tagName={tag_name} name={release.get('name')}")
       PY
 
   - name: Generate structured release notes
@@ -69,6 +85,7 @@ steps:
     run: |
       set -euo pipefail
       mkdir -p /tmp/gh-aw/agent
+      unset GITHUB_API_URL GITHUB_GRAPHQL_URL GH_REPO NODE_EXTRA_CA_CERTS
       if [ -n "$FROM_TAG" ]; then
         python3 scripts/release-notes.py --from-tag "$FROM_TAG" --output /tmp/gh-aw/agent/notes.md
       else
