@@ -41,6 +41,10 @@ permissions:
 network:
   allowed: [defaults, go, node]
 
+runtimes:
+  go:
+    version: "1.26.1"
+
 tools:
   github:
     toolsets: [default]
@@ -89,6 +93,33 @@ steps:
         eval "$cmd" > "$out" 2>tmp/workflow-tools/stderr.txt
         rc=$?
         if [ $rc -eq 0 ]; then
+          mark_ok "$out" "$kind" "$ecosystem"
+        else
+          cat > "$out" <<JSON
+      {
+        "error": "command_failed",
+        "exit_code": $rc,
+        "command": $(printf '%s' "$cmd" | jq -Rs .),
+        "stderr": $(cat tmp/workflow-tools/stderr.txt | jq -Rs .)
+      }
+      JSON
+          mark_missing "$out" "$kind" "$ecosystem" "$(cat tmp/workflow-tools/stderr.txt)"
+        fi
+      }
+
+      run_json_allow_rc() {
+        cmd="$1"
+        out="$2"
+        kind="$3"
+        ecosystem="$4"
+        allowed_rc_csv="$5"
+        eval "$cmd" > "$out" 2>tmp/workflow-tools/stderr.txt
+        rc=$?
+        case ",${allowed_rc_csv}," in
+          *",${rc},"*) allowed=1 ;;
+          *) allowed=0 ;;
+        esac
+        if [ $rc -eq 0 ] || [ "$allowed" -eq 1 ]; then
           mark_ok "$out" "$kind" "$ecosystem"
         else
           cat > "$out" <<JSON
@@ -220,8 +251,8 @@ steps:
         mark_missing "reports/raw/frontend-unused-deps.json" "unused_deps" "npm" "npm ci failed"
         mark_missing "reports/raw/frontend-import-frequency.json" "usage_surface" "npm" "npm ci failed"
       else
-        run_json "npm outdated --json" "../reports/raw/npm-outdated.json" "update_surface" "npm"
-        run_json "npm audit --json" "../reports/raw/npm-audit.json" "vulnerability" "npm"
+        run_json_allow_rc "npm outdated --json" "../reports/raw/npm-outdated.json" "update_surface" "npm" "1"
+        run_json_allow_rc "npm audit --json" "../reports/raw/npm-audit.json" "vulnerability" "npm" "1"
         run_json "npx --yes license-checker --json" "../reports/raw/npm-licenses.json" "license" "npm"
 
         npx --yes knip --reporter json > ../reports/raw/frontend-unused-deps.json 2>../tmp/workflow-tools/unused-deps.err
