@@ -163,6 +163,7 @@ Use Release Drafter for initial draft creation, then enrich the draft body with:
   - These notes were generated before the agent ran using the workflow token.
 3. Find the draft release to update:
   - If `release_id` input is provided and non-empty, treat it as authoritative and skip tag-based draft selection.
+  - In that case, do not choose a draft by `tagName`, do not compare semantic versions, and do not use `/tmp/gh-aw/agent/draft-releases.json` to decide which release to update.
   - Read `.github/release-drafter.yml` and treat its `tag-template` (`v$RESOLVED_VERSION`) as authoritative.
   - Use `/tmp/gh-aw/agent/draft-releases.json` as source-of-truth for currently available draft releases.
   - Treat a draft as a valid release candidate when either:
@@ -181,6 +182,11 @@ Use Release Drafter for initial draft creation, then enrich the draft body with:
   - Body content: full contents of `/tmp/gh-aw/agent/notes.md`.
   - If `release_id` input is provided and non-empty:
     - call `update-release` without a `tag` field so the handler resolves the target from workflow dispatch input `release_id`.
+    - this is mandatory.
+    - do not include `tag` in the safe output payload.
+    - do not include both `release_id` and `tag` in reasoning or output.
+    - if you include `tag`, the safe output handler will fail for draft releases because GitHub's tag lookup endpoint does not resolve this draft.
+    - the correct shape is: `{"type":"update_release","operation":"replace","body":"..."}`
   - Otherwise:
     - for the safe output `tag` field, use the release's actual `tagName` from GitHub, even when the effective semantic version was derived from `name`.
 
