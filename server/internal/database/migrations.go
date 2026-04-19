@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS agents (
     config_version  INTEGER NOT NULL DEFAULT 0,
     config_applied_at DATETIME,
     command_timeouts TEXT,
+    outbox_overrides TEXT,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -181,6 +182,9 @@ func (db *DB) migrate(ctx context.Context) error {
 	}
 	if err := db.addColumnIfMissing(ctx, "agents", "command_timeouts", "TEXT"); err != nil {
 		return fmt.Errorf("add agents.command_timeouts column: %w", err)
+	}
+	if err := db.addColumnIfMissing(ctx, "agents", "outbox_overrides", "TEXT"); err != nil {
+		return fmt.Errorf("add agents.outbox_overrides column: %w", err)
 	}
 	return nil
 }

@@ -120,6 +120,20 @@ message AgentConfig {
   int32 heartbeat_interval_secs = 6; // seconds between heartbeats (0 = use agent default)
   repeated string file_browser_blocked_paths = 7; // paths the file browser refuses to list
   CommandTimeouts command_timeouts = 8; // per-command timeouts (0 fields = use agent default)
+  OutboxConfig outbox = 9; // outbox tunables (0 fields = use agent default)
+}
+
+// OutboxConfig overrides the agent's built-in outbox tunables. A field set
+// to 0 (or unset) means the agent should use its compiled-in default for
+// that knob. The in-memory channel capacity is not configurable here — it
+// is a bootstrap-only env var (OUTBOX_MEMORY_MAX) because Go channels
+// cannot be resized at runtime.
+message OutboxConfig {
+  int32 spill_max_rows = 1;        // SQLite spill row cap (drop-oldest above this)
+  int32 spill_retention_secs = 2;  // age cutoff for spill prune (seconds)
+  int32 flush_interval_secs = 3;   // periodic flush tick (seconds)
+  int32 delivery_timeout_secs = 4; // per-RPC timeout (seconds)
+  int32 max_attempts = 5;          // drop a payload after this many failures
 }
 
 // CommandTimeouts overrides the agent's built-in per-command deadlines.
@@ -238,7 +252,9 @@ message JobReport {
   repeated RepositoryResult repository_results = 11;
   repeated HookResult hook_results = 12;
 
-  string log_tail = 13;
+  // Deprecated: agents stop populating this in favor of `log_entries`.
+  // Server keeps a fallback path for old agents during transition.
+  string log_tail = 13 [deprecated = true];
   repeated LogEntry log_entries = 14;
 }
 

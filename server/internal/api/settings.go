@@ -26,6 +26,11 @@ var settingsKeys = []string{
 	"command_timeout_browse_snapshot_seconds",
 	"command_timeout_browse_filesystem_seconds",
 	"command_timeout_default_seconds",
+	"outbox_spill_max_rows",
+	"outbox_spill_retention_seconds",
+	"outbox_flush_interval_seconds",
+	"outbox_delivery_timeout_seconds",
+	"outbox_max_attempts",
 }
 
 func getSettingsHandler(db *database.DB) http.HandlerFunc {

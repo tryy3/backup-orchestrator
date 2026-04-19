@@ -177,6 +177,53 @@ async function clearTimeouts() {
   setTimeout(() => { timeoutsSaved.value = false }, 3000)
 }
 
+// Per-agent outbox tunable overrides. Each field is in seconds (or count);
+// 0 / empty means "fall back to the global setting".
+const outboxOpen = ref(false)
+const outboxSpillMaxRows = ref<number | null>(null)
+const outboxSpillRetentionSecs = ref<number | null>(null)
+const outboxFlushIntervalSecs = ref<number | null>(null)
+const outboxDeliveryTimeoutSecs = ref<number | null>(null)
+const outboxMaxAttempts = ref<number | null>(null)
+const outboxSaved = ref(false)
+
+function loadOutboxFromAgent() {
+  const ob = agent.value?.outbox_overrides
+  outboxSpillMaxRows.value = ob?.spill_max_rows ?? null
+  outboxSpillRetentionSecs.value = ob?.spill_retention_secs ?? null
+  outboxFlushIntervalSecs.value = ob?.flush_interval_secs ?? null
+  outboxDeliveryTimeoutSecs.value = ob?.delivery_timeout_secs ?? null
+  outboxMaxAttempts.value = ob?.max_attempts ?? null
+}
+
+function toggleOutbox() {
+  outboxOpen.value = !outboxOpen.value
+  if (outboxOpen.value) {
+    loadOutboxFromAgent()
+  }
+}
+
+async function saveOutbox() {
+  const payload = {
+    spill_max_rows: outboxSpillMaxRows.value || 0,
+    spill_retention_secs: outboxSpillRetentionSecs.value || 0,
+    flush_interval_secs: outboxFlushIntervalSecs.value || 0,
+    delivery_timeout_secs: outboxDeliveryTimeoutSecs.value || 0,
+    max_attempts: outboxMaxAttempts.value || 0,
+  }
+  const allZero = Object.values(payload).every((v) => v === 0)
+  await agentsStore.updateOutboxOverrides(agentId.value, allZero ? null : payload)
+  outboxSaved.value = true
+  setTimeout(() => { outboxSaved.value = false }, 3000)
+}
+
+async function clearOutbox() {
+  await agentsStore.updateOutboxOverrides(agentId.value, null)
+  loadOutboxFromAgent()
+  outboxSaved.value = true
+  setTimeout(() => { outboxSaved.value = false }, 3000)
+}
+
 </script>
 
 <template>
@@ -410,6 +457,78 @@ async function clearTimeouts() {
               class="rounded-md bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-400 ring-1 ring-cyan-500/30 transition-colors hover:bg-cyan-500/20 disabled:opacity-50"
               :disabled="agentsStore.saving"
               @click="saveTimeouts"
+            >
+              {{ agentsStore.saving ? 'Saving...' : 'Save Overrides' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Per-agent outbox tunable overrides (collapsible) -->
+      <div class="rounded-lg border border-surface-700 bg-surface-900">
+        <button
+          class="flex w-full items-center justify-between px-4 py-3 text-sm text-slate-400 transition-colors hover:text-slate-200"
+          @click="toggleOutbox"
+        >
+          <span class="font-medium">
+            Outbox Overrides
+            <span v-if="agent.outbox_overrides" class="ml-2 rounded bg-cyan-500/10 px-1.5 py-0.5 text-xs text-cyan-400">custom</span>
+          </span>
+          <svg
+            :class="['h-4 w-4 transition-transform', outboxOpen ? 'rotate-180' : '']"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
+        <div v-if="outboxOpen" class="space-y-4 border-t border-surface-700 p-4">
+          <p class="text-xs text-slate-500">
+            Override the global outbox tunables for this agent. Leave a field empty (or 0)
+            to use the global setting from the Settings page. The in-memory channel
+            capacity is intentionally not configurable here — it is an agent-side
+            bootstrap env var (<code class="font-mono">OUTBOX_MEMORY_MAX</code>).
+          </p>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-slate-400">Spill Row Cap</label>
+              <input v-model.number="outboxSpillMaxRows" type="number" min="0" placeholder="global" class="mt-1 w-full rounded border border-surface-600 bg-surface-950 px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400">Spill Retention (seconds)</label>
+              <input v-model.number="outboxSpillRetentionSecs" type="number" min="0" placeholder="global" class="mt-1 w-full rounded border border-surface-600 bg-surface-950 px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400">Flush Interval (seconds)</label>
+              <input v-model.number="outboxFlushIntervalSecs" type="number" min="0" placeholder="global" class="mt-1 w-full rounded border border-surface-600 bg-surface-950 px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400">Delivery Timeout (seconds)</label>
+              <input v-model.number="outboxDeliveryTimeoutSecs" type="number" min="0" placeholder="global" class="mt-1 w-full rounded border border-surface-600 bg-surface-950 px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400">Max Attempts</label>
+              <input v-model.number="outboxMaxAttempts" type="number" min="0" placeholder="global" class="mt-1 w-full rounded border border-surface-600 bg-surface-950 px-2 py-1 text-sm text-slate-300 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+            </div>
+          </div>
+          <div v-if="outboxSaved" class="rounded border border-green-500/20 bg-green-500/10 px-3 py-2 text-xs text-green-400">
+            Outbox overrides saved.
+          </div>
+          <div class="flex justify-end gap-2">
+            <button
+              v-if="agent.outbox_overrides"
+              class="rounded-md bg-slate-500/10 px-4 py-2 text-sm font-medium text-slate-300 ring-1 ring-slate-500/30 transition-colors hover:bg-slate-500/20 disabled:opacity-50"
+              :disabled="agentsStore.saving"
+              @click="clearOutbox"
+            >
+              Reset to Global
+            </button>
+            <button
+              class="rounded-md bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-400 ring-1 ring-cyan-500/30 transition-colors hover:bg-cyan-500/20 disabled:opacity-50"
+              :disabled="agentsStore.saving"
+              @click="saveOutbox"
             >
               {{ agentsStore.saving ? 'Saving...' : 'Save Overrides' }}
             </button>

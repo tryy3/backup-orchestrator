@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, onScopeDispose } from 'vue'
 import { agents as api } from '../api/client'
 import { subscribe } from '../api/websocket'
-import type { Agent, CommandTimeouts } from '../types/api'
+import type { Agent, CommandTimeouts, OutboxOverrides } from '../types/api'
 import { SETTINGS_DEFAULTS } from '../types/api'
 
 /**
@@ -122,6 +122,21 @@ export const useAgentsStore = defineStore('agents', () => {
     }
   }
 
+  async function updateOutboxOverrides(id: string, overrides: OutboxOverrides | null) {
+    saving.value = true
+    error.value = null
+    try {
+      const updated = await api.updateOutboxOverrides(id, overrides)
+      if (current.value?.id === id) {
+        current.value = updated
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving.value = false
+    }
+  }
+
   // Subscribe to WebSocket events for live agent updates.
   const unsubs: (() => void)[] = []
 
@@ -166,5 +181,5 @@ export const useAgentsStore = defineStore('agents', () => {
     unsubs.forEach((fn) => fn())
   })
 
-  return { list, current, loading, saving, error, fetchAll, fetchOne, approve, reject, remove, updateRclone, fetchRcloneConfig, updateCommandTimeouts }
+  return { list, current, loading, saving, error, fetchAll, fetchOne, approve, reject, remove, updateRclone, fetchRcloneConfig, updateCommandTimeouts, updateOutboxOverrides }
 })

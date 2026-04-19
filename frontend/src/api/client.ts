@@ -18,6 +18,7 @@ import type {
   FilesystemEntry,
   TriggerResponse,
   CommandTimeouts,
+  OutboxOverrides,
 } from '../types/api'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
@@ -73,6 +74,11 @@ export const agents = {
     request<Agent>(`/agents/${id}/command-timeouts`, {
       method: 'PUT',
       body: JSON.stringify(timeouts),
+    }),
+  updateOutboxOverrides: (id: string, overrides: OutboxOverrides | null) =>
+    request<Agent>(`/agents/${id}/outbox-overrides`, {
+      method: 'PUT',
+      body: JSON.stringify(overrides),
     }),
   browseFs: (agentId: string, path: string, signal?: AbortSignal) =>
     request<FilesystemEntry[]>(`/agents/${agentId}/fs?path=${encodeURIComponent(path)}`, { signal }),

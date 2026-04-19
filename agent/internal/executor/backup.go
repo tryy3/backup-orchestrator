@@ -101,7 +101,6 @@ func (o *JobOrchestrator) ExecuteBackupJob(
 
 		report.HookResults = convertHookResults(allHookResults)
 		report.LogEntries = buf.Entries()
-		report.LogTail = buf.PlainText()
 		return report
 	}
 
@@ -218,7 +217,6 @@ func (o *JobOrchestrator) ExecuteBackupJob(
 	report.FinishedAt = timestamppb.New(finishedAt)
 	report.HookResults = convertHookResults(allHookResults)
 	report.LogEntries = buf.Entries()
-	report.LogTail = buf.PlainText()
 
 	jlog.Info("backup job completed",
 		"source", "orchestrator",

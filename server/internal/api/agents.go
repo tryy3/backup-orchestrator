@@ -36,6 +36,7 @@ type agentResponse struct {
 	ConfigVersion   int                         `json:"config_version"`
 	ConfigAppliedAt *time.Time                  `json:"config_applied_at,omitempty"`
 	CommandTimeouts *configpush.CommandTimeouts `json:"command_timeouts,omitempty"`
+	OutboxOverrides *configpush.OutboxOverrides `json:"outbox_overrides,omitempty"`
 	CreatedAt       time.Time                   `json:"created_at"`
 	UpdatedAt       time.Time                   `json:"updated_at"`
 }
@@ -63,6 +64,12 @@ func toAgentResponse(a *database.Agent) agentResponse {
 		var ct configpush.CommandTimeouts
 		if err := json.Unmarshal([]byte(*a.CommandTimeouts), &ct); err == nil {
 			resp.CommandTimeouts = &ct
+		}
+	}
+	if a.OutboxOverrides != nil && *a.OutboxOverrides != "" {
+		var oo configpush.OutboxOverrides
+		if err := json.Unmarshal([]byte(*a.OutboxOverrides), &oo); err == nil {
+			resp.OutboxOverrides = &oo
 		}
 	}
 	return resp
@@ -297,6 +304,63 @@ func updateAgentCommandTimeoutsHandler(db *database.DB, resolver *configpush.Res
 		go func() {
 			if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
 				slog.Error("failed to push config to agent after command timeouts update", "agent_id", id, "error", err)
+			}
+		}()
+
+		agent, err := db.GetAgent(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, toAgentResponse(agent))
+	}
+}
+
+// updateAgentOutboxOverridesHandler stores per-agent overrides of the global
+// outbox tunables. Sending null or an empty body clears the override (the
+// agent will fall back to the global settings or its compiled-in defaults).
+func updateAgentOutboxOverridesHandler(db *database.DB, resolver *configpush.Resolver) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+
+		var input *configpush.OutboxOverrides
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		if input != nil {
+			vals := []int32{
+				input.SpillMaxRows, input.SpillRetentionSecs, input.FlushIntervalSecs,
+				input.DeliveryTimeoutSecs, input.MaxAttempts,
+			}
+			for _, v := range vals {
+				if v < 0 {
+					writeError(w, http.StatusBadRequest, "outbox override values must be non-negative")
+					return
+				}
+			}
+		}
+
+		var stored *string
+		if input != nil {
+			b, err := json.Marshal(input)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			s := string(b)
+			stored = &s
+		}
+
+		if err := db.UpdateOutboxOverrides(r.Context(), id, stored); err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+
+		go func() {
+			if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
+				slog.Error("failed to push config to agent after outbox overrides update", "agent_id", id, "error", err)
 			}
 		}()
 

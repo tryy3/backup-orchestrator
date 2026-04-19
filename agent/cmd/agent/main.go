@@ -20,7 +20,7 @@ import (
 	"github.com/tryy3/backup-orchestrator/agent/internal/grpcclient"
 	"github.com/tryy3/backup-orchestrator/agent/internal/identity"
 	"github.com/tryy3/backup-orchestrator/agent/internal/localconfig"
-	"github.com/tryy3/backup-orchestrator/agent/internal/reporter"
+	"github.com/tryy3/backup-orchestrator/agent/internal/outbox"
 	"github.com/tryy3/backup-orchestrator/agent/internal/scheduler"
 	"github.com/tryy3/backup-orchestrator/agent/internal/versions"
 )
@@ -116,8 +116,13 @@ func run() error {
 	}
 	defer grpcClient.Close()
 
-	// Step 8: Create Reporter (buffer flusher).
-	rep := reporter.New(db, grpcClient, 60*time.Second)
+	// Step 8: Create Outbox (in-memory-first delivery queue with SQLite spill).
+	// Only MemoryMax comes from env (it sizes a Go channel, which can't be
+	// resized at runtime). All other tunables are pushed from the server via
+	// AgentConfig.outbox and hot-applied in onConfig below.
+	ob := outbox.New(db, grpcClient, outbox.Config{
+		MemoryMax: cfg.Outbox.MemoryMax,
+	}, slog.Default())
 
 	// Shared state for current config (protected by mutex).
 	var (
@@ -129,31 +134,16 @@ func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// ReportFunc for scheduler: buffer the report and attempt delivery.
+	// ReportFunc for scheduler: hand the report to the outbox. The outbox
+	// owns delivery, retry, and durable spill.
 	reportFn := func(report *backupv1.JobReport) {
 		if id != nil {
 			report.AgentId = id.AgentID
 			report.ApiKey = id.GetAPIKey()
 		}
-
-		// Record local job.
-		startedAt := ""
-		finishedAt := ""
-		if report.StartedAt != nil {
-			startedAt = report.StartedAt.AsTime().Format(time.RFC3339)
+		if err := ob.SubmitReport(ctx, report); err != nil {
+			slog.Error("submit report to outbox", "source", "agent", "error", err)
 		}
-		if report.FinishedAt != nil {
-			finishedAt = report.FinishedAt.AsTime().Format(time.RFC3339)
-		}
-		if err := db.InsertLocalJob(
-			ctx,
-			report.JobId, report.PlanName, report.Type, report.Status,
-			startedAt, finishedAt, report.LogTail,
-		); err != nil {
-			slog.Error("error recording local job", "source", "agent", "error", err)
-		}
-
-		deliverReport(ctx, grpcClient, rep, report)
 	}
 
 	// Step 9: Create Scheduler.
@@ -225,6 +215,10 @@ func run() error {
 					slog.Info("file browser blocked paths updated", "source", "agent", "paths", bp)
 				}
 
+				// Apply server-pushed outbox tunables (zero-valued fields fall
+				// back to outbox package defaults; MemoryMax is preserved).
+				ob.UpdateConfig(outboxConfigFromProto(agentCfg.GetOutbox()))
+
 				// Update scheduler.
 				sched.UpdateSchedule(
 					agentCfg.GetBackupPlans(),
@@ -249,7 +243,7 @@ func run() error {
 			liveLogCh,
 		)
 
-		runReconnectLoop(ctx, streamHandler.Run, rep.FlushNow, realSleep, time.Now)
+		runReconnectLoop(ctx, streamHandler.Run, ob.FlushNow, realSleep, time.Now)
 	}()
 
 	// Step 12: If local config exists, start scheduler immediately.
@@ -274,12 +268,13 @@ func run() error {
 			localCfg.GetRepositories(),
 			localCfg.GetDefaultRetention(),
 		)
+		ob.UpdateConfig(outboxConfigFromProto(localCfg.GetOutbox()))
 	}
 
 	sched.Start()
 
-	// Step 13: Start reporter.Run in goroutine.
-	go rep.Run(ctx)
+	// Step 13: Start outbox worker (delivers reports + prunes spill).
+	go ob.Run(ctx)
 
 	// Step 14: Handle SIGINT/SIGTERM.
 	sigCh := make(chan os.Signal, 1)
@@ -503,28 +498,25 @@ func findRepo(repos []*backupv1.Repository, id string) *backupv1.Repository {
 	return nil
 }
 
-// jobReporter delivers a job report to the server.
-type jobReporter interface {
-	ReportJob(ctx context.Context, report *backupv1.JobReport) error
-}
-
-// reportBufferer persists a job report locally for later delivery.
-type reportBufferer interface {
-	BufferReport(ctx context.Context, report *backupv1.JobReport) error
-}
-
-// deliverReport attempts direct delivery of a job report, deriving the
-// delivery timeout from ctx so that agent shutdown cancels the RPC promptly.
-// On failure it falls back to local buffering for delivery on the next run.
-func deliverReport(ctx context.Context, deliverer jobReporter, buf reportBufferer, report *backupv1.JobReport) {
-	deliveryCtx, deliveryCancel := context.WithTimeout(ctx, 10*time.Second)
-	defer deliveryCancel()
-	if err := deliverer.ReportJob(deliveryCtx, report); err != nil {
-		slog.Warn("direct report delivery failed, buffering", "source", "agent", "error", err)
-		if bufErr := buf.BufferReport(ctx, report); bufErr != nil {
-			slog.Error("error buffering report", "source", "agent", "error", bufErr)
-		}
-	} else {
-		slog.Info("report delivered successfully", "source", "agent", "job_id", report.JobId)
+// outboxConfigFromProto converts the server-pushed outbox config (seconds-as-int32)
+// into an outbox.Config with Go durations. Zero/missing fields stay zero so
+// outbox.UpdateConfig falls back to the package defaults.
+func outboxConfigFromProto(p *backupv1.OutboxConfig) outbox.Config {
+	if p == nil {
+		return outbox.Config{}
 	}
+	cfg := outbox.Config{
+		SpillMaxRows: int(p.GetSpillMaxRows()),
+		MaxAttempts:  int(p.GetMaxAttempts()),
+	}
+	if s := p.GetSpillRetentionSecs(); s > 0 {
+		cfg.SpillRetention = time.Duration(s) * time.Second
+	}
+	if s := p.GetFlushIntervalSecs(); s > 0 {
+		cfg.FlushInterval = time.Duration(s) * time.Second
+	}
+	if s := p.GetDeliveryTimeoutSecs(); s > 0 {
+		cfg.DeliveryTimeout = time.Duration(s) * time.Second
+	}
+	return cfg
 }
