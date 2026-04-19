@@ -66,6 +66,18 @@ steps:
       JSON
       : > reports/raw/.index.ndjson
 
+  - name: Seed cache-memory sentinel
+    run: |
+      set -euo pipefail
+      mkdir -p /tmp/gh-aw/cache-memory
+      if [ ! -f /tmp/gh-aw/cache-memory/cache-memory-sentinel.json ]; then
+        cat > /tmp/gh-aw/cache-memory/cache-memory-sentinel.json <<'JSON'
+      {
+        "purpose": "Ensure cache-memory artifact upload has a visible file even before the repo accumulates state."
+      }
+      JSON
+      fi
+
   - name: Set up buf
     uses: bufbuild/buf-action@v1
     with:
@@ -433,7 +445,7 @@ steps:
       fi
 
   - name: Upload raw evidence artifact
-    uses: actions/upload-artifact@v4
+    uses: actions/upload-artifact@v5
     with:
       name: dependency-facts-raw
       path: reports/raw
@@ -441,7 +453,7 @@ steps:
       if-no-files-found: warn
 
   - name: Upload readable evidence artifact
-    uses: actions/upload-artifact@v4
+    uses: actions/upload-artifact@v5
     with:
       name: dependency-facts-readable
       path: reports/readable
