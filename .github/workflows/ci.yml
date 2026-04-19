@@ -32,26 +32,23 @@ jobs:
             server:
               - 'server/**'
               - 'proto/**'
-              - '.github/workflows/**'
               - '.golangci.yml'
               - 'justfile'
             agent:
               - 'agent/**'
               - 'proto/**'
-              - '.github/workflows/**'
+              - '.golangci.yml'
+              - 'justfile'
               - '.golangci.yml'
               - 'justfile'
             frontend:
               - 'frontend/**'
-              - '.github/workflows/**'
             proto:
               - 'proto/**'
-              - '.github/workflows/**'
             go:
               - 'server/**'
               - 'agent/**'
               - 'proto/**'
-              - '.github/workflows/**'
               - '.golangci.yml'
               - 'justfile'
             build:
@@ -59,7 +56,6 @@ jobs:
               - 'agent/**'
               - 'frontend/**'
               - 'proto/**'
-              - '.github/workflows/**'
               - 'docker/**'
               - 'justfile'
 
