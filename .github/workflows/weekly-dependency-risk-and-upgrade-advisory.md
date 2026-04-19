@@ -66,15 +66,43 @@ steps:
       JSON
       : > reports/raw/.index.ndjson
 
+  - name: Seed cache-memory sentinel
+    run: |
+      set -euo pipefail
+      mkdir -p /tmp/gh-aw/cache-memory
+      if [ ! -f /tmp/gh-aw/cache-memory/cache-memory-sentinel.json ]; then
+        cat > /tmp/gh-aw/cache-memory/cache-memory-sentinel.json <<'JSON'
+      {
+        "purpose": "Ensure cache-memory artifact upload has a visible file even before the repo accumulates state."
+      }
+      JSON
+      fi
+
+  - name: Set up buf
+    uses: bufbuild/buf-action@v1
+    with:
+      setup_only: true
+
+  - name: Install protoc plugins
+    run: |
+      go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+      go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+  - name: Generate proto
+    run: cd proto && buf generate
+
   - name: Collect deterministic dependency facts
     run: |
       set +e
+
+      ROOT_DIR="$(pwd)"
+      INDEX_FILE="${ROOT_DIR}/reports/raw/.index.ndjson"
 
       mark_ok() {
         file="$1"
         kind="$2"
         ecosystem="$3"
-        printf '{"file":"%s","status":"ok","kind":"%s","ecosystem":"%s"}\n' "$file" "$kind" "$ecosystem" >> reports/raw/.index.ndjson
+        printf '{"file":"%s","status":"ok","kind":"%s","ecosystem":"%s"}\n' "$file" "$kind" "$ecosystem" >> "$INDEX_FILE"
       }
 
       mark_missing() {
@@ -82,7 +110,7 @@ steps:
         kind="$2"
         ecosystem="$3"
         reason="$4"
-        printf '{"file":"%s","status":"missing","kind":"%s","ecosystem":"%s","reason":%s}\n' "$file" "$kind" "$ecosystem" "$(printf '%s' "$reason" | jq -Rs .)" >> reports/raw/.index.ndjson
+        printf '{"file":"%s","status":"missing","kind":"%s","ecosystem":"%s","reason":%s}\n' "$file" "$kind" "$ecosystem" "$(printf '%s' "$reason" | jq -Rs .)" >> "$INDEX_FILE"
       }
 
       run_json() {
@@ -90,7 +118,7 @@ steps:
         out="$2"
         kind="$3"
         ecosystem="$4"
-        eval "$cmd" > "$out" 2>tmp/workflow-tools/stderr.txt
+        eval "$cmd" > "$out" 2>"${ROOT_DIR}/tmp/workflow-tools/stderr.txt"
         rc=$?
         if [ $rc -eq 0 ]; then
           mark_ok "$out" "$kind" "$ecosystem"
@@ -100,10 +128,10 @@ steps:
         "error": "command_failed",
         "exit_code": $rc,
         "command": $(printf '%s' "$cmd" | jq -Rs .),
-        "stderr": $(cat tmp/workflow-tools/stderr.txt | jq -Rs .)
+        "stderr": $(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt" | jq -Rs .)
       }
       JSON
-          mark_missing "$out" "$kind" "$ecosystem" "$(cat tmp/workflow-tools/stderr.txt)"
+          mark_missing "$out" "$kind" "$ecosystem" "$(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt")"
         fi
       }
 
@@ -113,7 +141,7 @@ steps:
         kind="$3"
         ecosystem="$4"
         allowed_rc_csv="$5"
-        eval "$cmd" > "$out" 2>tmp/workflow-tools/stderr.txt
+        eval "$cmd" > "$out" 2>"${ROOT_DIR}/tmp/workflow-tools/stderr.txt"
         rc=$?
         case ",${allowed_rc_csv}," in
           *",${rc},"*) allowed=1 ;;
@@ -127,10 +155,10 @@ steps:
         "error": "command_failed",
         "exit_code": $rc,
         "command": $(printf '%s' "$cmd" | jq -Rs .),
-        "stderr": $(cat tmp/workflow-tools/stderr.txt | jq -Rs .)
+        "stderr": $(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt" | jq -Rs .)
       }
       JSON
-          mark_missing "$out" "$kind" "$ecosystem" "$(cat tmp/workflow-tools/stderr.txt)"
+          mark_missing "$out" "$kind" "$ecosystem" "$(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt")"
         fi
       }
 
@@ -139,7 +167,7 @@ steps:
         out="$2"
         kind="$3"
         ecosystem="$4"
-        eval "$cmd" > "$out" 2>tmp/workflow-tools/stderr.txt
+        eval "$cmd" > "$out" 2>"${ROOT_DIR}/tmp/workflow-tools/stderr.txt"
         rc=$?
         if [ $rc -eq 0 ]; then
           mark_ok "$out" "$kind" "$ecosystem"
@@ -149,7 +177,7 @@ steps:
       # exit_code: $rc
       # command: $cmd
       # stderr:
-      $(cat tmp/workflow-tools/stderr.txt)
+      $(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt")
       TXT
           mark_missing "$out" "$kind" "$ecosystem" "$(cat tmp/workflow-tools/stderr.txt)"
         fi
@@ -198,13 +226,13 @@ steps:
 
         cat > tmp/workflow-tools/go-licenses-template.tmpl <<'TPL'
       {{- range . -}}
-      {"package":{{ printf "%q" .Name }},"license":{{ printf "%q" .LicenseName }},"url":{{ printf "%q" .LicenseURL }},"copyright":{{ printf "%q" .Copyright }}}
+      {"package":{{ printf "%q" .Name }},"license":{{ printf "%q" .LicenseName }},"url":{{ printf "%q" .LicenseURL }}}
       {{"\n" -}}
       {{- end -}}
       TPL
 
         pushd "$module_dir" >/dev/null || return 1
-        go run github.com/google/go-licenses@latest report ./... --template ../tmp/workflow-tools/go-licenses-template.tmpl > "../$out" 2>../tmp/workflow-tools/stderr.txt
+        go run github.com/google/go-licenses@latest report ./... --template ../tmp/workflow-tools/go-licenses-template.tmpl > "../$out" 2>"${ROOT_DIR}/tmp/workflow-tools/stderr.txt"
         rc=$?
         popd >/dev/null || true
 
@@ -214,10 +242,10 @@ steps:
           cat > "$out" <<JSON
       {
         "error": "go_licenses_failed",
-        "stderr": $(cat tmp/workflow-tools/stderr.txt | jq -Rs .)
+        "stderr": $(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt" | jq -Rs .)
       }
       JSON
-          mark_missing "$out" "$kind" "$ecosystem" "$(cat tmp/workflow-tools/stderr.txt)"
+          mark_missing "$out" "$kind" "$ecosystem" "$(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt")"
         fi
       }
 
@@ -233,7 +261,7 @@ steps:
         run_mod_why_json "$module_dir" "reports/raw/${prefix}-mod-why.json" "go" "mod_why"
 
         pushd "$module_dir" >/dev/null || return 1
-        run_json "go run golang.org/x/vuln/cmd/govulncheck@latest -json ./..." "../reports/raw/${prefix}-vulns.json" "vulnerability" "go"
+        run_json_allow_rc "go run golang.org/x/vuln/cmd/govulncheck@latest -json ./..." "../reports/raw/${prefix}-vulns.json" "vulnerability" "go" "3"
         popd >/dev/null || true
 
         run_go_license_report "$module_dir" "reports/raw/${prefix}-licenses.json" "go" "license"
@@ -253,23 +281,28 @@ steps:
       else
         run_json_allow_rc "npm outdated --json" "../reports/raw/npm-outdated.json" "update_surface" "npm" "1"
         run_json_allow_rc "npm audit --json" "../reports/raw/npm-audit.json" "vulnerability" "npm" "1"
-        run_json "npx --yes license-checker --json" "../reports/raw/npm-licenses.json" "license" "npm"
+        run_json_allow_rc "npx --yes license-checker --json" "../reports/raw/npm-licenses.json" "license" "npm" "1"
+        [ -s ../reports/raw/npm-outdated.json ] || echo '{}' > ../reports/raw/npm-outdated.json
+        [ -s ../reports/raw/npm-audit.json ] || echo '{}' > ../reports/raw/npm-audit.json
+        [ -s ../reports/raw/npm-licenses.json ] || echo '{}' > ../reports/raw/npm-licenses.json
 
-        npx --yes knip --reporter json > ../reports/raw/frontend-unused-deps.json 2>../tmp/workflow-tools/unused-deps.err
-        if [ $? -eq 0 ]; then
+        npx --yes knip --reporter json > ../reports/raw/frontend-unused-deps.json 2>"${ROOT_DIR}/tmp/workflow-tools/unused-deps.err"
+        knip_rc=$?
+        if [ $knip_rc -eq 0 ] || [ $knip_rc -eq 1 ]; then
           mark_ok "reports/raw/frontend-unused-deps.json" "unused_deps" "npm"
         else
-          npx --yes depcheck --json > ../reports/raw/frontend-unused-deps.json 2>>../tmp/workflow-tools/unused-deps.err
-          if [ $? -eq 0 ]; then
+          npx --yes depcheck --json > ../reports/raw/frontend-unused-deps.json 2>>"${ROOT_DIR}/tmp/workflow-tools/unused-deps.err"
+          depcheck_rc=$?
+          if [ $depcheck_rc -eq 0 ] || [ $depcheck_rc -eq 1 ]; then
             mark_ok "reports/raw/frontend-unused-deps.json" "unused_deps" "npm"
           else
             cat > ../reports/raw/frontend-unused-deps.json <<JSON
       {
         "error": "unused_dependency_scan_failed",
-        "stderr": $(cat ../tmp/workflow-tools/unused-deps.err | jq -Rs .)
+        "stderr": $(cat "${ROOT_DIR}/tmp/workflow-tools/unused-deps.err" | jq -Rs .)
       }
       JSON
-            mark_missing "reports/raw/frontend-unused-deps.json" "unused_deps" "npm" "$(cat ../tmp/workflow-tools/unused-deps.err)"
+            mark_missing "reports/raw/frontend-unused-deps.json" "unused_deps" "npm" "$(cat "${ROOT_DIR}/tmp/workflow-tools/unused-deps.err")"
           fi
         fi
 
@@ -414,7 +447,7 @@ steps:
       fi
 
   - name: Upload raw evidence artifact
-    uses: actions/upload-artifact@v4
+    uses: actions/upload-artifact@v5
     with:
       name: dependency-facts-raw
       path: reports/raw
@@ -422,7 +455,7 @@ steps:
       if-no-files-found: warn
 
   - name: Upload readable evidence artifact
-    uses: actions/upload-artifact@v4
+    uses: actions/upload-artifact@v5
     with:
       name: dependency-facts-readable
       path: reports/readable
@@ -437,6 +470,7 @@ safe-outputs:
     labels: [report, dependencies]
   update-issue:
     max: 1
+    target: "*"
   add-comment:
     max: 1
 ---
