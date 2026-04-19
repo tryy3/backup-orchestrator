@@ -66,6 +66,19 @@ steps:
       JSON
       : > reports/raw/.index.ndjson
 
+  - name: Set up buf
+    uses: bufbuild/buf-action@v1
+    with:
+      setup_only: true
+
+  - name: Install protoc plugins
+    run: |
+      go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+      go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+  - name: Generate proto
+    run: cd proto && buf generate
+
   - name: Collect deterministic dependency facts
     run: |
       set +e
@@ -254,6 +267,9 @@ steps:
         run_json_allow_rc "npm outdated --json" "../reports/raw/npm-outdated.json" "update_surface" "npm" "1"
         run_json_allow_rc "npm audit --json" "../reports/raw/npm-audit.json" "vulnerability" "npm" "1"
         run_json "npx --yes license-checker --json" "../reports/raw/npm-licenses.json" "license" "npm"
+        [ -s ../reports/raw/npm-outdated.json ] || echo '{}' > ../reports/raw/npm-outdated.json
+        [ -s ../reports/raw/npm-audit.json ] || echo '{}' > ../reports/raw/npm-audit.json
+        [ -s ../reports/raw/npm-licenses.json ] || echo '{}' > ../reports/raw/npm-licenses.json
 
         npx --yes knip --reporter json > ../reports/raw/frontend-unused-deps.json 2>../tmp/workflow-tools/unused-deps.err
         if [ $? -eq 0 ]; then
