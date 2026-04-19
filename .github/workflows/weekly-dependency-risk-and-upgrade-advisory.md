@@ -43,7 +43,7 @@ network:
 
 runtimes:
   go:
-    version: "1.26.1"
+    version: "1.26.2"
 
 tools:
   github:
@@ -79,7 +79,7 @@ steps:
       fi
 
   - name: Set up buf
-    uses: bufbuild/buf-action@v1
+    uses: bufbuild/buf-action@v1.4.0
     with:
       setup_only: true
 
@@ -447,7 +447,7 @@ steps:
       fi
 
   - name: Upload raw evidence artifact
-    uses: actions/upload-artifact@v5
+    uses: actions/upload-artifact@v7
     with:
       name: dependency-facts-raw
       path: reports/raw
@@ -455,7 +455,7 @@ steps:
       if-no-files-found: warn
 
   - name: Upload readable evidence artifact
-    uses: actions/upload-artifact@v5
+    uses: actions/upload-artifact@v7
     with:
       name: dependency-facts-readable
       path: reports/readable
