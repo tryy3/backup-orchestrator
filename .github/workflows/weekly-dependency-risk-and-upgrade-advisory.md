@@ -118,7 +118,7 @@ steps:
         out="$2"
         kind="$3"
         ecosystem="$4"
-        eval "$cmd" > "$out" 2>tmp/workflow-tools/stderr.txt
+        eval "$cmd" > "$out" 2>"${ROOT_DIR}/tmp/workflow-tools/stderr.txt"
         rc=$?
         if [ $rc -eq 0 ]; then
           mark_ok "$out" "$kind" "$ecosystem"
@@ -128,10 +128,10 @@ steps:
         "error": "command_failed",
         "exit_code": $rc,
         "command": $(printf '%s' "$cmd" | jq -Rs .),
-        "stderr": $(cat tmp/workflow-tools/stderr.txt | jq -Rs .)
+        "stderr": $(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt" | jq -Rs .)
       }
       JSON
-          mark_missing "$out" "$kind" "$ecosystem" "$(cat tmp/workflow-tools/stderr.txt)"
+          mark_missing "$out" "$kind" "$ecosystem" "$(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt")"
         fi
       }
 
@@ -141,7 +141,7 @@ steps:
         kind="$3"
         ecosystem="$4"
         allowed_rc_csv="$5"
-        eval "$cmd" > "$out" 2>tmp/workflow-tools/stderr.txt
+        eval "$cmd" > "$out" 2>"${ROOT_DIR}/tmp/workflow-tools/stderr.txt"
         rc=$?
         case ",${allowed_rc_csv}," in
           *",${rc},"*) allowed=1 ;;
@@ -155,10 +155,10 @@ steps:
         "error": "command_failed",
         "exit_code": $rc,
         "command": $(printf '%s' "$cmd" | jq -Rs .),
-        "stderr": $(cat tmp/workflow-tools/stderr.txt | jq -Rs .)
+        "stderr": $(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt" | jq -Rs .)
       }
       JSON
-          mark_missing "$out" "$kind" "$ecosystem" "$(cat tmp/workflow-tools/stderr.txt)"
+          mark_missing "$out" "$kind" "$ecosystem" "$(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt")"
         fi
       }
 
@@ -167,7 +167,7 @@ steps:
         out="$2"
         kind="$3"
         ecosystem="$4"
-        eval "$cmd" > "$out" 2>tmp/workflow-tools/stderr.txt
+        eval "$cmd" > "$out" 2>"${ROOT_DIR}/tmp/workflow-tools/stderr.txt"
         rc=$?
         if [ $rc -eq 0 ]; then
           mark_ok "$out" "$kind" "$ecosystem"
@@ -177,7 +177,7 @@ steps:
       # exit_code: $rc
       # command: $cmd
       # stderr:
-      $(cat tmp/workflow-tools/stderr.txt)
+      $(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt")
       TXT
           mark_missing "$out" "$kind" "$ecosystem" "$(cat tmp/workflow-tools/stderr.txt)"
         fi
@@ -232,7 +232,7 @@ steps:
       TPL
 
         pushd "$module_dir" >/dev/null || return 1
-        go run github.com/google/go-licenses@latest report ./... --template ../tmp/workflow-tools/go-licenses-template.tmpl > "../$out" 2>../tmp/workflow-tools/stderr.txt
+        go run github.com/google/go-licenses@latest report ./... --template ../tmp/workflow-tools/go-licenses-template.tmpl > "../$out" 2>"${ROOT_DIR}/tmp/workflow-tools/stderr.txt"
         rc=$?
         popd >/dev/null || true
 
@@ -242,10 +242,10 @@ steps:
           cat > "$out" <<JSON
       {
         "error": "go_licenses_failed",
-        "stderr": $(cat tmp/workflow-tools/stderr.txt | jq -Rs .)
+        "stderr": $(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt" | jq -Rs .)
       }
       JSON
-          mark_missing "$out" "$kind" "$ecosystem" "$(cat tmp/workflow-tools/stderr.txt)"
+          mark_missing "$out" "$kind" "$ecosystem" "$(cat "${ROOT_DIR}/tmp/workflow-tools/stderr.txt")"
         fi
       }
 
@@ -286,21 +286,23 @@ steps:
         [ -s ../reports/raw/npm-audit.json ] || echo '{}' > ../reports/raw/npm-audit.json
         [ -s ../reports/raw/npm-licenses.json ] || echo '{}' > ../reports/raw/npm-licenses.json
 
-        npx --yes knip --reporter json > ../reports/raw/frontend-unused-deps.json 2>../tmp/workflow-tools/unused-deps.err
-        if [ $? -eq 0 ]; then
+        npx --yes knip --reporter json > ../reports/raw/frontend-unused-deps.json 2>"${ROOT_DIR}/tmp/workflow-tools/unused-deps.err"
+        knip_rc=$?
+        if [ $knip_rc -eq 0 ] || [ $knip_rc -eq 1 ]; then
           mark_ok "reports/raw/frontend-unused-deps.json" "unused_deps" "npm"
         else
-          npx --yes depcheck --json > ../reports/raw/frontend-unused-deps.json 2>>../tmp/workflow-tools/unused-deps.err
-          if [ $? -eq 0 ]; then
+          npx --yes depcheck --json > ../reports/raw/frontend-unused-deps.json 2>>"${ROOT_DIR}/tmp/workflow-tools/unused-deps.err"
+          depcheck_rc=$?
+          if [ $depcheck_rc -eq 0 ] || [ $depcheck_rc -eq 1 ]; then
             mark_ok "reports/raw/frontend-unused-deps.json" "unused_deps" "npm"
           else
             cat > ../reports/raw/frontend-unused-deps.json <<JSON
       {
         "error": "unused_dependency_scan_failed",
-        "stderr": $(cat ../tmp/workflow-tools/unused-deps.err | jq -Rs .)
+        "stderr": $(cat "${ROOT_DIR}/tmp/workflow-tools/unused-deps.err" | jq -Rs .)
       }
       JSON
-            mark_missing "reports/raw/frontend-unused-deps.json" "unused_deps" "npm" "$(cat ../tmp/workflow-tools/unused-deps.err)"
+            mark_missing "reports/raw/frontend-unused-deps.json" "unused_deps" "npm" "$(cat "${ROOT_DIR}/tmp/workflow-tools/unused-deps.err")"
           fi
         fi
 
