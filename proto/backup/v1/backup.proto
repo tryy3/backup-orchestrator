@@ -129,11 +129,11 @@ message AgentConfig {
 // is a bootstrap-only env var (OUTBOX_MEMORY_MAX) because Go channels
 // cannot be resized at runtime.
 message OutboxConfig {
-  int32 spill_max_rows = 1;        // SQLite spill row cap (drop-oldest above this)
-  int32 spill_retention_secs = 2;  // age cutoff for spill prune (seconds)
-  int32 flush_interval_secs = 3;   // periodic flush tick (seconds)
+  int32 spill_max_rows = 1; // SQLite spill row cap (drop-oldest above this)
+  int32 spill_retention_secs = 2; // age cutoff for spill prune (seconds)
+  int32 flush_interval_secs = 3; // periodic flush tick (seconds)
   int32 delivery_timeout_secs = 4; // per-RPC timeout (seconds)
-  int32 max_attempts = 5;          // drop a payload after this many failures
+  int32 max_attempts = 5; // drop a payload after this many failures
 }
 
 // CommandTimeouts overrides the agent's built-in per-command deadlines.
