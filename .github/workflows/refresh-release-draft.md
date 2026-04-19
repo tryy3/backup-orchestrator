@@ -136,8 +136,11 @@ Use Release Drafter for initial draft creation, then enrich the draft body with:
   - Treat a draft as a valid release candidate when either:
     - `tagName` matches the semver-prefixed pattern below, or
     - `tagName` starts with `untagged-` and the draft `name` matches the semver-prefixed pattern below.
-  - Use this semver-prefixed pattern for both checks:
-    - `^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`
+    - For both checks, treat a value as valid semver-prefixed when it:
+      - starts with `v`,
+      - has `major.minor.patch` numeric segments,
+      - may include an optional prerelease suffix (for example `-rc.1`), and
+      - may include optional build metadata (for example `+build.7`).
   - For `untagged-*` drafts, treat the semver-matching `name` as the effective release version to compare and report.
   - If multiple drafts match, choose the highest semantic version using the effective release version (prefer explicit semver `tagName` over derived version from `name` when tied).
   - If no matching draft exists, use `noop` and explain that no eligible draft release was found. Include the observed draft `tagName` and `name` values in that message.
