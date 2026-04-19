@@ -350,7 +350,7 @@ func (o *Outbox) send(ctx context.Context, item database.SpillItem) error {
 			// Fall back to protojson for rows migrated from the legacy
 			// buffered_reports table, whose payload was stored as JSON.
 			if jsonErr := protojson.Unmarshal(item.Payload, &report); jsonErr != nil {
-				return fmt.Errorf("unmarshal report: %w", err)
+				return fmt.Errorf("unmarshal report: %w", jsonErr)
 			}
 		}
 		return o.sender.ReportJob(ctx, &report)
