@@ -30,6 +30,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tryy3/backup-orchestrator/agent/internal/database"
 	backupv1 "github.com/tryy3/backup-orchestrator/agent/internal/gen/backup/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -346,7 +347,11 @@ func (o *Outbox) send(ctx context.Context, item database.SpillItem) error {
 	case KindJobReport:
 		var report backupv1.JobReport
 		if err := proto.Unmarshal(item.Payload, &report); err != nil {
-			return fmt.Errorf("unmarshal report: %w", err)
+			// Fall back to protojson for rows migrated from the legacy
+			// buffered_reports table, whose payload was stored as JSON.
+			if jsonErr := protojson.Unmarshal(item.Payload, &report); jsonErr != nil {
+				return fmt.Errorf("unmarshal report: %w", err)
+			}
 		}
 		return o.sender.ReportJob(ctx, &report)
 	default:

@@ -14,10 +14,10 @@ import (
 type SpillItem struct {
 	ID        string
 	Kind      string // "job_report" or "job_event"
-	Payload   []byte // protojson-encoded message
+	Payload   []byte // binary protobuf message bytes produced by proto.Marshal
 	Attempts  int
 	LastError string
-	CreatedAt string // RFC3339-ish DATETIME string used as a paging cursor
+	CreatedAt string // SQLite DATETIME text (for example, "YYYY-MM-DD HH:MM:SS") used as a paging cursor
 }
 
 // DB wraps the agent's local SQLite database.

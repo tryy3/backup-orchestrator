@@ -3,6 +3,7 @@ module github.com/tryy3/backup-orchestrator/agent
 go 1.26.1
 
 require (
+	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/robfig/cron/v3 v3.0.1
 	google.golang.org/grpc v1.80.0
