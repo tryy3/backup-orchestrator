@@ -10,10 +10,25 @@
       "version": "v5",
       "sha": "330a01c490aca151604b8cf639adc76d48f6c5d4"
     },
+    "actions/upload-artifact@v7": {
+      "repo": "actions/upload-artifact",
+      "version": "v7",
+      "sha": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+    },
     "bufbuild/buf-action@v1": {
       "repo": "bufbuild/buf-action",
       "version": "v1",
       "sha": "91da6f6a1a2c877c182debad24ca0a8a9d848be7"
+    },
+    "bufbuild/buf-action@v1.4": {
+      "repo": "bufbuild/buf-action",
+      "version": "v1.4",
+      "sha": "af4e7aeccc4ec0fa23cff3440a6c9b9f9ae21155"
+    },
+    "bufbuild/buf-action@v1.4.0": {
+      "repo": "bufbuild/buf-action",
+      "version": "v1.4.0",
+      "sha": "fd21066df7214747548607aaa45548ba2b9bc1ff"
     },
     "github/gh-aw-actions/setup@v0.68.3": {
       "repo": "github/gh-aw-actions/setup",
