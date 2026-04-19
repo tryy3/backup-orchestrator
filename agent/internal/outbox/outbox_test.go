@@ -360,6 +360,6 @@ func marshalReport(t *testing.T, r *backupv1.JobReport) []byte {
 
 func marshalReportWith(t *testing.T, jobID string, blob []byte) []byte {
 	t.Helper()
-	r := &backupv1.JobReport{JobId: jobID, LogTail: string(blob)}
+	r := &backupv1.JobReport{JobId: jobID, LogEntries: []string{string(blob)}}
 	return marshalReport(t, r)
 }
