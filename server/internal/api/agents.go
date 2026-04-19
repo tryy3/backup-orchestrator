@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -325,8 +327,11 @@ func updateAgentOutboxOverridesHandler(db *database.DB, resolver *configpush.Res
 
 		var input *configpush.OutboxOverrides
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid request body")
-			return
+			if !errors.Is(err, io.EOF) {
+				writeError(w, http.StatusBadRequest, "invalid request body")
+				return
+			}
+			// Empty body is treated the same as JSON null: clear the override.
 		}
 
 		if input != nil {

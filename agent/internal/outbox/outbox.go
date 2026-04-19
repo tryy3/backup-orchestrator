@@ -281,6 +281,34 @@ spill:
 	}
 }
 
+// spillWithEviction writes item to SQLite, evicting the oldest rows first if
+// the spill table is at or above the configured cap. It mirrors the cap
+// enforcement in submit() so all spill writes go through a consistent path.
+// A fresh context is used so the write succeeds even during shutdown.
+func (o *Outbox) spillWithEviction(item database.SpillItem) {
+	cfg := o.config()
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.DeliveryTimeout)
+	defer cancel()
+
+	count, err := o.db.SpillCount(ctx)
+	if err != nil {
+		o.logger.Error("spill count before eviction", "id", item.ID, "error", err)
+		// Attempt the enqueue anyway; the prune loop will reclaim excess rows.
+	} else if count >= cfg.SpillMaxRows {
+		over := count - cfg.SpillMaxRows + 1
+		deleted, derr := o.db.SpillDeleteOldest(ctx, over)
+		if derr != nil {
+			o.logger.Error("spill evict before enqueue", "id", item.ID, "error", derr)
+		} else if deleted > 0 {
+			o.logger.Warn("spill full, dropped oldest rows",
+				"dropped", deleted, "cap", cfg.SpillMaxRows)
+		}
+	}
+	if sErr := o.db.SpillEnqueue(ctx, item); sErr != nil {
+		o.logger.Error("spill enqueue", "id", item.ID, "error", sErr)
+	}
+}
+
 // deliver sends one item. On failure it spills (if from memory) or
 // increments attempts (if already spilled), then backs off briefly. Items
 // past MaxAttempts are dropped with a warning.
@@ -314,12 +342,7 @@ func (o *Outbox) deliver(ctx context.Context, item database.SpillItem, fromSpill
 	if errors.Is(err, context.Canceled) {
 		// Shutdown in progress: persist the item so we retry next start.
 		if !fromSpill {
-			spillCtx, spillCancel := context.WithTimeout(context.Background(), cfg.DeliveryTimeout)
-			sErr := o.db.SpillEnqueue(spillCtx, item)
-			spillCancel()
-			if sErr != nil {
-				o.logger.Error("spill on shutdown", "id", item.ID, "error", sErr)
-			}
+			o.spillWithEviction(item)
 		}
 		return
 	}
@@ -330,9 +353,7 @@ func (o *Outbox) deliver(ctx context.Context, item database.SpillItem, fromSpill
 		// counter is durable across restarts.
 		item.Attempts++
 		item.LastError = err.Error()
-		if sErr := o.db.SpillEnqueue(ctx, item); sErr != nil {
-			o.logger.Error("spill after failure", "id", item.ID, "error", sErr)
-		}
+		o.spillWithEviction(item)
 	} else {
 		if iErr := o.db.SpillIncrementAttempts(ctx, item.ID, err.Error()); iErr != nil {
 			o.logger.Error("increment attempts", "id", item.ID, "error", iErr)
