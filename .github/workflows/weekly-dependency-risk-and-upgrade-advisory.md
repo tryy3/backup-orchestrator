@@ -83,11 +83,14 @@ steps:
     run: |
       set +e
 
+      ROOT_DIR="$(pwd)"
+      INDEX_FILE="${ROOT_DIR}/reports/raw/.index.ndjson"
+
       mark_ok() {
         file="$1"
         kind="$2"
         ecosystem="$3"
-        printf '{"file":"%s","status":"ok","kind":"%s","ecosystem":"%s"}\n' "$file" "$kind" "$ecosystem" >> reports/raw/.index.ndjson
+        printf '{"file":"%s","status":"ok","kind":"%s","ecosystem":"%s"}\n' "$file" "$kind" "$ecosystem" >> "$INDEX_FILE"
       }
 
       mark_missing() {
@@ -95,7 +98,7 @@ steps:
         kind="$2"
         ecosystem="$3"
         reason="$4"
-        printf '{"file":"%s","status":"missing","kind":"%s","ecosystem":"%s","reason":%s}\n' "$file" "$kind" "$ecosystem" "$(printf '%s' "$reason" | jq -Rs .)" >> reports/raw/.index.ndjson
+        printf '{"file":"%s","status":"missing","kind":"%s","ecosystem":"%s","reason":%s}\n' "$file" "$kind" "$ecosystem" "$(printf '%s' "$reason" | jq -Rs .)" >> "$INDEX_FILE"
       }
 
       run_json() {
@@ -211,7 +214,7 @@ steps:
 
         cat > tmp/workflow-tools/go-licenses-template.tmpl <<'TPL'
       {{- range . -}}
-      {"package":{{ printf "%q" .Name }},"license":{{ printf "%q" .LicenseName }},"url":{{ printf "%q" .LicenseURL }},"copyright":{{ printf "%q" .Copyright }}}
+      {"package":{{ printf "%q" .Name }},"license":{{ printf "%q" .LicenseName }},"url":{{ printf "%q" .LicenseURL }}}
       {{"\n" -}}
       {{- end -}}
       TPL
@@ -246,7 +249,7 @@ steps:
         run_mod_why_json "$module_dir" "reports/raw/${prefix}-mod-why.json" "go" "mod_why"
 
         pushd "$module_dir" >/dev/null || return 1
-        run_json "go run golang.org/x/vuln/cmd/govulncheck@latest -json ./..." "../reports/raw/${prefix}-vulns.json" "vulnerability" "go"
+        run_json_allow_rc "go run golang.org/x/vuln/cmd/govulncheck@latest -json ./..." "../reports/raw/${prefix}-vulns.json" "vulnerability" "go" "3"
         popd >/dev/null || true
 
         run_go_license_report "$module_dir" "reports/raw/${prefix}-licenses.json" "go" "license"
@@ -266,7 +269,7 @@ steps:
       else
         run_json_allow_rc "npm outdated --json" "../reports/raw/npm-outdated.json" "update_surface" "npm" "1"
         run_json_allow_rc "npm audit --json" "../reports/raw/npm-audit.json" "vulnerability" "npm" "1"
-        run_json "npx --yes license-checker --json" "../reports/raw/npm-licenses.json" "license" "npm"
+        run_json_allow_rc "npx --yes license-checker --json" "../reports/raw/npm-licenses.json" "license" "npm" "1"
         [ -s ../reports/raw/npm-outdated.json ] || echo '{}' > ../reports/raw/npm-outdated.json
         [ -s ../reports/raw/npm-audit.json ] || echo '{}' > ../reports/raw/npm-audit.json
         [ -s ../reports/raw/npm-licenses.json ] || echo '{}' > ../reports/raw/npm-licenses.json

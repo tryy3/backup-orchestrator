@@ -5,6 +5,11 @@
       "version": "v4",
       "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02"
     },
+    "bufbuild/buf-action@v1": {
+      "repo": "bufbuild/buf-action",
+      "version": "v1",
+      "sha": "91da6f6a1a2c877c182debad24ca0a8a9d848be7"
+    },
     "github/gh-aw-actions/setup@v0.68.3": {
       "repo": "github/gh-aw-actions/setup",
       "version": "v0.68.3",
