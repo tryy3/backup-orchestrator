@@ -461,14 +461,14 @@ jobs:
             cp "$FOUND" reports/raw/previous-advisory-summary.json
           fi
       - name: Upload raw evidence artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           if-no-files-found: warn
           name: dependency-facts-raw
           path: reports/raw
           retention-days: 90
       - name: Upload readable evidence artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           if-no-files-found: warn
           name: dependency-facts-readable
