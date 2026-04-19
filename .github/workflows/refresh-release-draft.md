@@ -5,6 +5,12 @@ description: |
 on:
   workflow_dispatch:
     inputs:
+      draft_tag:
+        description: >
+          Optional explicit draft tag to refresh (for example `v0.4.0`).
+          Use this when draft listing is empty in Actions.
+        required: false
+        default: ""
       from_tag:
         description: >
           Collect PRs merged after this tag. Leave blank to auto-detect
@@ -45,6 +51,7 @@ steps:
     env:
       GITHUB_REPOSITORY: ${{ github.repository }}
       GITHUB_TOKEN: ${{ github.token }}
+      DRAFT_TAG: ${{ github.event.inputs.draft_tag || '' }}
     run: |
       set -euo pipefail
       mkdir -p /tmp/gh-aw/agent
@@ -71,6 +78,22 @@ steps:
       drafts_path = Path('/tmp/gh-aw/agent/draft-releases.json')
       releases_path.write_text(json.dumps(releases, indent=2) + '\n')
       drafts = [release for release in releases if release.get('isDraft') is True]
+
+        draft_tag = os.environ.get('DRAFT_TAG', '').strip()
+        if draft_tag:
+          exists = any((r.get('tag_name') or r.get('tagName')) == draft_tag for r in drafts)
+          if not exists:
+            drafts.append(
+              {
+                'tagName': draft_tag,
+                'tag_name': draft_tag,
+                'name': draft_tag,
+                'isDraft': True,
+                'draft': True,
+                'source': 'workflow_dispatch.input.draft_tag',
+              }
+            )
+
       drafts_path.write_text(json.dumps(drafts, indent=2) + '\n')
       print(f"Draft releases found: {len(drafts)}")
       for release in drafts:
@@ -120,6 +143,7 @@ Use Release Drafter for initial draft creation, then enrich the draft body with:
 
 ## Inputs
 
+- `draft_tag` (optional): explicit draft tag to refresh (for example `v0.4.0`); recommended when draft listing is empty in Actions.
 - `from_tag` (optional): if provided, pass it to `scripts/release-notes.py --from-tag`.
 - `ai_polish` (boolean, default `true`): when true, run `scripts/ai-polish.py`.
 
