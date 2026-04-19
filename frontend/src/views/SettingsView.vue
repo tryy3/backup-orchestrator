@@ -34,6 +34,13 @@ const cmdTimeoutBrowseSnapshot = ref<number>(SETTINGS_DEFAULTS.command_timeout_b
 const cmdTimeoutBrowseFs = ref<number>(SETTINGS_DEFAULTS.command_timeout_browse_filesystem_seconds)
 const cmdTimeoutDefault = ref<number>(SETTINGS_DEFAULTS.command_timeout_default_seconds)
 
+// Outbox tunables (seconds, except spill_max_rows / max_attempts which are counts).
+const outboxSpillMaxRows = ref<number>(SETTINGS_DEFAULTS.outbox_spill_max_rows)
+const outboxSpillRetentionSeconds = ref<number>(SETTINGS_DEFAULTS.outbox_spill_retention_seconds)
+const outboxFlushIntervalSeconds = ref<number>(SETTINGS_DEFAULTS.outbox_flush_interval_seconds)
+const outboxDeliveryTimeoutSeconds = ref<number>(SETTINGS_DEFAULTS.outbox_delivery_timeout_seconds)
+const outboxMaxAttempts = ref<number>(SETTINGS_DEFAULTS.outbox_max_attempts)
+
 const saving = ref(false)
 const saved = ref(false)
 
@@ -61,6 +68,11 @@ onMounted(async () => {
     cmdTimeoutBrowseSnapshot.value = store.settings.command_timeout_browse_snapshot_seconds ?? SETTINGS_DEFAULTS.command_timeout_browse_snapshot_seconds
     cmdTimeoutBrowseFs.value = store.settings.command_timeout_browse_filesystem_seconds ?? SETTINGS_DEFAULTS.command_timeout_browse_filesystem_seconds
     cmdTimeoutDefault.value = store.settings.command_timeout_default_seconds ?? SETTINGS_DEFAULTS.command_timeout_default_seconds
+    outboxSpillMaxRows.value = store.settings.outbox_spill_max_rows ?? SETTINGS_DEFAULTS.outbox_spill_max_rows
+    outboxSpillRetentionSeconds.value = store.settings.outbox_spill_retention_seconds ?? SETTINGS_DEFAULTS.outbox_spill_retention_seconds
+    outboxFlushIntervalSeconds.value = store.settings.outbox_flush_interval_seconds ?? SETTINGS_DEFAULTS.outbox_flush_interval_seconds
+    outboxDeliveryTimeoutSeconds.value = store.settings.outbox_delivery_timeout_seconds ?? SETTINGS_DEFAULTS.outbox_delivery_timeout_seconds
+    outboxMaxAttempts.value = store.settings.outbox_max_attempts ?? SETTINGS_DEFAULTS.outbox_max_attempts
   }
   try {
     serverVersion.value = await api.version.get()
@@ -92,6 +104,11 @@ async function handleSave() {
     command_timeout_browse_snapshot_seconds: cmdTimeoutBrowseSnapshot.value,
     command_timeout_browse_filesystem_seconds: cmdTimeoutBrowseFs.value,
     command_timeout_default_seconds: cmdTimeoutDefault.value,
+    outbox_spill_max_rows: outboxSpillMaxRows.value,
+    outbox_spill_retention_seconds: outboxSpillRetentionSeconds.value,
+    outbox_flush_interval_seconds: outboxFlushIntervalSeconds.value,
+    outbox_delivery_timeout_seconds: outboxDeliveryTimeoutSeconds.value,
+    outbox_max_attempts: outboxMaxAttempts.value,
   })
   saving.value = false
   if (ok) {
@@ -309,6 +326,65 @@ async function handleSave() {
             <div class="mt-1 flex items-center gap-2">
               <input v-model.number="cmdTimeoutDefault" type="number" min="5" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">seconds</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Outbox tunables section -->
+      <div class="rounded border border-surface-700 bg-surface-900 p-6">
+        <h3 class="mb-2 text-lg font-semibold text-slate-100">Agent Outbox</h3>
+        <p class="mb-4 text-sm text-slate-400">
+          Controls the agent's in-memory + SQLite delivery queue for job reports
+          (and future job events). When the server is reachable, items are
+          delivered immediately; when it is not, they spill to SQLite and are
+          retried with backoff. These act as global defaults — they can be
+          overridden per agent on the agent detail page.
+        </p>
+        <p class="mb-4 text-xs text-slate-500">
+          Note: the in-memory channel capacity (<code class="font-mono">OUTBOX_MEMORY_MAX</code>)
+          is an agent-side bootstrap env var because Go channels cannot be resized at runtime.
+        </p>
+
+        <div class="grid grid-cols-2 gap-5">
+          <div>
+            <label class="block text-sm font-medium text-slate-300">Spill Row Cap</label>
+            <p class="mt-0.5 text-xs text-slate-500">Max rows in the SQLite spill table; oldest dropped above this.</p>
+            <div class="mt-1 flex items-center gap-2">
+              <input v-model.number="outboxSpillMaxRows" type="number" min="100" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
+              <span class="text-sm text-slate-500">rows</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300">Spill Retention</label>
+            <p class="mt-0.5 text-xs text-slate-500">TTL for spill rows; older entries are pruned daily.</p>
+            <div class="mt-1 flex items-center gap-2">
+              <input v-model.number="outboxSpillRetentionSeconds" type="number" min="60" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
+              <span class="text-sm text-slate-500">seconds</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300">Flush Interval</label>
+            <p class="mt-0.5 text-xs text-slate-500">How often the outbox tries to drain pending items.</p>
+            <div class="mt-1 flex items-center gap-2">
+              <input v-model.number="outboxFlushIntervalSeconds" type="number" min="1" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
+              <span class="text-sm text-slate-500">seconds</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300">Delivery Timeout</label>
+            <p class="mt-0.5 text-xs text-slate-500">Per-RPC timeout for delivering one outbox item.</p>
+            <div class="mt-1 flex items-center gap-2">
+              <input v-model.number="outboxDeliveryTimeoutSeconds" type="number" min="1" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
+              <span class="text-sm text-slate-500">seconds</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300">Max Attempts</label>
+            <p class="mt-0.5 text-xs text-slate-500">Drop a payload after this many failed sends.</p>
+            <div class="mt-1 flex items-center gap-2">
+              <input v-model.number="outboxMaxAttempts" type="number" min="1" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
+              <span class="text-sm text-slate-500">attempts</span>
             </div>
           </div>
         </div>

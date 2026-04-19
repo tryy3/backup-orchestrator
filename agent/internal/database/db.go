@@ -9,12 +9,15 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// BufferedReport represents an unsent job report stored locally.
-type BufferedReport struct {
+// SpillItem represents an item that was spilled to SQLite when the in-memory
+// outbox queue could not be drained promptly (server unreachable, queue full).
+type SpillItem struct {
 	ID        string
-	Payload   string
+	Kind      string // "job_report" or "job_event"
+	Payload   []byte // binary protobuf message bytes produced by proto.Marshal
 	Attempts  int
 	LastError string
+	CreatedAt string // SQLite DATETIME text (for example, "YYYY-MM-DD HH:MM:SS") used as a paging cursor
 }
 
 // DB wraps the agent's local SQLite database.
@@ -78,132 +81,220 @@ func (d *DB) Close() error {
 }
 
 func (d *DB) migrate() error {
-	migrations := []string{
-		`CREATE TABLE IF NOT EXISTS buffered_reports (
+	ctx := context.Background()
+
+	// outbox_spill is a single overflow store for the in-memory outbox.
+	// It replaces the legacy `buffered_reports` and `local_jobs` tables.
+	if _, err := d.db.ExecContext(ctx,
+		`CREATE TABLE IF NOT EXISTS outbox_spill (
 			id          TEXT PRIMARY KEY,
-			payload     TEXT NOT NULL,
+			kind        TEXT NOT NULL,
+			payload     BLOB NOT NULL,
 			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			attempts    INTEGER NOT NULL DEFAULT 0,
 			last_error  TEXT
 		)`,
-		`CREATE TABLE IF NOT EXISTS local_jobs (
-			id          TEXT PRIMARY KEY,
-			plan_name   TEXT NOT NULL,
-			type        TEXT NOT NULL,
-			status      TEXT NOT NULL,
-			started_at  DATETIME NOT NULL,
-			finished_at DATETIME,
-			log_tail    TEXT,
-			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_local_jobs_started_at ON local_jobs(started_at)`,
+	); err != nil {
+		return fmt.Errorf("creating outbox_spill: %w", err)
+	}
+	if _, err := d.db.ExecContext(ctx,
+		`CREATE INDEX IF NOT EXISTS idx_outbox_spill_created_at ON outbox_spill(created_at)`,
+	); err != nil {
+		return fmt.Errorf("creating outbox_spill index: %w", err)
 	}
 
-	for _, m := range migrations {
-		if _, err := d.db.ExecContext(context.Background(), m); err != nil {
-			return fmt.Errorf("executing migration: %w", err)
+	// One-time migration from the legacy `buffered_reports` table, if present.
+	// Preserves any in-flight reports across the upgrade.
+	if exists, err := d.tableExists(ctx, "buffered_reports"); err != nil {
+		return err
+	} else if exists {
+		if _, err := d.db.ExecContext(ctx,
+			`INSERT OR IGNORE INTO outbox_spill (id, kind, payload, created_at, attempts, last_error)
+			 SELECT id, 'job_report', CAST(payload AS BLOB), created_at, attempts, last_error
+			 FROM buffered_reports`,
+		); err != nil {
+			return fmt.Errorf("migrating buffered_reports: %w", err)
+		}
+		if _, err := d.db.ExecContext(ctx, `DROP TABLE buffered_reports`); err != nil {
+			return fmt.Errorf("dropping buffered_reports: %w", err)
 		}
 	}
+
+	// `local_jobs` had no production reader and is dropped without migration.
+	if _, err := d.db.ExecContext(ctx, `DROP TABLE IF EXISTS local_jobs`); err != nil {
+		return fmt.Errorf("dropping local_jobs: %w", err)
+	}
+
 	return nil
 }
 
-// InsertBufferedReport stores a job report for later delivery.
-func (d *DB) InsertBufferedReport(ctx context.Context, id, payload string) error {
+func (d *DB) tableExists(ctx context.Context, name string) (bool, error) {
+	var n int
+	err := d.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`, name,
+	).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("checking table %s: %w", name, err)
+	}
+	return n > 0, nil
+}
+
+// SpillEnqueue persists a single outbox item that could not be delivered
+// in-memory (server unreachable or in-memory queue full). Existing attempts
+// and last_error fields are preserved so an item that has already been tried
+// once in memory can be persisted with its retry counter intact.
+func (d *DB) SpillEnqueue(ctx context.Context, item SpillItem) error {
 	_, err := d.db.ExecContext(ctx,
-		"INSERT INTO buffered_reports (id, payload) VALUES (?, ?)",
-		id, payload,
+		`INSERT INTO outbox_spill (id, kind, payload, attempts, last_error)
+		 VALUES (?, ?, ?, ?, NULLIF(?, ''))`,
+		item.ID, item.Kind, item.Payload, item.Attempts, item.LastError,
 	)
 	if err != nil {
-		return fmt.Errorf("inserting buffered report: %w", err)
+		return fmt.Errorf("enqueue spill item: %w", err)
 	}
 	return nil
 }
 
-// ListPendingReports returns all unsent buffered reports.
-func (d *DB) ListPendingReports(ctx context.Context) ([]BufferedReport, error) {
-	rows, err := d.db.QueryContext(ctx,
-		"SELECT id, payload, attempts, COALESCE(last_error, '') FROM buffered_reports ORDER BY created_at ASC",
+// SpillPage returns up to `limit` items ordered oldest-first. Pass empty
+// strings for `afterCreatedAt` and `afterID` to start from the beginning,
+// or the last seen row's values to continue paging.
+//
+// Ordering is `(created_at ASC, id ASC)` so a stable cursor exists even when
+// multiple rows share a timestamp.
+func (d *DB) SpillPage(ctx context.Context, limit int, afterCreatedAt, afterID string) ([]SpillItem, error) {
+	// CAST(created_at AS TEXT) keeps the cursor as a stable string regardless
+	// of how the SQLite driver materialises DATETIME columns.
+	const cols = `id, kind, payload, attempts, COALESCE(last_error, ''), CAST(created_at AS TEXT)`
+
+	var (
+		rows *sql.Rows
+		err  error
 	)
+	if afterID == "" {
+		rows, err = d.db.QueryContext(ctx,
+			`SELECT `+cols+` FROM outbox_spill
+			 ORDER BY created_at ASC, id ASC LIMIT ?`,
+			limit,
+		)
+	} else {
+		rows, err = d.db.QueryContext(ctx,
+			`SELECT `+cols+` FROM outbox_spill
+			 WHERE (CAST(created_at AS TEXT) > ?)
+			    OR (CAST(created_at AS TEXT) = ? AND id > ?)
+			 ORDER BY created_at ASC, id ASC LIMIT ?`,
+			afterCreatedAt, afterCreatedAt, afterID, limit,
+		)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("querying buffered reports: %w", err)
+		return nil, fmt.Errorf("query spill page: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	var reports []BufferedReport
+	var out []SpillItem
 	for rows.Next() {
-		var r BufferedReport
-		if err = rows.Scan(&r.ID, &r.Payload, &r.Attempts, &r.LastError); err != nil {
-			return nil, fmt.Errorf("scanning buffered report: %w", err)
+		var it SpillItem
+		if err = rows.Scan(&it.ID, &it.Kind, &it.Payload, &it.Attempts, &it.LastError, &it.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan spill item: %w", err)
 		}
-		reports = append(reports, r)
+		out = append(out, it)
 	}
-	return reports, rows.Err()
+	return out, rows.Err()
 }
 
-// DeleteReport removes a successfully sent report.
-func (d *DB) DeleteReport(ctx context.Context, id string) error {
-	_, err := d.db.ExecContext(ctx, "DELETE FROM buffered_reports WHERE id = ?", id)
+// SpillDelete removes a successfully delivered item.
+func (d *DB) SpillDelete(ctx context.Context, id string) error {
+	_, err := d.db.ExecContext(ctx, `DELETE FROM outbox_spill WHERE id = ?`, id)
 	if err != nil {
-		return fmt.Errorf("deleting report: %w", err)
+		return fmt.Errorf("delete spill item: %w", err)
 	}
 	return nil
 }
 
-// IncrementAttempts increments the attempt count and records the last error.
-func (d *DB) IncrementAttempts(ctx context.Context, id, lastError string) error {
+// SpillIncrementAttempts records a delivery failure.
+func (d *DB) SpillIncrementAttempts(ctx context.Context, id, lastError string) error {
 	_, err := d.db.ExecContext(ctx,
-		"UPDATE buffered_reports SET attempts = attempts + 1, last_error = ? WHERE id = ?",
+		`UPDATE outbox_spill SET attempts = attempts + 1, last_error = ? WHERE id = ?`,
 		lastError, id,
 	)
 	if err != nil {
-		return fmt.Errorf("incrementing attempts: %w", err)
+		return fmt.Errorf("increment spill attempts: %w", err)
 	}
 	return nil
 }
 
-// InsertLocalJob records a job execution in local history.
-func (d *DB) InsertLocalJob(ctx context.Context, id, planName, jobType, status, startedAt, finishedAt, logTail string) error {
-	_, err := d.db.ExecContext(ctx,
-		`INSERT INTO local_jobs (id, plan_name, type, status, started_at, finished_at, log_tail)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, planName, jobType, status, startedAt, finishedAt, logTail,
+// SpillCount returns the number of items currently in the spill table.
+func (d *DB) SpillCount(ctx context.Context) (int, error) {
+	var n int
+	if err := d.db.QueryRowContext(ctx, `SELECT count(*) FROM outbox_spill`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count spill: %w", err)
+	}
+	return n, nil
+}
+
+// SpillPruneByAge deletes rows older than the given cutoff timestamp
+// (formatted to match the SQLite DATETIME column). Returns the number of
+// rows removed.
+func (d *DB) SpillPruneByAge(ctx context.Context, cutoff string) (int64, error) {
+	res, err := d.db.ExecContext(ctx,
+		`DELETE FROM outbox_spill WHERE created_at < ?`, cutoff,
 	)
 	if err != nil {
-		return fmt.Errorf("inserting local job: %w", err)
+		return 0, fmt.Errorf("prune spill by age: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// SpillPruneByCount keeps only the newest `keep` rows, deleting the rest.
+// Returns the number of rows removed.
+func (d *DB) SpillPruneByCount(ctx context.Context, keep int) (int64, error) {
+	if keep < 0 {
+		keep = 0
+	}
+	res, err := d.db.ExecContext(ctx,
+		`DELETE FROM outbox_spill
+		 WHERE id IN (
+		   SELECT id FROM outbox_spill
+		   ORDER BY created_at DESC, id DESC
+		   LIMIT -1 OFFSET ?
+		 )`,
+		keep,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("prune spill by count: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// SpillDeleteOldest removes the oldest `n` rows. Used when the in-memory
+// outbox needs to spill but the spill table is already at capacity.
+// Returns the number of rows actually removed.
+func (d *DB) SpillDeleteOldest(ctx context.Context, n int) (int64, error) {
+	if n <= 0 {
+		return 0, nil
+	}
+	res, err := d.db.ExecContext(ctx,
+		`DELETE FROM outbox_spill
+		 WHERE id IN (
+		   SELECT id FROM outbox_spill
+		   ORDER BY created_at ASC, id ASC
+		   LIMIT ?
+		 )`,
+		n,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("drop oldest spill rows: %w", err)
+	}
+	rows, _ := res.RowsAffected()
+	return rows, nil
+}
+
+// SpillCheckpoint runs `PRAGMA wal_checkpoint(TRUNCATE)` to reclaim disk
+// after large prunes. Best-effort.
+func (d *DB) SpillCheckpoint(ctx context.Context) error {
+	if _, err := d.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		return fmt.Errorf("wal checkpoint: %w", err)
 	}
 	return nil
-}
-
-// LocalJob represents a job from local history.
-type LocalJob struct {
-	ID         string
-	PlanName   string
-	Type       string
-	Status     string
-	StartedAt  string
-	FinishedAt string
-	LogTail    string
-}
-
-// ListLocalJobs returns recent local job records.
-func (d *DB) ListLocalJobs(ctx context.Context, limit, offset int) ([]LocalJob, error) {
-	rows, err := d.db.QueryContext(ctx,
-		`SELECT id, plan_name, type, status, started_at, COALESCE(finished_at, ''), COALESCE(log_tail, '')
-		 FROM local_jobs ORDER BY started_at DESC LIMIT ? OFFSET ?`,
-		limit, offset,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("querying local jobs: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var jobs []LocalJob
-	for rows.Next() {
-		var j LocalJob
-		if err = rows.Scan(&j.ID, &j.PlanName, &j.Type, &j.Status, &j.StartedAt, &j.FinishedAt, &j.LogTail); err != nil {
-			return nil, fmt.Errorf("scanning local job: %w", err)
-		}
-		jobs = append(jobs, j)
-	}
-	return jobs, rows.Err()
 }

@@ -77,8 +77,8 @@ func (s *GRPCServer) ReportJob(ctx context.Context, req *backupv1.JobReport) (*b
 			s := string(data)
 			job.LogTail = &s
 		}
-	} else if req.LogTail != "" {
-		job.LogTail = &req.LogTail
+	} else if req.LogTail != "" { //nolint:staticcheck // SA1019: intentional fallback for pre-LogEntries agents.
+		job.LogTail = &req.LogTail //nolint:staticcheck // SA1019: see comment above.
 	}
 
 	// Convert repository results.

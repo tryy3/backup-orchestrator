@@ -27,7 +27,10 @@ type Agent struct {
 	ConfigAppliedAt *time.Time `json:"config_applied_at,omitempty"`
 	// CommandTimeouts is the per-agent override of the global command timeout
 	// settings, stored as JSON. Nil/empty means "no override, use globals".
-	CommandTimeouts *string   `json:"command_timeouts,omitempty"`
+	CommandTimeouts *string `json:"command_timeouts,omitempty"`
+	// OutboxOverrides is the per-agent override of the global outbox tunables,
+	// stored as JSON. Nil/empty means "no override, use globals".
+	OutboxOverrides *string   `json:"outbox_overrides,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
@@ -48,10 +51,10 @@ func (db *DB) CreateAgent(ctx context.Context, a *Agent) error {
 
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO agents (id, name, hostname, os, status, api_key, agent_version, restic_version, rclone_version,
-			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, command_timeouts, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, command_timeouts, outbox_overrides, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.ID, a.Name, a.Hostname, a.OS, a.Status, a.APIKey, a.AgentVersion, a.ResticVersion, a.RcloneVersion,
-		encRclone, a.LastHeartbeat, a.LastJobAt, a.ConfigVersion, a.ConfigAppliedAt, a.CommandTimeouts, a.CreatedAt, a.UpdatedAt,
+		encRclone, a.LastHeartbeat, a.LastJobAt, a.ConfigVersion, a.ConfigAppliedAt, a.CommandTimeouts, a.OutboxOverrides, a.CreatedAt, a.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create agent: %w", err)
@@ -64,11 +67,11 @@ func (db *DB) GetAgent(ctx context.Context, id string) (*Agent, error) {
 	a := &Agent{}
 	err := db.QueryRowContext(ctx, `
 		SELECT id, name, hostname, os, status, api_key, agent_version, restic_version, rclone_version,
-			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, command_timeouts, created_at, updated_at
+			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, command_timeouts, outbox_overrides, created_at, updated_at
 		FROM agents WHERE id = ?`, id,
 	).Scan(&a.ID, &a.Name, &a.Hostname, &a.OS, &a.Status, &a.APIKey, &a.AgentVersion, &a.ResticVersion,
 		&a.RcloneVersion, &a.RcloneConfig, &a.LastHeartbeat, &a.LastJobAt, &a.ConfigVersion, &a.ConfigAppliedAt,
-		&a.CommandTimeouts, &a.CreatedAt, &a.UpdatedAt)
+		&a.CommandTimeouts, &a.OutboxOverrides, &a.CreatedAt, &a.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -87,11 +90,11 @@ func (db *DB) GetAgentByAPIKey(ctx context.Context, apiKey string) (*Agent, erro
 	a := &Agent{}
 	err := db.QueryRowContext(ctx, `
 		SELECT id, name, hostname, os, status, api_key, agent_version, restic_version, rclone_version,
-			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, command_timeouts, created_at, updated_at
+			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, command_timeouts, outbox_overrides, created_at, updated_at
 		FROM agents WHERE api_key = ?`, apiKey,
 	).Scan(&a.ID, &a.Name, &a.Hostname, &a.OS, &a.Status, &a.APIKey, &a.AgentVersion, &a.ResticVersion,
 		&a.RcloneVersion, &a.RcloneConfig, &a.LastHeartbeat, &a.LastJobAt, &a.ConfigVersion, &a.ConfigAppliedAt,
-		&a.CommandTimeouts, &a.CreatedAt, &a.UpdatedAt)
+		&a.CommandTimeouts, &a.OutboxOverrides, &a.CreatedAt, &a.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -109,7 +112,7 @@ func (db *DB) GetAgentByAPIKey(ctx context.Context, apiKey string) (*Agent, erro
 func (db *DB) ListAgents(ctx context.Context) ([]Agent, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT id, name, hostname, os, status, api_key, agent_version, restic_version, rclone_version,
-			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, command_timeouts, created_at, updated_at
+			rclone_config, last_heartbeat, last_job_at, config_version, config_applied_at, command_timeouts, outbox_overrides, created_at, updated_at
 		FROM agents ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list agents: %w", err)
@@ -121,7 +124,7 @@ func (db *DB) ListAgents(ctx context.Context) ([]Agent, error) {
 		var a Agent
 		if err = rows.Scan(&a.ID, &a.Name, &a.Hostname, &a.OS, &a.Status, &a.APIKey, &a.AgentVersion,
 			&a.ResticVersion, &a.RcloneVersion, &a.RcloneConfig, &a.LastHeartbeat, &a.LastJobAt,
-			&a.ConfigVersion, &a.ConfigAppliedAt, &a.CommandTimeouts, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			&a.ConfigVersion, &a.ConfigAppliedAt, &a.CommandTimeouts, &a.OutboxOverrides, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan agent: %w", err)
 		}
 		a.RcloneConfig, err = db.decryptPtr(a.RcloneConfig)
@@ -225,6 +228,23 @@ func (db *DB) UpdateCommandTimeouts(ctx context.Context, id string, timeoutsJSON
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("update command timeouts: agent not found")
+	}
+	return nil
+}
+
+// UpdateOutboxOverrides stores per-agent outbox tunable overrides as a JSON
+// document, or clears them when overridesJSON is nil/empty.
+func (db *DB) UpdateOutboxOverrides(ctx context.Context, id string, overridesJSON *string) error {
+	now := time.Now().UTC()
+	result, err := db.ExecContext(ctx,
+		`UPDATE agents SET outbox_overrides=?, updated_at=? WHERE id=?`,
+		overridesJSON, now, id)
+	if err != nil {
+		return fmt.Errorf("update outbox overrides: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("update outbox overrides: agent not found")
 	}
 	return nil
 }

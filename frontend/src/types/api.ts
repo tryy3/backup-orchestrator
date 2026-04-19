@@ -15,6 +15,7 @@ export interface Agent {
   config_version: number
   config_applied_at: string | null
   command_timeouts?: CommandTimeouts | null
+  outbox_overrides?: OutboxOverrides | null
   created_at: string
   updated_at: string
 }
@@ -203,6 +204,11 @@ export interface Settings {
   command_timeout_browse_snapshot_seconds?: number
   command_timeout_browse_filesystem_seconds?: number
   command_timeout_default_seconds?: number
+  outbox_spill_max_rows?: number
+  outbox_spill_retention_seconds?: number
+  outbox_flush_interval_seconds?: number
+  outbox_delivery_timeout_seconds?: number
+  outbox_max_attempts?: number
 }
 
 /** Default values for global settings (used when no value is stored server-side). */
@@ -224,6 +230,14 @@ export const SETTINGS_DEFAULTS = {
   command_timeout_browse_snapshot_seconds: 300,
   command_timeout_browse_filesystem_seconds: 30,
   command_timeout_default_seconds: 300,
+  // Outbox tunables. The in-memory channel capacity (OUTBOX_MEMORY_MAX) is
+  // an agent-side bootstrap env var — it is not configurable here because
+  // Go channels cannot be resized at runtime.
+  outbox_spill_max_rows: 20000,
+  outbox_spill_retention_seconds: 7 * 24 * 60 * 60, // 7 days
+  outbox_flush_interval_seconds: 60,
+  outbox_delivery_timeout_seconds: 10,
+  outbox_max_attempts: 10,
 } as const
 
 /**
@@ -237,6 +251,20 @@ export interface CommandTimeouts {
   browse_snapshot_secs?: number
   browse_filesystem_secs?: number
   default_secs?: number
+}
+
+/**
+ * Per-agent override of the global outbox tunables. Each field is in seconds
+ * (where applicable); 0 / undefined means "fall back to the global setting".
+ * The in-memory channel capacity is intentionally not present here — it is
+ * an agent-side bootstrap env var because Go channels cannot be resized.
+ */
+export interface OutboxOverrides {
+  spill_max_rows?: number
+  spill_retention_secs?: number
+  flush_interval_secs?: number
+  delivery_timeout_secs?: number
+  max_attempts?: number
 }
 
 export interface ServerVersion {

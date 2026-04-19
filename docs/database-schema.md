@@ -39,6 +39,8 @@ CREATE TABLE agents (
     last_job_at     DATETIME,
     config_version  INTEGER NOT NULL DEFAULT 0,
     config_applied_at DATETIME,
+    command_timeouts TEXT,              -- per-agent command timeout overrides (JSON)
+    outbox_overrides TEXT,              -- per-agent outbox tunable overrides (JSON)
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -185,33 +187,31 @@ CREATE INDEX idx_job_hook_results_job_id ON job_hook_results(job_id);
 
 ## Agent Database
 
-Smaller SQLite database on each agent. Stores buffered reports and local job history.
+Smaller SQLite database on each agent. Acts purely as a **delivery cache** for the outbox: items are written here only when the in-memory queue is full or the server is unreachable, and rows are deleted once the server acks them. See [outbox-redesign.md](outbox-redesign.md) for the full design.
 
 ```sql
 -- ============================================================
--- Buffered job reports (unsent to server)
+-- Outbox spill: items the in-memory queue could not deliver
 -- ============================================================
-CREATE TABLE buffered_reports (
-    id          TEXT PRIMARY KEY,
-    payload     TEXT NOT NULL,     -- JSON-encoded JobReport
+-- Bounded by both row count (OUTBOX_SPILL_MAX_ROWS, default 20 000) and age
+-- (OUTBOX_SPILL_RETENTION, default 7 days). On overflow the oldest rows are
+-- dropped. A daily prune ticker enforces both limits and runs
+-- `PRAGMA wal_checkpoint(TRUNCATE)` to reclaim disk.
+CREATE TABLE outbox_spill (
+    id          TEXT PRIMARY KEY,        -- UUID assigned at submit time
+    kind        TEXT NOT NULL,           -- "job_report" today; "job_event" reserved
+    payload     BLOB NOT NULL,           -- protobuf-encoded message
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     attempts    INTEGER NOT NULL DEFAULT 0,
     last_error  TEXT
 );
 
--- ============================================================
--- Local job history (agent keeps its own record)
--- ============================================================
-CREATE TABLE local_jobs (
-    id          TEXT PRIMARY KEY,
-    plan_name   TEXT NOT NULL,
-    type        TEXT NOT NULL,
-    status      TEXT NOT NULL,
-    started_at  DATETIME NOT NULL,
-    finished_at DATETIME,
-    log_tail    TEXT,
-    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_local_jobs_started_at ON local_jobs(started_at);
+CREATE INDEX idx_outbox_spill_created_at ON outbox_spill(created_at);
 ```
+
+### Migration from legacy schema
+
+The previous schema had two tables — `buffered_reports` and `local_jobs` — both replaced by `outbox_spill`:
+
+- `local_jobs` was a write-only audit log never read in production. Dropped entirely.
+- `buffered_reports` rows are migrated into `outbox_spill` with `kind = 'job_report'` on first start of the new agent. Migration is idempotent and runs inside `migrate()` (see [agent/internal/database/db.go](../agent/internal/database/db.go)).

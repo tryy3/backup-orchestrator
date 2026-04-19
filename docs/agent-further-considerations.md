@@ -12,15 +12,9 @@ Items surfaced during the internal code review that are worth exploring but fall
 
 ## 2. Local Job History Cleanup
 
-**Current state**: The `local_jobs` table in the agent's SQLite database grows unbounded. Every completed backup job inserts a row, and nothing ever deletes them.
+**Status**: ✅ Resolved by the [outbox redesign](outbox-redesign.md).
 
-**Impact**: Over time (months/years of scheduled backups), the table will grow to thousands or tens of thousands of rows. SQLite handles this fine performance-wise, but it's unnecessary disk usage and makes queries slower.
-
-**Options to explore**:
-- Periodic cleanup: keep last N jobs (e.g., 1000) or last N days (e.g., 90 days).
-- Run cleanup after each backup job or on a separate timer.
-- Add a `PRAGMA auto_vacuum` or `VACUUM` on startup if rows were deleted.
-- Make the retention configurable via the agent config pushed from the server.
+The `local_jobs` table has been removed entirely (it was a write-only audit log never read in production). The agent's SQLite database is now treated as a transient delivery cache: the new `outbox_spill` table is bounded by both row count (`OUTBOX_SPILL_MAX_ROWS`, default 20 000) and age (`OUTBOX_SPILL_RETENTION`, default 7 days), with a daily prune ticker that runs `PRAGMA wal_checkpoint(TRUNCATE)` to reclaim disk.
 
 ---
 

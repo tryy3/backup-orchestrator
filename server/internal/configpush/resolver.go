@@ -127,6 +127,12 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		return fmt.Errorf("resolve command timeouts: %w", err)
 	}
 
+	// Build outbox config: globals from settings + per-agent override.
+	outboxCfg, err := r.resolveOutbox(ctx, agent)
+	if err != nil {
+		return fmt.Errorf("resolve outbox: %w", err)
+	}
+
 	// Build protobuf repositories.
 	var pbRepos []*backupv1.Repository
 	for _, repo := range repoMap {
@@ -243,6 +249,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		HeartbeatIntervalSecs:   heartbeatInterval,
 		FileBrowserBlockedPaths: blockedPaths,
 		CommandTimeouts:         commandTimeouts,
+		Outbox:                  outboxCfg,
 	}
 	if agent.RcloneConfig != nil {
 		config.RcloneConfig = *agent.RcloneConfig
@@ -384,5 +391,104 @@ func (r *Resolver) resolveCommandTimeouts(ctx context.Context, agent *database.A
 		BrowseSnapshotSecs:   merged.BrowseSnapshotSecs,
 		BrowseFilesystemSecs: merged.BrowseFilesystemSecs,
 		DefaultSecs:          merged.DefaultSecs,
+	}, nil
+}
+
+// OutboxOverrides mirrors backupv1.OutboxConfig as a JSON-friendly struct so
+// it can be persisted in agents.outbox_overrides and accepted from the API.
+// A zero/missing field means "use the agent's compiled-in default" for that
+// knob. The in-memory channel capacity (OUTBOX_MEMORY_MAX) is intentionally
+// not configurable from the server — Go channels cannot be resized at
+// runtime, so it stays an agent-side bootstrap env var.
+type OutboxOverrides struct {
+	SpillMaxRows        int32 `json:"spill_max_rows,omitempty"`
+	SpillRetentionSecs  int32 `json:"spill_retention_secs,omitempty"`
+	FlushIntervalSecs   int32 `json:"flush_interval_secs,omitempty"`
+	DeliveryTimeoutSecs int32 `json:"delivery_timeout_secs,omitempty"`
+	MaxAttempts         int32 `json:"max_attempts,omitempty"`
+}
+
+// outboxSettingKeys maps each OutboxOverrides field to its global setting key.
+var outboxSettingKeys = map[string]string{
+	"spill_max_rows":        "outbox_spill_max_rows",
+	"spill_retention_secs":  "outbox_spill_retention_seconds",
+	"flush_interval_secs":   "outbox_flush_interval_seconds",
+	"delivery_timeout_secs": "outbox_delivery_timeout_seconds",
+	"max_attempts":          "outbox_max_attempts",
+}
+
+// resolveOutbox loads the global outbox settings and layers any per-agent
+// override (stored as JSON in agents.outbox_overrides) on top. Returns nil if
+// no values are configured at either level so the agent uses its own defaults.
+func (r *Resolver) resolveOutbox(ctx context.Context, agent *database.Agent) (*backupv1.OutboxConfig, error) {
+	loadInt := func(key string) (int32, error) {
+		val, err := r.db.GetSetting(ctx, key)
+		if err != nil {
+			return 0, err
+		}
+		if val == nil {
+			return 0, nil
+		}
+		var n int32
+		if parseErr := json.Unmarshal([]byte(*val), &n); parseErr != nil || n <= 0 {
+			return 0, nil
+		}
+		return n, nil
+	}
+
+	merged := &OutboxOverrides{}
+	for field, key := range outboxSettingKeys {
+		n, err := loadInt(key)
+		if err != nil {
+			return nil, fmt.Errorf("get %s: %w", key, err)
+		}
+		switch field {
+		case "spill_max_rows":
+			merged.SpillMaxRows = n
+		case "spill_retention_secs":
+			merged.SpillRetentionSecs = n
+		case "flush_interval_secs":
+			merged.FlushIntervalSecs = n
+		case "delivery_timeout_secs":
+			merged.DeliveryTimeoutSecs = n
+		case "max_attempts":
+			merged.MaxAttempts = n
+		}
+	}
+
+	if agent.OutboxOverrides != nil && *agent.OutboxOverrides != "" {
+		var override OutboxOverrides
+		if err := json.Unmarshal([]byte(*agent.OutboxOverrides), &override); err != nil {
+			slog.Warn("failed to parse per-agent outbox_overrides", "agent_id", agent.ID, "error", err)
+		} else {
+			if override.SpillMaxRows > 0 {
+				merged.SpillMaxRows = override.SpillMaxRows
+			}
+			if override.SpillRetentionSecs > 0 {
+				merged.SpillRetentionSecs = override.SpillRetentionSecs
+			}
+			if override.FlushIntervalSecs > 0 {
+				merged.FlushIntervalSecs = override.FlushIntervalSecs
+			}
+			if override.DeliveryTimeoutSecs > 0 {
+				merged.DeliveryTimeoutSecs = override.DeliveryTimeoutSecs
+			}
+			if override.MaxAttempts > 0 {
+				merged.MaxAttempts = override.MaxAttempts
+			}
+		}
+	}
+
+	if merged.SpillMaxRows == 0 && merged.SpillRetentionSecs == 0 && merged.FlushIntervalSecs == 0 &&
+		merged.DeliveryTimeoutSecs == 0 && merged.MaxAttempts == 0 {
+		return nil, nil
+	}
+
+	return &backupv1.OutboxConfig{
+		SpillMaxRows:        merged.SpillMaxRows,
+		SpillRetentionSecs:  merged.SpillRetentionSecs,
+		FlushIntervalSecs:   merged.FlushIntervalSecs,
+		DeliveryTimeoutSecs: merged.DeliveryTimeoutSecs,
+		MaxAttempts:         merged.MaxAttempts,
 	}, nil
 }
