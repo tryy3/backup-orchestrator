@@ -5,6 +5,12 @@ description: |
 on:
   workflow_dispatch:
     inputs:
+      release_id:
+        description: >
+          Optional explicit release ID to refresh. Preferred for draft releases
+          because safe-outputs resolves drafts reliably by ID.
+        required: false
+        default: ""
       draft_tag:
         description: >
           Optional explicit draft tag to refresh (for example `v0.4.0`).
@@ -143,6 +149,7 @@ Use Release Drafter for initial draft creation, then enrich the draft body with:
 
 ## Inputs
 
+- `release_id` (optional): explicit release ID to refresh; preferred for draft releases.
 - `draft_tag` (optional): explicit draft tag to refresh (for example `v0.4.0`); recommended when draft listing is empty in Actions.
 - `from_tag` (optional): if provided, pass it to `scripts/release-notes.py --from-tag`.
 - `ai_polish` (boolean, default `true`): when true, run `scripts/ai-polish.py`.
@@ -155,6 +162,7 @@ Use Release Drafter for initial draft creation, then enrich the draft body with:
 2. Read the pre-generated notes from `/tmp/gh-aw/agent/notes.md`.
   - These notes were generated before the agent ran using the workflow token.
 3. Find the draft release to update:
+  - If `release_id` input is provided and non-empty, treat it as authoritative and skip tag-based draft selection.
   - Read `.github/release-drafter.yml` and treat its `tag-template` (`v$RESOLVED_VERSION`) as authoritative.
   - Use `/tmp/gh-aw/agent/draft-releases.json` as source-of-truth for currently available draft releases.
   - Treat a draft as a valid release candidate when either:
@@ -171,7 +179,10 @@ Use Release Drafter for initial draft creation, then enrich the draft body with:
 4. Update the selected draft release body using `update-release` safe output:
    - Operation type: `replace`.
   - Body content: full contents of `/tmp/gh-aw/agent/notes.md`.
-  - For the safe output `tag` field, use the release's actual `tagName` from GitHub, even when the effective semantic version was derived from `name`.
+  - If `release_id` input is provided and non-empty:
+    - call `update-release` without a `tag` field so the handler resolves the target from workflow dispatch input `release_id`.
+  - Otherwise:
+    - for the safe output `tag` field, use the release's actual `tagName` from GitHub, even when the effective semantic version was derived from `name`.
 
 ## Output style
 
