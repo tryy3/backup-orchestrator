@@ -79,20 +79,20 @@ steps:
       releases_path.write_text(json.dumps(releases, indent=2) + '\n')
       drafts = [release for release in releases if release.get('isDraft') is True]
 
-        draft_tag = os.environ.get('DRAFT_TAG', '').strip()
-        if draft_tag:
+      draft_tag = os.environ.get('DRAFT_TAG', '').strip()
+      if draft_tag:
           exists = any((r.get('tag_name') or r.get('tagName')) == draft_tag for r in drafts)
           if not exists:
-            drafts.append(
-              {
-                'tagName': draft_tag,
-                'tag_name': draft_tag,
-                'name': draft_tag,
-                'isDraft': True,
-                'draft': True,
-                'source': 'workflow_dispatch.input.draft_tag',
-              }
-            )
+              drafts.append(
+                  {
+                      'tagName': draft_tag,
+                      'tag_name': draft_tag,
+                      'name': draft_tag,
+                      'isDraft': True,
+                      'draft': True,
+                      'source': 'workflow_dispatch.input.draft_tag',
+                  }
+              )
 
       drafts_path.write_text(json.dumps(drafts, indent=2) + '\n')
       print(f"Draft releases found: {len(drafts)}")
