@@ -31,15 +31,15 @@ Do not auto-detect a draft release. The data collection script requires an expli
 
 ### Step 2: Collect PR data
 
-Run the collection script to fetch or refresh the PR data JSON:
+Always run the collection script before reading PR data, even if the JSON file already exists:
 
 ```bash
 python3 scripts/collect-release-prs.py <version>
 ```
 
-This writes (or updates) `docs/version-drafts/<version>-pr-data.json`. The script validates that `<version>` is an existing draft release. It uses caching — it only fetches PRs that are new or changed since the last run.
+This writes (or updates) `docs/version-drafts/<version>-pr-data.json`. The script validates that `<version>` is an existing draft release. It owns cache reconciliation by comparing the current release draft's PR list with the existing JSON file, keeping previously fetched PR data and fetching only newly added PRs.
 
-If the JSON file already exists and the user hasn't asked to refresh, you can skip re-running the script and read the existing file directly.
+Do not skip this step because the JSON file already exists. The draft may have gained new PRs since the previous run, and the script is responsible for detecting that difference.
 
 ### Step 3: Read and analyze the JSON
 
