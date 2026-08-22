@@ -4,12 +4,12 @@ go 1.26.1
 
 require (
 	github.com/coder/websocket v1.8.14
-	github.com/go-chi/chi/v5 v5.2.5
+	github.com/go-chi/chi/v5 v5.3.2
 	github.com/google/uuid v1.6.0
-	github.com/stretchr/testify v1.11.1
-	google.golang.org/grpc v1.82.1
-	google.golang.org/protobuf v1.36.11
-	modernc.org/sqlite v1.49.1
+	github.com/stretchr/testify v1.12.1
+	google.golang.org/grpc v1.83.1
+	google.golang.org/protobuf v1.36.12
+	modernc.org/sqlite v1.57.0
 )
 
 require (
