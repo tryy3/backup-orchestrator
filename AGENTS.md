@@ -249,7 +249,7 @@ just release-notes
 just release-notes-polished
 ```
 
-The workflow `refresh-release-draft.yml` can refresh the draft release body from PR `release-note` blocks.
+The workflow `refresh-release-draft.yml` rebuilds the draft release body from PR `release-note` blocks after Release Drafter runs. For AI-polished notes before publishing, use the `enrich-release-notes` skill.
 
 ## Debugging and Troubleshooting
 

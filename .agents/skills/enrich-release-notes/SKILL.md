@@ -13,6 +13,8 @@ description: >-
 
 Generate polished, user-facing release notes from the raw PR data collected for a GitHub release draft.
 
+CI (`refresh-release-draft.yml`) keeps the draft body updated with structured PR `release-note` blocks after each Release Drafter run. **This skill** is for the final AI-polished pass when you are ready to publish — run it locally, review the output, then update the draft release body manually or via `gh release edit`.
+
 ## Prerequisites
 
 - `gh` CLI must be authenticated (used by the data collection script).

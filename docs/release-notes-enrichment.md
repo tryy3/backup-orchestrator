@@ -77,7 +77,7 @@ Output JSON structure:
 
 ### Step 2: AI Summary Generation (SKILL.md)
 
-A Copilot skill (`/.github/skills/enrich-release-notes/SKILL.md`) that:
+A Copilot skill (`.agents/skills/enrich-release-notes/SKILL.md`) that:
 
 1. Reads the JSON file produced by step 1.
 2. Generates:
@@ -108,7 +108,7 @@ Then invoke the Copilot skill to generate enriched notes from the JSON.
 
 ## Relationship to Existing Scripts
 
-- `scripts/release-notes.py` — collects PRs by searching git history since a tag. Used by the `refresh-release-draft` agentic workflow. The new `collect-release-prs.py` takes a different approach: it starts from the Release Drafter draft itself, which is already the curated list of PRs for the release.
-- `scripts/ai-polish.py` — calls GitHub Models API for a summary paragraph. The SKILL.md approach replaces this with Copilot-driven summarization that has access to full PR context (not just the categorized list).
+- `scripts/release-notes.py` — collects PRs by searching git history since a tag. Used by the `refresh-release-draft.yml` CI workflow to maintain the structured draft body.
+- `scripts/ai-polish.py` — calls GitHub Models API for a summary paragraph. Optional; the `enrich-release-notes` skill is the preferred path for AI-polished notes at release time.
 
 Both existing scripts remain usable independently. The new workflow is an alternative path that produces richer output.

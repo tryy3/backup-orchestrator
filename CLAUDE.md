@@ -137,7 +137,8 @@ just proto-breaking
 
 - Squash merge is used; PR title becomes merge commit subject.
 - `release-drafter.yml` groups PRs into a draft release.
-- `refresh-release-draft.yml` can rebuild draft notes from PR `release-note` blocks (with optional AI summary).
+- `refresh-release-draft.yml` rebuilds draft notes from PR `release-note` blocks (structured list only).
+- Use the `enrich-release-notes` skill for AI-polished release notes before publishing.
 - Local helpers:
 
 ```bash
