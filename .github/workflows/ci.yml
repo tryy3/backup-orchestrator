@@ -68,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           cache: true
           go-version-file: server/go.mod
@@ -102,7 +102,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           cache: true
           go-version-file: agent/go.mod
@@ -133,7 +133,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           cache: true
           cache-dependency-path: frontend/package-lock.json
@@ -153,7 +153,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           cache: true
           go-version-file: server/go.mod
@@ -208,7 +208,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           cache: true
           go-version-file: server/go.mod
@@ -227,7 +227,7 @@ jobs:
       - name: Generate proto
         run: cd proto && buf generate
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           cache: true
           cache-dependency-path: frontend/package-lock.json
@@ -256,7 +256,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           cache: true
           go-version-file: server/go.mod
