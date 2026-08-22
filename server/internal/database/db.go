@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"sync"
+	"time"
 
 	"github.com/tryy3/backup-orchestrator/server/internal/crypto"
 )
@@ -13,10 +15,27 @@ import (
 type DB struct {
 	*sql.DB
 	encryptionKey []byte // 32-byte AES-256 key; nil disables encryption
+
+	syncer      remoteSync
+	syncCancel  context.CancelFunc
+	syncMu      sync.Mutex
+	lastSyncOK  time.Time
+	lastSyncErr error
 }
 
-// Close closes the underlying database connection.
+// Close stops the sync loop, best-effort pushes local changes, then closes the connection.
 func (db *DB) Close() error {
+	if db.syncCancel != nil {
+		db.syncCancel()
+		db.syncCancel = nil
+	}
+	if db.syncer != nil {
+		_ = db.syncer.Push(context.Background())
+		db.syncer = nil
+	}
+	if db.DB == nil {
+		return nil
+	}
 	return db.DB.Close()
 }
 
