@@ -378,7 +378,7 @@ skip-changelog    (omit PR from release notes)
 
 ### Maintainer skills (replacing agentic workflows)
 
-On-demand tasks previously handled by GitHub Agentic Workflows are now Cursor skills under `.github/skills/`:
+On-demand tasks previously handled by GitHub Agentic Workflows are now Cursor skills under `.agents/skills/`:
 
 | Skill | Use for |
 |---|---|

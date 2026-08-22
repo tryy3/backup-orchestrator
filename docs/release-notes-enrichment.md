@@ -77,7 +77,7 @@ Output JSON structure:
 
 ### Step 2: AI Summary Generation (SKILL.md)
 
-A Copilot skill (`/.github/skills/enrich-release-notes/SKILL.md`) that:
+A Copilot skill (`.agents/skills/enrich-release-notes/SKILL.md`) that:
 
 1. Reads the JSON file produced by step 1.
 2. Generates:
