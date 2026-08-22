@@ -7,6 +7,7 @@ file with extracted sections (release-note block, breaking changes, etc.).
 
 Usage:
   python3 scripts/collect-release-prs.py v0.4.0
+  python3 scripts/collect-release-prs.py --release-id 123456789
   python3 scripts/collect-release-prs.py v0.4.0 --output pr-data.json
   python3 scripts/collect-release-prs.py v0.4.0 --force
 
@@ -22,6 +23,9 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from draft_release import DraftRelease, resolve_draft
 
 # Default cache directory relative to repo root.
 CACHE_DIR = Path("docs/version-drafts")
@@ -47,10 +51,26 @@ def run_gh(args: list[str]) -> str:
     return result.stdout.strip()
 
 
-def fetch_release(version: str) -> dict:
-    """Fetch release data by tag name."""
-    raw = run_gh(["release", "view", version, "--json", RELEASE_FIELDS])
-    return json.loads(raw)
+def fetch_release(version: str, release_id: Optional[int] = None) -> dict:
+    """Fetch release data by tag/version or explicit release ID."""
+    if release_id is not None:
+        draft = resolve_draft(release_id=release_id)
+        raw = run_gh([
+            "release", "view", draft.edit_tag,
+            "--json", RELEASE_FIELDS,
+        ])
+        return json.loads(raw)
+
+    try:
+        raw = run_gh(["release", "view", version, "--json", RELEASE_FIELDS])
+        return json.loads(raw)
+    except GhCommandError:
+        draft = resolve_draft(version=version)
+        raw = run_gh([
+            "release", "view", draft.edit_tag,
+            "--json", RELEASE_FIELDS,
+        ])
+        return json.loads(raw)
 
 
 def parse_pr_numbers(body: str) -> list[int]:
@@ -195,7 +215,15 @@ def main():
     )
     parser.add_argument(
         "version",
+        nargs="?",
+        default=None,
         help="Release version/tag to collect from (e.g. v0.4.0).",
+    )
+    parser.add_argument(
+        "--release-id",
+        type=int,
+        metavar="ID",
+        help="Explicit draft release ID. Preferred when the draft tag is untagged-*.",
     )
     parser.add_argument(
         "--output", "-o",
@@ -209,7 +237,13 @@ def main():
         help="Force re-fetch all PRs, ignoring cached data.",
     )
     args = parser.parse_args()
+    if args.version is None and args.release_id is None:
+        parser.error("provide a version or --release-id")
+
     version = args.version
+    if version is None:
+        draft: DraftRelease = resolve_draft(release_id=args.release_id)
+        version = draft.effective_version
 
     # Resolve output path
     output_path = Path(args.output) if args.output else default_output_path(version)
@@ -217,8 +251,8 @@ def main():
     # Fetch the release body
     print(f"Fetching release {version}...", file=sys.stderr)
     try:
-        release = fetch_release(version)
-    except GhCommandError as err:
+        release = fetch_release(version, release_id=args.release_id)
+    except (GhCommandError, RuntimeError) as err:
         print(err, file=sys.stderr)
         sys.exit(1)
     if not release.get("isDraft"):

@@ -133,19 +133,26 @@ Categories with no PRs are hidden automatically. The draft also includes a full-
 
 ### Enriching the draft
 
-The rolling draft from release-drafter contains only PR titles. Run the release assembly pipeline to replace those with richer `release-note` block content and add an AI-generated summary:
+The rolling draft from release-drafter contains only PR titles. CI rebuilds structured notes from PR `release-note` blocks automatically after Release Drafter runs. For the final AI-polished pass before publishing, use the `enrich-release-notes` skill locally.
 
-**Via GitHub Actions (recommended):**
+**Via GitHub Actions (structured notes only):**
 
-1. Go to Actions → **Refresh Release Draft** → Run workflow.
+1. Go to Actions → **Refresh Release Draft** → Run workflow (or wait for the automatic run after Release Drafter).
 2. Leave `from_tag` blank to auto-detect the last release tag.
-3. Leave `ai_polish` ticked (default) to add a generated summary paragraph.
-4. Re-open the draft after the run completes — it will be updated.
+3. Optionally set `draft_tag` when multiple drafts exist or auto-detection should target a specific version.
+4. Optionally set `release_id` when GitHub exposes the draft as `untagged-*` and tag lookup is unreliable.
+5. Re-open the draft after the run completes — it will be updated with structured `release-note` content.
 
-**Locally:**
+**Locally (AI-polished notes via skill):**
+
+1. Run `python3 scripts/collect-release-prs.py v0.X.0` (or `--release-id <id>`).
+2. Invoke the `enrich-release-notes` skill to generate summary, highlights, and breaking-change sections.
+3. Update the draft with `gh release edit <tag> --notes-file <file>` using the resolved `tag_name` from `python3 scripts/draft_release.py --version v0.X.0 --json`.
+
+For a quick local structured draft without the skill:
 
 ```bash
-just release-notes-polished          # structured notes + AI summary
+just release-notes-polished          # structured notes + AI summary paragraph
 just release-notes-polished from-tag=v1.0.0  # explicit range
 ```
 

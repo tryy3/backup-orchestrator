@@ -11,6 +11,18 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      release_id:
+        description: >
+          Optional explicit draft release ID. Preferred when GitHub exposes the
+          draft as untagged-* and tag-based lookup is unreliable.
+        required: false
+        default: ''
+      draft_tag:
+        description: >
+          Optional explicit draft version or tag (for example v0.4.0 or
+          untagged-*). Use when auto-detection should not pick the latest draft.
+        required: false
+        default: ''
       from_tag:
         description: >
           Collect PRs merged after this tag. Leave blank to auto-detect
@@ -49,20 +61,30 @@ jobs:
           echo "--- Structured notes ---"
           cat notes.md
 
+      - name: Resolve draft release
+        id: draft
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          DRAFT_TAG: ${{ inputs.draft_tag }}
+        run: |
+          set -euo pipefail
+          ARGS=()
+          if [ -n "$RELEASE_ID" ]; then
+            ARGS+=(--release-id "$RELEASE_ID")
+          elif [ -n "$DRAFT_TAG" ]; then
+            ARGS+=(--version "$DRAFT_TAG")
+          fi
+          python3 scripts/draft_release.py "${ARGS[@]}" --json > draft.json
+          echo "tag=$(jq -r .tag_name draft.json)" >> "$GITHUB_OUTPUT"
+          echo "effective_version=$(jq -r .effective_version draft.json)" >> "$GITHUB_OUTPUT"
+          echo "release_id=$(jq -r .id draft.json)" >> "$GITHUB_OUTPUT"
+          jq . draft.json
+
       - name: Update draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          DRAFT_TAG=$(gh release list --json tagName,isDraft \
-            | jq -r '.[] | select(.isDraft == true) | .tagName' \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' \
-            | sort -V | tail -1)
-
-          if [ -z "$DRAFT_TAG" ]; then
-            echo "No semver draft release found. Release Drafter must create a draft first."
-            exit 1
-          fi
-
-          echo "Updating draft release: $DRAFT_TAG"
-          gh release edit "$DRAFT_TAG" --notes-file notes.md
+          echo "Updating draft release ${{ steps.draft.outputs.effective_version }} (tag: ${{ steps.draft.outputs.tag }}, id: ${{ steps.draft.outputs.release_id }})"
+          gh release edit "${{ steps.draft.outputs.tag }}" --notes-file notes.md
           echo "Done. Open Releases to review: https://github.com/${{ github.repository }}/releases"
