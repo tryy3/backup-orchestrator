@@ -12,6 +12,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestOpen_SQLiteEquivalentToNew(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "open.db")
+	db, err := Open(Options{Driver: DriverSQLite, Path: path})
+	require.NoError(t, err)
+	defer db.Close()
+	_, err = db.ExecContext(context.Background(), "SELECT 1 FROM agents LIMIT 0")
+	require.NoError(t, err)
+}
+
+func TestOpen_UnknownDriver(t *testing.T) {
+	t.Parallel()
+	_, err := Open(Options{Driver: "postgres"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "driver")
+}
+
 func TestNew(t *testing.T) {
 	t.Parallel()
 
