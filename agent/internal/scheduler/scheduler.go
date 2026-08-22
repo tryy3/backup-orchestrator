@@ -243,7 +243,6 @@ func abortedReport(plan *backupv1.BackupPlan, trigger, reason string) *backupv1.
 		Status:     "aborted",
 		StartedAt:  timestamppb.New(now),
 		FinishedAt: timestamppb.New(now),
-		LogTail:    reason,
 		LogEntries: []*backupv1.LogEntry{{
 			Timestamp: now.Format(time.RFC3339),
 			Level:     "warn",
