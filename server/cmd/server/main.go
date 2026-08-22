@@ -31,12 +31,19 @@ func main() {
 	}
 
 	// Open database.
-	db, err := database.New(cfg.DBPath, cfg.EncryptionKey)
+	db, err := database.Open(database.Options{
+		Driver:        database.Driver(cfg.Driver),
+		Path:          cfg.DBPath,
+		URL:           cfg.DBURL,
+		AuthToken:     cfg.DBAuthToken,
+		SyncInterval:  cfg.SyncInterval,
+		EncryptionKey: cfg.EncryptionKey,
+	})
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("database opened", "path", cfg.DBPath)
+	slog.Info("database opened", "driver", cfg.Driver, "path", cfg.DBPath)
 
 	grpcLis, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", ":"+cfg.GRPCPort)
 	if err != nil {
