@@ -1,6 +1,10 @@
 ---
 name: gh-create-pr
-description: Create or update GitHub pull requests using the repository-required workflow and template compliance. Use when asked to create/open/update a PR so the assistant reads `.github/pull_request_template.md`, fills every template section, preserves markdown structure exactly, and marks missing data as N/A or None instead of skipping sections.
+description: >-
+  Create or update GitHub pull requests with template compliance and required
+  type/area/impact labels. Use when asked to create, open, or update a PR so the
+  assistant reads `.github/pull_request_template.md`, fills every section, applies
+  correct labels, and marks missing data as N/A or None instead of skipping sections.
 ---
 
 # GitHub PR Creation
@@ -58,6 +62,14 @@ description: Create or update GitHub pull requests using the repository-required
   - At least one `area/*` label (`area/server`, `area/agent`, `area/frontend`, `area/proto`, `area/docs`, `area/ci`)
   - Optional `impact/*` labels (`impact/breaking`, `impact/security`, `impact/ops`) when relevant
   - Use `--label` for each label when calling `gh pr create`
+- **Infer labels from the diff** when not obvious from the user's description:
+  - `server/**`, `proto/**` → `area/server` (add `area/proto` only when proto schemas change without server logic)
+  - `agent/**` → `area/agent`
+  - `frontend/**` → `area/frontend`
+  - `proto/**` only → `area/proto`
+  - `docs/**`, `AGENTS.md`, `CLAUDE.md` → `area/docs`
+  - `.github/**`, `docker/**`, `justfile` → `area/ci`
+  - Multiple areas only when the change truly spans them (matches `pr-labeler.yml` intent)
 - **Release note & Documentation checkbox** - both are driven by whether the change is **user-facing**. Use the table below:
 
   | Change type | `type/*` label | Release note | Docs `[x]` |
@@ -107,6 +119,12 @@ gh pr create --base <base> --head <head> --title "<title>" --body-file "$pr_body
   --label "type/feature" --label "area/server"
 rm -f "$pr_body_file"
 ```
+
+## Related skills
+
+- `gh-create-issue` — create issues with the same label taxonomy.
+- `gh-triage-issue` — improve labels and quality on existing issues.
+- `enrich-release-notes` — polish release notes before publishing (fill the `release-note` block in the PR template).
 
 ## Troubleshooting
 

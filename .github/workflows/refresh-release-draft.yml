@@ -1,0 +1,68 @@
+name: Refresh Release Draft
+
+# Regenerates the draft release body from PR release-note blocks after
+# Release Drafter updates the rolling draft. For AI-polished release notes
+# when preparing to publish, use the enrich-release-notes skill locally.
+
+on:
+  workflow_run:
+    workflows: ["Release Drafter"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        description: >
+          Collect PRs merged after this tag. Leave blank to auto-detect
+          the last published tag.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  refresh-draft:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-tags: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FROM_TAG="${{ inputs.from_tag }}"
+          if [ -n "$FROM_TAG" ]; then
+            python3 scripts/release-notes.py --from-tag "$FROM_TAG" --output notes.md
+          else
+            python3 scripts/release-notes.py --output notes.md
+          fi
+          echo "--- Structured notes ---"
+          cat notes.md
+
+      - name: Update draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DRAFT_TAG=$(gh release list --json tagName,isDraft \
+            | jq -r '.[] | select(.isDraft == true) | .tagName' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' \
+            | sort -V | tail -1)
+
+          if [ -z "$DRAFT_TAG" ]; then
+            echo "No semver draft release found. Release Drafter must create a draft first."
+            exit 1
+          fi
+
+          echo "Updating draft release: $DRAFT_TAG"
+          gh release edit "$DRAFT_TAG" --notes-file notes.md
+          echo "Done. Open Releases to review: https://github.com/${{ github.repository }}/releases"

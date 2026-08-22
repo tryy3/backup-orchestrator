@@ -373,5 +373,17 @@ skip-changelog    (omit PR from release notes)
 | `pr-label-check.yml` | PR opened/updated | Enforces one `type/*` + one `area/*` (**required**) |
 | `pr-title-hint.yml` | PR opened/updated | Non-blocking comment if title looks weak |
 | `release-drafter.yml` | push to main / PR label change | Updates rolling draft release |
-| `refresh-release-draft.yml` | manual | Enriches draft with release-note blocks + AI summary |
+| `refresh-release-draft.yml` | after Release Drafter / manual | Rebuilds draft body from PR `release-note` blocks (structured only) |
 | `build-push.yml` | push to main / semver tag | Pushes Docker images to ghcr.io |
+
+### Maintainer skills (replacing agentic workflows)
+
+On-demand tasks previously handled by GitHub Agentic Workflows are now Cursor skills under `.github/skills/`:
+
+| Skill | Use for |
+|---|---|
+| `gh-create-issue` | Create issues with correct template + labels |
+| `gh-triage-issue` | Triage manual issues: labels, title, quality |
+| `gh-relevance-check` | Check if an issue/PR is stale; optional summary |
+| `enrich-release-notes` | AI-polished release notes before publishing |
+| `create-agentsmd` | Update `AGENTS.md` when conventions change |
