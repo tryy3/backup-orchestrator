@@ -87,6 +87,26 @@ func TestNew_ConnectionPool(t *testing.T) {
 	assert.Equal(t, 25, stats.MaxOpenConnections)
 }
 
+func TestHasColumn_ExistingAndMissing(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	ctx := context.Background()
+	ok, err := db.hasColumn(ctx, "agents", "command_timeouts")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	ok, err = db.hasColumn(ctx, "agents", "not_a_real_column")
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
+func TestAddColumnIfMissing_Idempotent(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	ctx := context.Background()
+	require.NoError(t, db.addColumnIfMissing(ctx, "agents", "command_timeouts", "TEXT"))
+	require.NoError(t, db.addColumnIfMissing(ctx, "agents", "command_timeouts", "TEXT"))
+}
+
 func TestNew_Migrations(t *testing.T) {
 	t.Parallel()
 

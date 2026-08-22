@@ -189,38 +189,50 @@ func (db *DB) migrate(ctx context.Context) error {
 	return nil
 }
 
-// addColumnIfMissing adds a column to a table if it doesn't already exist.
-// SQLite has no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so we inspect
-// PRAGMA table_info and only run ALTER when the column is absent.
-func (db *DB) addColumnIfMissing(ctx context.Context, table, column, columnType string) error {
+// hasColumn reports whether table has column. Uses PRAGMA table_info on SQLite;
+// remote engines that reject PRAGMA fall back to a zero-row projection.
+func (db *DB) hasColumn(ctx context.Context, table, column string) (bool, error) {
 	rows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err == nil {
+		defer func() { _ = rows.Close() }()
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		for rows.Next() {
+			if scanErr := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); scanErr != nil {
+				return false, fmt.Errorf("scan column info: %w", scanErr)
+			}
+			if name == column {
+				return true, nil
+			}
+		}
+		return false, rows.Err()
+	}
+	// Remote engines may reject PRAGMA. A successful projection means the column exists.
+	q := fmt.Sprintf("SELECT %s FROM %s LIMIT 0", column, table)
+	if _, selErr := db.ExecContext(ctx, q); selErr == nil {
+		return true, nil
+	}
+	return false, nil
+}
+
+// addColumnIfMissing adds a column to a table if it doesn't already exist.
+func (db *DB) addColumnIfMissing(ctx context.Context, table, column, columnType string) error {
+	ok, err := db.hasColumn(ctx, table, column)
 	if err != nil {
-		return fmt.Errorf("query table info for %s: %w", table, err)
+		return err
 	}
-	defer func() { _ = rows.Close() }()
-
-	var (
-		cid     int
-		name    string
-		ctype   string
-		notnull int
-		dflt    sql.NullString
-		pk      int
-	)
-	for rows.Next() {
-		if scanErr := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); scanErr != nil {
-			return fmt.Errorf("scan column info: %w", scanErr)
-		}
-		if name == column {
-			return nil // column already exists
-		}
+	if ok {
+		return nil
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate table info: %w", err)
-	}
-
 	stmt := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, columnType)
 	if _, err := db.ExecContext(ctx, stmt); err != nil {
+		// Concurrent migrate or engine that already has the column.
+		ok, checkErr := db.hasColumn(ctx, table, column)
+		if checkErr == nil && ok {
+			return nil
+		}
 		return fmt.Errorf("alter table %s add %s: %w", table, column, err)
 	}
 	return nil
