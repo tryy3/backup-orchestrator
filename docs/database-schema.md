@@ -1,6 +1,8 @@
-# Database Schema (SQLite)
+# Database Schema
 
-Server-side database. The agent uses a separate smaller SQLite database for local state.
+The **server** can use one of three backends: embedded SQLite (default), remote-only Turso, or Turso Sync (local file + cloud replica). See [turso-server-database.md](turso-server-database.md). Schema SQL below is shared.
+
+The **agent** uses a separate on-disk SQLite database for outbox spill only. That database is not a Turso backend.
 
 ## Server Database
 

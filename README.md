@@ -144,13 +144,19 @@ BACKUP_SERVER_URL=<server-host>:8443 ./bin/agent
 
 | Variable | Default | Description |
 |---|---|---|
-| `BACKUP_DB_PATH` | `/var/lib/backup-orchestrator/server.db` | SQLite database path |
+| `BACKUP_DB_PATH` | `/var/lib/backup-orchestrator/server.db` | SQLite file path (`sqlite` and `turso-sync` local file) |
+| `BACKUP_DB_DRIVER` | `sqlite` | Server database backend: `sqlite`, `turso`, or `turso-sync` |
+| `BACKUP_DB_URL` | — | Turso database URL (required for `turso` and `turso-sync`) |
+| `BACKUP_DB_AUTH_TOKEN` | — | Turso auth token (required for `turso` and `turso-sync`) |
+| `BACKUP_DB_SYNC_INTERVAL` | `30s` | Background Pull/Push interval for `turso-sync` only |
 | `BACKUP_HTTP_PORT` | `8080` | HTTP port — serves the web UI and REST API |
 | `BACKUP_GRPC_PORT` | `8443` | gRPC port — agents connect here |
 | `BACKUP_ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:3000` | Comma-separated CORS allowed origins |
 | `BACKUP_ENCRYPTION_KEY` | *(auto-generated)* | 64-char hex AES-256 key for secrets at rest |
 
-**Encryption key resolution order:** `BACKUP_ENCRYPTION_KEY` env var → `encryption.key` file next to the database → auto-generate and persist.
+See [docs/turso-server-database.md](docs/turso-server-database.md) for Turso backends, startup behavior, and migration.
+
+**Encryption key resolution order:** `BACKUP_ENCRYPTION_KEY` env var → `encryption.key` file next to the database → auto-generate and persist. Required via env for `turso` (remote-only).
 
 > **Production note:** Set `BACKUP_ENCRYPTION_KEY` explicitly or back up the auto-generated `encryption.key` file. Losing it makes stored repository credentials unrecoverable.
 
