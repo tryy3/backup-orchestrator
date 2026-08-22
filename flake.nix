@@ -61,6 +61,7 @@
             # Dev tooling
             zellij
             air
+            skills # skills.sh CLI — agent skill package manager
           ];
 
           shellHook = ''

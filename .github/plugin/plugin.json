@@ -16,10 +16,5 @@
     ],
     "agents": [
         "./agents"
-    ],
-    "skills": [
-        "./skills/suggest-awesome-github-copilot-skills",
-        "./skills/suggest-awesome-github-copilot-instructions",
-        "./skills/suggest-awesome-github-copilot-agents"
     ]
 }
