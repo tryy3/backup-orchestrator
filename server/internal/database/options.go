@@ -29,8 +29,10 @@ func Open(opts Options) (*DB, error) {
 	switch opts.Driver {
 	case DriverSQLite:
 		return openSQLite(opts)
-	case DriverTurso, DriverTursoSync:
+	case DriverTurso:
 		return nil, fmt.Errorf("database driver %q is not implemented yet", opts.Driver)
+	case DriverTursoSync:
+		return openTursoSync(opts)
 	default:
 		return nil, fmt.Errorf("unknown database driver %q", opts.Driver)
 	}

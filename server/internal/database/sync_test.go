@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	_ "modernc.org/sqlite"
 )
 
 var errRemoteDown = errors.New("remote down")
@@ -67,6 +70,38 @@ func TestSyncLoop_DoesNotFailWhenRemoteErrors(t *testing.T) {
 	require.Error(t, lastErr)
 	require.NoError(t, db.Close())
 	assert.GreaterOrEqual(t, fake.pushes.Load(), int32(1)) // Close best-effort Push
+}
+
+func TestOpen_TursoSync_RefusesEmptyLocalWhenPullFails(t *testing.T) {
+	orig := newTursoSync
+	t.Cleanup(func() { newTursoSync = orig })
+	newTursoSync = func(opts Options) (*sql.DB, remoteSync, error) {
+		sqlDB, err := sql.Open("sqlite", opts.Path)
+		require.NoError(t, err)
+		return sqlDB, &fakeSync{pullErr: errRemoteDown}, nil
+	}
+	_, err := Open(Options{Driver: DriverTursoSync, Path: filepath.Join(t.TempDir(), "missing.db")})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty")
+}
+
+func TestOpen_TursoSync_StartsWhenLocalReadyAndPullFails(t *testing.T) {
+	orig := newTursoSync
+	t.Cleanup(func() { newTursoSync = orig })
+	path := filepath.Join(t.TempDir(), "ready.db")
+	seed, err := New(path, nil)
+	require.NoError(t, err)
+	require.NoError(t, seed.Close())
+	newTursoSync = func(opts Options) (*sql.DB, remoteSync, error) {
+		sqlDB, err := sql.Open("sqlite", opts.Path)
+		require.NoError(t, err)
+		return sqlDB, &fakeSync{pullErr: errRemoteDown}, nil
+	}
+	db, err := Open(Options{Driver: DriverTursoSync, Path: path, SyncInterval: time.Hour})
+	require.NoError(t, err)
+	defer db.Close()
+	_, qerr := db.ExecContext(context.Background(), "SELECT 1 FROM agents LIMIT 0")
+	require.NoError(t, qerr)
 }
 
 func TestClose_PushesThenCloses(t *testing.T) {

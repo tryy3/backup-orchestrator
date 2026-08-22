@@ -2,11 +2,17 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
 	"time"
 )
+
+type syncFactory func(opts Options) (*sql.DB, remoteSync, error)
+
+// newTursoSync is set by the tursogo backend in production; tests replace it with a fake.
+var newTursoSync syncFactory
 
 type remoteSync interface {
 	Pull(ctx context.Context) error
@@ -26,6 +32,61 @@ func evaluateSyncStartup(localReady bool, pullErr error) error {
 func localDBReady(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.Size() > 0
+}
+
+func openTursoSync(opts Options) (*DB, error) {
+	if newTursoSync == nil {
+		return nil, fmt.Errorf("turso-sync factory is not registered")
+	}
+
+	ready := localDBReady(opts.Path)
+	sqlDB, syncer, err := newTursoSync(opts)
+	if err != nil {
+		if ready {
+			return nil, err
+		}
+		return nil, fmt.Errorf("turso-sync: remote unreachable and local database is empty: %w", err)
+	}
+
+	ctx := context.Background()
+	pullErr := syncer.Pull(ctx)
+	if err := evaluateSyncStartup(ready, pullErr); err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
+	if pullErr != nil && ready {
+		slog.Warn("turso sync pull failed at startup; continuing with local database", "error", pullErr)
+	}
+
+	db := &DB{DB: sqlDB, encryptionKey: opts.EncryptionKey, syncer: syncer}
+
+	if err := db.migrate(ctx); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("run migrations: %w", err)
+	}
+
+	if len(opts.EncryptionKey) == 32 {
+		if err := db.migrateEncryption(ctx); err != nil {
+			_ = sqlDB.Close()
+			return nil, fmt.Errorf("encryption migration: %w", err)
+		}
+	}
+
+	if pullErr == nil {
+		if pushErr := syncer.Push(ctx); pushErr != nil {
+			db.setSyncStatus(pushErr)
+		} else {
+			db.setSyncStatus(nil)
+		}
+	}
+
+	interval := opts.SyncInterval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	db.startSyncLoop(interval)
+
+	return db, nil
 }
 
 func (db *DB) startSyncLoop(interval time.Duration) {
