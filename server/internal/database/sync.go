@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 )
 
@@ -26,12 +25,15 @@ func evaluateSyncStartup(localReady bool, pullErr error) error {
 	if localReady {
 		return nil
 	}
-	return fmt.Errorf("turso-sync: remote unreachable and local database is empty: %w", pullErr)
+	return fmt.Errorf("turso-sync: remote unreachable and local database does not contain the expected schema: %w", pullErr)
 }
 
-func localDBReady(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.Size() > 0
+func localDBReady(ctx context.Context, db *sql.DB) bool {
+	rows, err := db.QueryContext(ctx, "SELECT 1 FROM agents LIMIT 0")
+	if err != nil {
+		return false
+	}
+	return rows.Close() == nil
 }
 
 func openTursoSync(opts Options) (*DB, error) {
@@ -39,16 +41,13 @@ func openTursoSync(opts Options) (*DB, error) {
 		return nil, fmt.Errorf("turso-sync factory is not registered")
 	}
 
-	ready := localDBReady(opts.Path)
 	sqlDB, syncer, err := newTursoSync(opts)
 	if err != nil {
-		if ready {
-			return nil, err
-		}
-		return nil, fmt.Errorf("turso-sync: remote unreachable and local database is empty: %w", err)
+		return nil, fmt.Errorf("open turso-sync database: %w", err)
 	}
 
 	ctx := context.Background()
+	ready := localDBReady(ctx, sqlDB)
 	pullErr := syncer.Pull(ctx)
 	if err := evaluateSyncStartup(ready, pullErr); err != nil {
 		_ = sqlDB.Close()
@@ -97,7 +96,9 @@ func (db *DB) startSyncLoop(interval time.Duration) {
 	ctx, cancel := context.WithCancel(context.Background())
 	db.syncCancel = cancel
 
+	db.syncWG.Add(1)
 	go func() {
+		defer db.syncWG.Done()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 

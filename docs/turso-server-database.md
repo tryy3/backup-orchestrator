@@ -81,10 +81,18 @@ Tested with `turso.tech/database/tursogo` v0.7.2 under `CGO_ENABLED=0`. A databa
 
 1. Create an empty Turso Database (Turso Database engine, not a legacy libSQL-only database).
 2. Stop the server.
-3. Set `BACKUP_DB_DRIVER=turso-sync`, keep `BACKUP_DB_PATH` pointing at the existing SQLite file, and set `BACKUP_DB_URL` and `BACKUP_DB_AUTH_TOKEN`.
-4. Start the server. The first successful `Push()` uploads local state to Turso — that is the cutover.
-5. Leave the previous `server.db` copy offline as rollback until agents reconnect and at least one job report is stored.
-6. Verify: UI data present, agents connected, one backup report stored.
+3. Before changing any database settings, copy both the production database and its encryption key to offline backup paths:
+
+   ```bash
+   install -m 0600 /var/lib/backup-orchestrator/server.db /var/backups/backup-orchestrator/server.db.pre-turso
+   install -m 0600 /var/lib/backup-orchestrator/encryption.key /var/backups/backup-orchestrator/encryption.key.pre-turso
+   ```
+
+   Adjust the paths for the deployment and verify both backup files exist. They must remain a matched pair; restoring the database without its key makes encrypted credentials unrecoverable.
+4. Set `BACKUP_DB_DRIVER=turso-sync`, keep `BACKUP_DB_PATH` pointing at the existing production SQLite file, and set `BACKUP_DB_URL` and `BACKUP_DB_AUTH_TOKEN`.
+5. Start the server. The first successful `Push()` uploads local state to Turso — that is the cutover.
+6. Leave the backup copies offline as rollback until agents reconnect and at least one job report is stored.
+7. Verify: UI data present, agents connected, one backup report stored.
 
 ### Other switches
 

@@ -18,19 +18,25 @@ type DB struct {
 
 	syncer      remoteSync
 	syncCancel  context.CancelFunc
+	syncWG      sync.WaitGroup
 	syncMu      sync.Mutex
 	lastSyncOK  time.Time
 	lastSyncErr error
 }
 
+const shutdownPushTimeout = 10 * time.Second
+
 // Close stops the sync loop, best-effort pushes local changes, then closes the connection.
 func (db *DB) Close() error {
 	if db.syncCancel != nil {
 		db.syncCancel()
+		db.syncWG.Wait()
 		db.syncCancel = nil
 	}
 	if db.syncer != nil {
-		_ = db.syncer.Push(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownPushTimeout)
+		_ = db.syncer.Push(ctx)
+		cancel()
 		db.syncer = nil
 	}
 	if db.DB == nil {
