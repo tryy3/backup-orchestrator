@@ -13,13 +13,15 @@ description: >-
 
 Generate polished, user-facing release notes from the raw PR data collected for a GitHub release draft.
 
-CI (`refresh-release-draft.yml`) keeps the draft body updated with structured PR `release-note` blocks after each Release Drafter run. **This skill** is for the final AI-polished pass when you are ready to publish — run it locally, review the output, then update the draft release body manually or via `gh release edit`.
+CI (`refresh-release-draft.yml`) keeps the draft body updated with structured PR `release-note` blocks after each Release Drafter run. **This skill** is for the final AI-polished pass when you are ready to publish — run it locally, review the output, then update the draft release body with `gh release edit`.
 
 ## Prerequisites
 
 - `gh` CLI must be authenticated (used by the data collection script).
 - Python 3 must be available.
 - The repository must have a Release Drafter draft for the requested version.
+
+GitHub sometimes exposes draft releases with an `untagged-*` tag while the release `name` still carries the intended semver (for example `v0.4.0`). The collection script resolves that case automatically. If draft listing is empty or ambiguous in CI, pass `--release-id` from the GitHub release URL instead.
 
 ## Workflow
 
@@ -29,7 +31,13 @@ The user **must** provide a version number (e.g. `v0.4.0`). If they haven't, ask
 
 > Which version should I generate release notes for? (e.g. `v0.4.0`)
 
-Do not auto-detect a draft release. The data collection script requires an explicit version and will fail if that release does not exist or is not a draft.
+Do not auto-detect a draft release. The data collection script requires an explicit version (or `--release-id`) and will fail if that release does not exist or is not a draft.
+
+If the user only knows the release ID (from the GitHub release page URL), use:
+
+```bash
+python3 scripts/collect-release-prs.py --release-id <id>
+```
 
 ### Step 2: Collect PR data
 
@@ -37,6 +45,13 @@ Always run the collection script before reading PR data, even if the JSON file a
 
 ```bash
 python3 scripts/collect-release-prs.py <version>
+```
+
+To inspect which draft GitHub currently exposes before collecting:
+
+```bash
+python3 scripts/draft_release.py --list
+python3 scripts/draft_release.py --version <version> --json
 ```
 
 This writes (or updates) `docs/version-drafts/<version>-pr-data.json`. The script validates that `<version>` is an existing draft release. It owns cache reconciliation by comparing the current release draft's PR list with the existing JSON file, keeping previously fetched PR data and fetching only newly added PRs.
@@ -135,6 +150,31 @@ Each entry is just the PR title linked to the PR URL. This mirrors the Release D
 Show the generated release notes to the user in the chat. The markdown should be ready to paste into the GitHub release draft body.
 
 Remind the user to review and adjust the summary before publishing — the AI summary is a starting point, not a final version.
+
+### Step 6: Update the draft release (optional)
+
+When the user approves the enriched notes, write them to a temp file and update the draft release.
+
+1. Resolve the draft tag GitHub expects for `gh release edit`:
+
+```bash
+python3 scripts/draft_release.py --version <version> --json
+```
+
+Use the `tag_name` field from the JSON (this may be `untagged-*` even when `effective_version` is `v0.4.0`).
+
+2. Save the approved markdown and update the draft:
+
+```bash
+gh release edit <tag_name> --notes-file /path/to/enriched-notes.md
+```
+
+If tag-based lookup fails, resolve by release ID instead:
+
+```bash
+python3 scripts/collect-release-prs.py --release-id <id>   # verify draft exists
+gh release edit <tag_name_from_json> --notes-file /path/to/enriched-notes.md
+```
 
 ## Output Template
 

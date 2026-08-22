@@ -100,6 +100,13 @@ PRs follow the template in `.github/pull_request_template.md`. Key sections the 
 # Collect PR data from a specific release
 python3 scripts/collect-release-prs.py v0.4.0
 
+# Resolve draft metadata (including untagged-* drafts)
+python3 scripts/draft_release.py --version v0.4.0 --json
+python3 scripts/draft_release.py --list
+
+# Collect by explicit release ID when tag lookup is unreliable
+python3 scripts/collect-release-prs.py --release-id 123456789
+
 # Output to a specific file
 python3 scripts/collect-release-prs.py v0.4.0 --output pr-data.json
 ```
@@ -109,6 +116,7 @@ Then invoke the Copilot skill to generate enriched notes from the JSON.
 ## Relationship to Existing Scripts
 
 - `scripts/release-notes.py` — collects PRs by searching git history since a tag. Used by the `refresh-release-draft.yml` CI workflow to maintain the structured draft body.
+- `scripts/draft_release.py` — resolves the current semver draft release, including `untagged-*` drafts whose `name` carries the intended version. Used by CI and by the collection script.
 - `scripts/ai-polish.py` — calls GitHub Models API for a summary paragraph. Optional; the `enrich-release-notes` skill is the preferred path for AI-polished notes at release time.
 
 Both existing scripts remain usable independently. The new workflow is an alternative path that produces richer output.
