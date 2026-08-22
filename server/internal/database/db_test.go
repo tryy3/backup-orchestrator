@@ -29,6 +29,13 @@ func TestOpen_UnknownDriver(t *testing.T) {
 	assert.Contains(t, err.Error(), "driver")
 }
 
+func TestOpen_Turso_RequiresURL(t *testing.T) {
+	t.Parallel()
+	_, err := Open(Options{Driver: DriverTurso})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "BACKUP_DB_URL")
+}
+
 func TestNew(t *testing.T) {
 	t.Parallel()
 

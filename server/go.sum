@@ -98,3 +98,5 @@ modernc.org/token v1.1.0 h1:Xl7Ap9dKaEs5kLoOQeQmPWevfnk/DM5qcLcYlA8ys6Y=
 modernc.org/token v1.1.0/go.mod h1:UGzOrNV1mAFSEB63lOFHIpNRUVMvYTc6yu1SMY/XTDM=
 turso.tech/database/tursogo v0.7.2 h1:WhsLl67w/Kw7ACEsJaTlXIb1parIgRqUcB8AbNZsBqU=
 turso.tech/database/tursogo v0.7.2/go.mod h1:tmC+H2Ot+guA9bs5oOcbbmpj1mHFTa/g7QREXG5QHq0=
+turso.tech/database/tursogo-serverless v0.0.0-20260822025733-9e8a19aeb52c h1:Yjx0319on617oZ8XiZpWd60Er2Yo8lzbT2tCE4vTI9c=
+turso.tech/database/tursogo-serverless v0.0.0-20260822025733-9e8a19aeb52c/go.mod h1:KWrz0BzLKiXUkLmM5HXyr/gWA8ySNZexfW0NV0GGk0A=

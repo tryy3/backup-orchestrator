@@ -4,18 +4,46 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
-	turso "turso.tech/database/tursogo"
+	tursogo "turso.tech/database/tursogo"
+	turso "turso.tech/database/tursogo-serverless"
 )
 
 func init() {
 	newTursoSync = openTursoSyncSDK
 }
 
+func openTursoRemote(opts Options) (*DB, error) {
+	if opts.URL == "" || opts.AuthToken == "" {
+		return nil, fmt.Errorf("BACKUP_DB_URL and BACKUP_DB_AUTH_TOKEN are required for driver %q", DriverTurso)
+	}
+	sqlDB := sql.OpenDB(turso.NewConnector(opts.URL, opts.AuthToken))
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(2)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+	if err := sqlDB.Ping(); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("ping turso: %w", err)
+	}
+	db := &DB{DB: sqlDB, encryptionKey: opts.EncryptionKey}
+	if err := db.migrate(context.Background()); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("run migrations: %w", err)
+	}
+	if len(opts.EncryptionKey) == 32 {
+		if err := db.migrateEncryption(context.Background()); err != nil {
+			_ = sqlDB.Close()
+			return nil, err
+		}
+	}
+	return db, nil
+}
+
 func openTursoSyncSDK(opts Options) (*sql.DB, remoteSync, error) {
 	ctx := context.Background()
 	bootstrap := false
-	syncDB, err := turso.NewTursoSyncDb(ctx, turso.TursoSyncDbConfig{
+	syncDB, err := tursogo.NewTursoSyncDb(ctx, tursogo.TursoSyncDbConfig{
 		Path:             opts.Path,
 		RemoteUrl:        opts.URL,
 		AuthToken:        opts.AuthToken,
@@ -36,7 +64,7 @@ func openTursoSyncSDK(opts Options) (*sql.DB, remoteSync, error) {
 }
 
 type tursoSyncAdapter struct {
-	db *turso.TursoSyncDb
+	db *tursogo.TursoSyncDb
 }
 
 func (a tursoSyncAdapter) Pull(ctx context.Context) error {
