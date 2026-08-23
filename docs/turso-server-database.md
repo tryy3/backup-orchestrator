@@ -71,38 +71,63 @@ v1 supports **one server writer** per cloud database. Do not run `turso-sync` an
 
 ## Migration: `sqlite` → `turso-sync`
 
-v1 is a **manual maintenance window**. No automatic rewrite on first connect. Agent `state.db` is **not** migrated.
+v1 is a **manual maintenance window**. Agent `state.db` is **not** migrated.
 
-### File adopt (supported)
+Plain modernc SQLite files **cannot** be pointed at Turso Sync directly (missing
+CDC history). Creating schema locally in a sync file and `Push()`ing has also
+triggered Turso engine panics on reopen (`negative root page and a positive
+root page`). The supported cutover is:
 
-Tested with `turso.tech/database/tursogo` v0.7.2 under `CGO_ENABLED=0`. A database created and migrated by `modernc.org/sqlite` v1.57.0 was reopened with `TursoSyncDb` using `BootstrapIfEmpty=false` and an unreachable remote URL. `Connect` succeeded and a previously inserted row in the `agents` table was readable.
+1. Import rows into Turso **remote-only**
+2. Bootstrap a **new empty** local sync file with `Pull()`
 
-**Procedure:**
+### Procedure
 
-1. Create an empty Turso Database (Turso Database engine, not a legacy libSQL-only database).
+1. Create an empty Turso Database (`turso db create <name> --tursodb`), or reuse
+   one you are willing to overwrite (the migrator drops app tables remotely).
 2. Stop the server.
-3. Before changing any database settings, copy both the production database and its encryption key to offline backup paths:
+3. Back up the SQLite file and encryption key:
 
    ```bash
-   install -m 0600 /var/lib/backup-orchestrator/server.db /var/backups/backup-orchestrator/server.db.pre-turso
-   install -m 0600 /var/lib/backup-orchestrator/encryption.key /var/backups/backup-orchestrator/encryption.key.pre-turso
+   cp "$BACKUP_DB_PATH" "${BACKUP_DB_PATH}.pre-turso"
    ```
 
-   Adjust the paths for the deployment and verify both backup files exist. They must remain a matched pair; restoring the database without its key makes encrypted credentials unrecoverable.
-4. Set `BACKUP_DB_DRIVER=turso-sync`, keep `BACKUP_DB_PATH` pointing at the existing production SQLite file, and set `BACKUP_DB_URL` and `BACKUP_DB_AUTH_TOKEN`.
-5. Start the server. The first successful `Push()` uploads local state to Turso — that is the cutover.
-6. Leave the backup copies offline as rollback until agents reconnect and at least one job report is stored.
-7. Verify: UI data present, agents connected, one backup report stored.
+4. Run the migrator (reads `BACKUP_DB_URL` / `BACKUP_DB_AUTH_TOKEN` from `.env`):
+
+   ```bash
+   mv tmp/server.db tmp/server.db.pre-turso
+   just migrate-turso-sync tmp/server.db.pre-turso tmp/server.db
+   ```
+
+5. Set `.env`:
+
+   ```bash
+   BACKUP_DB_DRIVER=turso-sync
+   BACKUP_DB_PATH=/absolute/path/to/tmp/server.db   # the NEW file from step 4
+   BACKUP_DB_URL=...
+   BACKUP_DB_AUTH_TOKEN=...
+   BACKUP_ENCRYPTION_KEY=...   # same key as before (ciphertext is copied as-is)
+   ```
+
+6. Start the server. Verify UI data, agents, and a job report.
+7. Keep `*.pre-turso` offline until you are satisfied; then you may archive it.
+
+### If turso-sync panics on open
+
+Quarantine all sync sidecars (`server.db`, `-wal`, `-shm`, `-changes`, `-info`,
+`-log`, `-wal-revert`), restore `*.pre-turso` as plain `sqlite`, then re-run the
+migrator against a **fresh empty** destination path (and preferably a clean
+Turso database if the previous Push left bad remote state).
 
 ### Other switches
 
 | From → to | Procedure |
 |---|---|
-| `sqlite` → `turso` | Import file into Turso, switch driver to `turso` |
-| `turso` → `turso-sync` | New local path, start sync, `Pull()` bootstraps, local becomes primary |
+| `sqlite` → `turso` | Migrator step 1 only (remote import), then set `BACKUP_DB_DRIVER=turso` |
+| `turso` → `turso-sync` | New empty local path, start sync, `Pull()` bootstraps |
 | `turso-sync` → `turso` | `Push()` until caught up, stop, switch to remote-only |
 | `turso-sync` → `sqlite` | Only if the local file opens as plain SQLite; otherwise export from Turso |
-| Rollback | Restore previous driver + files/env. Never start two writers on the same cloud DB |
+| Rollback | Restore previous driver + `*.pre-turso` files/env. Never start two writers on the same cloud DB |
 
 ## Integration test
 

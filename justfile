@@ -214,6 +214,16 @@ pod-stop:
 
 pod-restart: pod-stop pod-start
 
+# ── Database ──────────────────────────────────────────────────────────────────
+
+# Copy an existing modernc SQLite server.db into a new Turso Sync local file and Push.
+# Requires BACKUP_DB_URL and BACKUP_DB_AUTH_TOKEN in the environment (or .env).
+# Paths are relative to the repo root (or use absolute paths).
+# Usage:
+#   just migrate-turso-sync tmp/server.db.pre-turso tmp/server.db
+migrate-turso-sync src dst:
+    cd server && go run ./cmd/migrate-turso-sync -from={{justfile_directory()}}/{{src}} -to={{justfile_directory()}}/{{dst}}
+
 # ── Dev (hot reload) ──────────────────────────────────────────────────────────
 
 # Run the server with air hot restart (no frontend embed; Vite handles assets).

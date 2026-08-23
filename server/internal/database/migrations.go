@@ -175,6 +175,13 @@ CREATE TABLE IF NOT EXISTS job_hook_results (
 CREATE INDEX IF NOT EXISTS idx_job_hook_results_job_id ON job_hook_results(job_id);
 `
 
+// MigrateConn applies the server schema to an open connection (used by the
+// turso-sync cutover tool as well as normal Open paths).
+func MigrateConn(ctx context.Context, conn *sql.DB) error {
+	db := &DB{DB: conn}
+	return db.migrate(ctx)
+}
+
 // migrate runs all DDL statements to create tables if they don't exist.
 func (db *DB) migrate(ctx context.Context) error {
 	if _, err := db.ExecContext(ctx, migrationSQL); err != nil {

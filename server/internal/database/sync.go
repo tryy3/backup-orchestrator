@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -26,6 +27,13 @@ func evaluateSyncStartup(localReady bool, pullErr error) error {
 		return nil
 	}
 	return fmt.Errorf("turso-sync: remote unreachable and local database does not contain the expected schema: %w", pullErr)
+}
+
+func isCDCHistoryError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "without CDC history")
 }
 
 func localDBReady(ctx context.Context, db *sql.DB) bool {
@@ -54,6 +62,10 @@ func openTursoSync(opts Options) (*DB, error) {
 		return nil, err
 	}
 	if pullErr != nil && ready {
+		if isCDCHistoryError(pullErr) {
+			_ = sqlDB.Close()
+			return nil, fmt.Errorf("turso-sync cannot adopt a plain SQLite file (missing CDC history); run: just migrate-turso-sync <old.db> <new-empty.db>: %w", pullErr)
+		}
 		slog.Warn("turso sync pull failed at startup; continuing with local database", "error", pullErr)
 	}
 
