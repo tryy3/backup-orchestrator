@@ -59,7 +59,7 @@ cd .. && lefthook install
 just --list
 ```
 
-Local defaults are in `.env.dev`. Override with `.env.dev.local`.
+Local defaults: copy `.env.example` → `.env` (git-ignored). `just` / direnv load `.env`.
 
 ## Development Workflow
 
@@ -80,8 +80,7 @@ just dev-stop
 
 Notes:
 
-- `just dev-server` sets `BACKUP_DB_PATH` to `tmp/server.db`.
-- `just dev-agent` sets `BACKUP_DATA_DIR` to `tmp/agent-data`.
+- Config comes from `.env` (see `.env.example`). Use absolute paths for DB/data dirs.
 - Frontend dev server proxies `/api` to server on localhost:8080.
 
 ## Build Instructions

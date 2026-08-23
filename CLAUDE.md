@@ -62,10 +62,9 @@ Hooks run `gofmt` (format check) and `go vet` on staged Go files. They are inten
 
 ## Local Development Notes
 
-- Local defaults are in `.env.dev`.
-- Override local values in `.env.dev.local` (git-ignored).
-- `just dev-server` sets `BACKUP_DB_PATH` to `tmp/server.db`.
-- `just dev-agent` sets `BACKUP_DATA_DIR` to `tmp/agent-data`.
+- Copy `.env.example` to `.env` (git-ignored) and adjust for your machine.
+- `just` and direnv load `.env` as-is.
+- Use absolute paths for `BACKUP_DB_PATH` / `BACKUP_DATA_DIR` (recipes `cd` into `server/` / `agent/`).
 - `just dev-frontend` runs Vite with `/api` proxied to `localhost:8080`.
 
 Common dev commands:
