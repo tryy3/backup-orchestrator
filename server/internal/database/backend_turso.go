@@ -27,6 +27,10 @@ func openTursoRemote(opts Options) (*DB, error) {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("ping turso: %w", err)
 	}
+	if err := enableForeignKeys(ctx, sqlDB); err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
 	db := &DB{DB: sqlDB, encryptionKey: opts.EncryptionKey}
 	if err := db.migrate(ctx); err != nil {
 		_ = sqlDB.Close()
@@ -35,7 +39,7 @@ func openTursoRemote(opts Options) (*DB, error) {
 	if len(opts.EncryptionKey) == 32 {
 		if err := db.migrateEncryption(ctx); err != nil {
 			_ = sqlDB.Close()
-			return nil, err
+			return nil, fmt.Errorf("encryption migration: %w", err)
 		}
 	}
 	return db, nil

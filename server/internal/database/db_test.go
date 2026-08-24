@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,6 +105,14 @@ func TestHasColumn_ExistingAndMissing(t *testing.T) {
 	ok, err = db.hasColumn(ctx, "agents", "not_a_real_column")
 	require.NoError(t, err)
 	assert.False(t, ok)
+}
+
+func TestIsMissingColumnError(t *testing.T) {
+	t.Parallel()
+	assert.True(t, isMissingColumnError(fmt.Errorf("SQL logic error: no such column: foo")))
+	assert.True(t, isMissingColumnError(fmt.Errorf("table agents has no column named bar")))
+	assert.False(t, isMissingColumnError(fmt.Errorf("network timeout")))
+	assert.False(t, isMissingColumnError(nil))
 }
 
 func TestAddColumnIfMissing_Idempotent(t *testing.T) {

@@ -34,6 +34,9 @@ type Options struct {
 	ToPath    string
 	URL       string
 	AuthToken string
+	// Force allows DROP of existing remote app tables. Without Force, a remote
+	// that already has any app table is refused so a wrong URL cannot wipe data.
+	Force bool
 }
 
 // SQLiteToTursoSync copies rows from a modernc SQLite file into Turso Cloud
@@ -67,7 +70,7 @@ func SQLiteToTursoSync(ctx context.Context, opts Options) error {
 	defer func() { _ = src.Close() }()
 
 	fmt.Println("step 1/2: import into Turso remote…")
-	if err := importToRemote(ctx, src, opts.URL, opts.AuthToken); err != nil {
+	if err := importToRemote(ctx, src, opts); err != nil {
 		return err
 	}
 
@@ -79,14 +82,22 @@ func SQLiteToTursoSync(ctx context.Context, opts Options) error {
 	return nil
 }
 
-func importToRemote(ctx context.Context, src *sql.DB, url, token string) error {
-	remote := sql.OpenDB(turso.NewConnector(url, token))
+func importToRemote(ctx context.Context, src *sql.DB, opts Options) error {
+	remote := sql.OpenDB(turso.NewConnector(opts.URL, opts.AuthToken))
 	remote.SetMaxOpenConns(4)
 	remote.SetConnMaxLifetime(5 * time.Minute)
 	defer func() { _ = remote.Close() }()
 
 	if err := remote.PingContext(ctx); err != nil {
 		return fmt.Errorf("ping turso remote: %w", err)
+	}
+
+	existing, err := remoteAppTables(ctx, remote)
+	if err != nil {
+		return fmt.Errorf("inspect remote tables: %w", err)
+	}
+	if len(existing) > 0 && !opts.Force {
+		return fmt.Errorf("remote already has app tables %v; refusing to DROP without -force (wrong URL would destroy data)", existing)
 	}
 
 	// Clear prior app data so re-runs are idempotent (FK-safe reverse order).
@@ -210,4 +221,18 @@ func tableExists(ctx context.Context, db *sql.DB, name string) (bool, error) {
 		return false, err
 	}
 	return n > 0, nil
+}
+
+func remoteAppTables(ctx context.Context, db *sql.DB) ([]string, error) {
+	var found []string
+	for _, table := range copyTables {
+		ok, err := tableExists(ctx, db, table)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			found = append(found, table)
+		}
+	}
+	return found, nil
 }

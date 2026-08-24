@@ -55,6 +55,10 @@ func openTursoSync(opts Options) (*DB, error) {
 	}
 
 	ctx := context.Background()
+	if err := enableForeignKeys(ctx, sqlDB); err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
 	ready := localDBReady(ctx, sqlDB)
 	pullErr := syncer.Pull(ctx)
 	if err := evaluateSyncStartup(ready, pullErr); err != nil {

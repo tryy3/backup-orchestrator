@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 const migrationSQL = `
@@ -220,8 +221,21 @@ func (db *DB) hasColumn(ctx context.Context, table, column string) (bool, error)
 	q := fmt.Sprintf("SELECT %s FROM %s LIMIT 0", column, table)
 	if _, selErr := db.ExecContext(ctx, q); selErr == nil {
 		return true, nil
+	} else if isMissingColumnError(selErr) {
+		return false, nil
+	} else {
+		return false, fmt.Errorf("check column %s.%s: pragma rejected (%v); projection: %w", table, column, err, selErr)
 	}
-	return false, nil
+}
+
+func isMissingColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such column") ||
+		strings.Contains(msg, "has no column named") ||
+		strings.Contains(msg, "unknown column")
 }
 
 // addColumnIfMissing adds a column to a table if it doesn't already exist.

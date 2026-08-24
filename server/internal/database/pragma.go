@@ -34,9 +34,9 @@ func openSQLite(opts Options) (*DB, error) {
 	}
 
 	// Enable foreign key enforcement.
-	if _, err := sqlDB.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); err != nil {
+	if err := enableForeignKeys(context.Background(), sqlDB); err != nil {
 		_ = sqlDB.Close()
-		return nil, fmt.Errorf("enable foreign keys: %w", err)
+		return nil, err
 	}
 
 	db := &DB{DB: sqlDB, encryptionKey: opts.EncryptionKey}
@@ -55,4 +55,11 @@ func openSQLite(opts Options) (*DB, error) {
 	}
 
 	return db, nil
+}
+
+func enableForeignKeys(ctx context.Context, sqlDB *sql.DB) error {
+	if _, err := sqlDB.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
+		return fmt.Errorf("enable foreign keys: %w", err)
+	}
+	return nil
 }

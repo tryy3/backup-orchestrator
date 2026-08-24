@@ -5,7 +5,8 @@
 //
 //	go run ./cmd/migrate-turso-sync -from=old.db -to=new.db
 //
-// Reads BACKUP_DB_URL and BACKUP_DB_AUTH_TOKEN from the environment (or flags).
+// Reads BACKUP_DB_URL and BACKUP_DB_AUTH_TOKEN from the environment only
+// (do not pass tokens on the command line — they appear in process listings).
 package main
 
 import (
@@ -22,8 +23,7 @@ import (
 func main() {
 	from := flag.String("from", "", "path to existing modernc SQLite server.db")
 	to := flag.String("to", "", "path for new turso-sync local database (must be empty/missing)")
-	url := flag.String("url", os.Getenv("BACKUP_DB_URL"), "Turso database URL")
-	token := flag.String("token", os.Getenv("BACKUP_DB_AUTH_TOKEN"), "Turso auth token")
+	force := flag.Bool("force", false, "allow DROP of existing remote app tables (required if Turso DB is not empty)")
 	flag.Parse()
 
 	if strings.TrimSpace(*from) == "" || strings.TrimSpace(*to) == "" {
@@ -31,12 +31,19 @@ func main() {
 		os.Exit(2)
 	}
 
+	url := strings.TrimSpace(os.Getenv("BACKUP_DB_URL"))
+	token := strings.TrimSpace(os.Getenv("BACKUP_DB_AUTH_TOKEN"))
+	if url == "" || token == "" {
+		log.Fatalf("migrate-turso-sync: BACKUP_DB_URL and BACKUP_DB_AUTH_TOKEN must be set in the environment")
+	}
+
 	ctx := context.Background()
 	err := migrate.SQLiteToTursoSync(ctx, migrate.Options{
 		FromPath:  *from,
 		ToPath:    *to,
-		URL:       strings.TrimSpace(*url),
-		AuthToken: strings.TrimSpace(*token),
+		URL:       url,
+		AuthToken: token,
+		Force:     *force,
 	})
 	if err != nil {
 		log.Fatalf("migrate-turso-sync: %v", err)

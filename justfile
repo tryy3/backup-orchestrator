@@ -218,11 +218,22 @@ pod-restart: pod-stop pod-start
 
 # Copy an existing modernc SQLite server.db into a new Turso Sync local file and Push.
 # Requires BACKUP_DB_URL and BACKUP_DB_AUTH_TOKEN in the environment (or .env).
-# Paths are relative to the repo root (or use absolute paths).
+# Paths may be relative to the repo root or absolute. Pass `force` to wipe remote app tables.
 # Usage:
 #   just migrate-turso-sync tmp/server.db.pre-turso tmp/server.db
-migrate-turso-sync src dst:
-    cd server && go run ./cmd/migrate-turso-sync -from={{justfile_directory()}}/{{src}} -to={{justfile_directory()}}/{{dst}}
+#   just migrate-turso-sync /tmp/old.db /tmp/new.db force
+migrate-turso-sync src dst force="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src_path="{{src}}"
+    dst_path="{{dst}}"
+    [[ "$src_path" = /* ]] || src_path="{{justfile_directory()}}/$src_path"
+    [[ "$dst_path" = /* ]] || dst_path="{{justfile_directory()}}/$dst_path"
+    extra=()
+    if [[ "{{force}}" == "force" || "{{force}}" == "--force" ]]; then
+      extra+=(-force)
+    fi
+    cd "{{justfile_directory()}}/server" && go run ./cmd/migrate-turso-sync -from="$src_path" -to="$dst_path" "${extra[@]}"
 
 # ── Dev (hot reload) ──────────────────────────────────────────────────────────
 

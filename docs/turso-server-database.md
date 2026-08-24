@@ -37,7 +37,9 @@ Validation:
 
 ## Encryption key
 
-`BACKUP_ENCRYPTION_KEY` is a 64-character hex string (32 bytes) used for application-level ciphertext (repo passwords, rclone configs). It stays host-local; Turso stores encrypted values only.
+`BACKUP_ENCRYPTION_KEY` is a 64-character hex string (32 bytes) used for **application-level** ciphertext of repository passwords and rclone configs. The key stays host-local (or is supplied via env for remote-only `turso`).
+
+Only those credential fields are encrypted today. Other control-plane data in the database — including `agents.api_key`, script/hook `command` bodies, paths, and schedules — remains **plaintext** in SQLite and in Turso. Treat `BACKUP_DB_AUTH_TOKEN` as tier-0: possession is equivalent to read/write of the control plane (see [#245](https://github.com/tryy3/backup-orchestrator/issues/245) for expanding at-rest encryption).
 
 Resolution order:
 
@@ -84,7 +86,8 @@ root page`). The supported cutover is:
 ### Procedure
 
 1. Create an empty Turso Database (`turso db create <name> --tursodb`), or reuse
-   one you are willing to overwrite (the migrator drops app tables remotely).
+   one you are willing to overwrite. Re-runs against a non-empty remote require
+   `-force` (the migrator drops app tables remotely).
 2. Stop the server.
 3. Back up the SQLite file and encryption key:
 
@@ -92,13 +95,17 @@ root page`). The supported cutover is:
    cp "$BACKUP_DB_PATH" "${BACKUP_DB_PATH}.pre-turso"
    ```
 
-4. Run the migrator (reads `BACKUP_DB_URL` / `BACKUP_DB_AUTH_TOKEN` from `.env`):
+4. Run the migrator (reads `BACKUP_DB_URL` / `BACKUP_DB_AUTH_TOKEN` from `.env`
+   only — do not pass the token on the CLI):
 
    ```bash
    mv tmp/server.db tmp/server.db.pre-turso
    just migrate-turso-sync tmp/server.db.pre-turso tmp/server.db
+   # Re-run / overwrite remote app tables:
+   # just migrate-turso-sync tmp/server.db.pre-turso tmp/server.db force
    ```
 
+   Paths may be relative to the repo root or absolute.
 5. Set `.env`:
 
    ```bash
@@ -154,3 +161,4 @@ Without `BACKUP_TEST_TURSO_URL`, the test skips.
 
 - [database-schema.md](database-schema.md) — shared schema SQL
 - [superpowers/specs/2026-08-23-turso-server-database-design.md](superpowers/specs/2026-08-23-turso-server-database-design.md) — design record
+- [#245](https://github.com/tryy3/backup-orchestrator/issues/245) — expand at-rest encryption for control-plane fields
