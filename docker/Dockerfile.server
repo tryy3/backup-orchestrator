@@ -32,10 +32,11 @@ COPY server/ ./server/
 # Copy built frontend into embed directory
 COPY --from=frontend /app/frontend/dist ./server/internal/frontend/dist
 
-# Build
-RUN cd server && CGO_ENABLED=0 go build -o /server ./cmd/server
+# Build with -tags musl so tursogo embeds linux_*_musl libturso_sync_sdk_kit.so
+# (without it, the glibc .so is embedded and fails on Alpine with missing ld-linux-x86-64.so.2).
+RUN cd server && CGO_ENABLED=0 go build -tags musl -o /server ./cmd/server
 
-# Stage 3: Runtime
+# Stage 4: Runtime
 FROM docker.io/library/alpine:3.24
 # libgcc: required by tursogo's musl libturso_sync_sdk_kit.so (BACKUP_DB_DRIVER=turso-sync)
 RUN apk add --no-cache ca-certificates tzdata libgcc
