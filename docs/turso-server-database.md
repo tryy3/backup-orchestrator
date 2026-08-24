@@ -67,6 +67,12 @@ An empty local file plus a down remote must not start: that would create a diver
 
 Sync errors are logged and recorded as status; they do not fail API or gRPC handlers.
 
+## Docker / Alpine runtime
+
+`turso-sync` loads a native musl library (`libturso_sync_sdk_kit.so`) that dynamically links `libgcc_s.so.1`. The published server image installs Alpine’s `libgcc` package for this. If you build a custom minimal image and use `BACKUP_DB_DRIVER=turso-sync`, install `libgcc` (for example `apk add libgcc`) or startup panics with “Error loading shared library libgcc_s.so.1”.
+
+Remote-only `turso` (`tursogo-serverless`) does not need that native library.
+
 ## One writer
 
 v1 supports **one server writer** per cloud database. Do not run `turso-sync` and `turso` (or two `turso-sync` processes) against the same Turso Database at the same time.
