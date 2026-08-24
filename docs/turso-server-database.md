@@ -69,7 +69,19 @@ Sync errors are logged and recorded as status; they do not fail API or gRPC hand
 
 ## Docker / Alpine runtime
 
-`turso-sync` loads a native musl library (`libturso_sync_sdk_kit.so`) that dynamically links `libgcc_s.so.1`. The published server image installs Alpine’s `libgcc` package for this. If you build a custom minimal image and use `BACKUP_DB_DRIVER=turso-sync`, install `libgcc` (for example `apk add libgcc`) or startup panics with “Error loading shared library libgcc_s.so.1”.
+`turso-sync` loads a native `libturso_sync_sdk_kit.so` selected at **compile time** by the Go `musl` build tag (`github.com/tursodatabase/turso-go-platform-libs`):
+
+| Build | Embedded library | Runtime |
+|---|---|---|
+| default (`!musl`) | `libs/linux_<arch>/` (glibc) | glibc hosts (most desktop/CI Linux) |
+| `-tags musl` | `libs/linux_<arch>_musl/` | Alpine / musl |
+
+The published server image builds with `-tags musl` and installs Alpine’s `libgcc` (the musl `.so` dynamically links `libgcc_s.so.1`).
+
+If you build a custom Alpine image for `BACKUP_DB_DRIVER=turso-sync`:
+
+1. Pass `-tags musl` to `go build` (otherwise startup panics with missing `ld-linux-x86-64.so.2`).
+2. Install `libgcc` (for example `apk add libgcc`) or startup panics with missing `libgcc_s.so.1`.
 
 Remote-only `turso` (`tursogo-serverless`) does not need that native library.
 
