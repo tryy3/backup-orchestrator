@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,30 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestOpen_SQLiteEquivalentToNew(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "open.db")
+	db, err := Open(Options{Driver: DriverSQLite, Path: path})
+	require.NoError(t, err)
+	defer db.Close()
+	_, err = db.ExecContext(context.Background(), "SELECT 1 FROM agents LIMIT 0")
+	require.NoError(t, err)
+}
+
+func TestOpen_UnknownDriver(t *testing.T) {
+	t.Parallel()
+	_, err := Open(Options{Driver: "postgres"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "driver")
+}
+
+func TestOpen_Turso_RequiresURL(t *testing.T) {
+	t.Parallel()
+	_, err := Open(Options{Driver: DriverTurso})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "BACKUP_DB_URL")
+}
 
 func TestNew(t *testing.T) {
 	t.Parallel()
@@ -68,6 +93,34 @@ func TestNew_ConnectionPool(t *testing.T) {
 
 	stats := db.Stats()
 	assert.Equal(t, 25, stats.MaxOpenConnections)
+}
+
+func TestHasColumn_ExistingAndMissing(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	ctx := context.Background()
+	ok, err := db.hasColumn(ctx, "agents", "command_timeouts")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	ok, err = db.hasColumn(ctx, "agents", "not_a_real_column")
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
+func TestIsMissingColumnError(t *testing.T) {
+	t.Parallel()
+	assert.True(t, isMissingColumnError(fmt.Errorf("SQL logic error: no such column: foo")))
+	assert.True(t, isMissingColumnError(fmt.Errorf("table agents has no column named bar")))
+	assert.False(t, isMissingColumnError(fmt.Errorf("network timeout")))
+	assert.False(t, isMissingColumnError(nil))
+}
+
+func TestAddColumnIfMissing_Idempotent(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	ctx := context.Background()
+	require.NoError(t, db.addColumnIfMissing(ctx, "agents", "command_timeouts", "TEXT"))
+	require.NoError(t, db.addColumnIfMissing(ctx, "agents", "command_timeouts", "TEXT"))
 }
 
 func TestNew_Migrations(t *testing.T) {

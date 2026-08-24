@@ -84,27 +84,16 @@ This is the main open question and is discussed in detail in the section below. 
 
 ---
 
-### 3. Local env defaults — `.env.dev`
+### 3. Local env — `.env` / `.env.example`
 
-Both binaries need env vars to run locally. Rather than requiring developers to export variables manually, we check in a `.env.dev` file with safe defaults and `just` sources it before running.
+Both binaries need env vars to run locally. Commit a `.env.example` template (no secrets). Developers copy it to `.env` (git-ignored); `just` loads `.env` by default and direnv loads it via `.envrc`.
 
-Proposed `.env.dev` (committed, no secrets):
-
-```dotenv
-# server
-BACKUP_DB_PATH=./tmp/server.db
-BACKUP_HTTP_PORT=8080
-BACKUP_GRPC_PORT=8443
-# CORS: allow the Vite dev server (defaults to these two when unset)
-BACKUP_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
-
-# agent
-BACKUP_SERVER_URL=localhost:8443
-BACKUP_AGENT_NAME=dev-agent
-BACKUP_DATA_DIR=./tmp/agent-data
+```bash
+cp .env.example .env
+# edit .env for Turso credentials, ports, paths, etc.
 ```
 
-`just` can source it with `set dotenv-load` or by using `export $(cat .env.dev)` in the recipe. The `tmp/` directory should be in `.gitignore`.
+See `.env.example` for the full variable list (sqlite / turso / turso-sync, agent settings). Use absolute paths for `BACKUP_DB_PATH` and `BACKUP_DATA_DIR`. The `tmp/` directory is git-ignored.
 
 ---
 
@@ -154,11 +143,11 @@ Using build-tag split (`//go:build !dev` / `//go:build dev`). `air` builds the s
 dev-frontend:
     cd frontend && npm run dev
 
-# Run server with air hot restart (no frontend embed, uses .env.dev)
+# Run server with air hot restart (no frontend embed, uses .env)
 dev-server:
     cd server && air
 
-# Run agent with air hot restart (uses .env.dev)
+# Run agent with air hot restart (uses .env)
 dev-agent:
     cd agent && air
 
@@ -173,8 +162,8 @@ dev: dev-server dev-agent dev-frontend   # just --parallel if needed
 | File | Action | Notes |
 |------|--------|-------|
 | `docs/local-dev-setup.md` | Create | This document |
-| `.env.dev` | Create | Default env vars for local dev |
-| `.gitignore` | Update | Ignore `tmp/` and `.env.dev.local` |
+| `.env.example` | Create | Template env vars for local dev (copy to `.env`) |
+| `.gitignore` | Update | Ignore `tmp/` and `.env` |
 | `flake.nix` | Update | Add `air` to `buildInputs` (needs research) |
 | `server/.air.toml` | Create | air config for server binary |
 | `agent/.air.toml` | Create | air config for agent binary |
@@ -194,7 +183,7 @@ dev: dev-server dev-agent dev-frontend   # just --parallel if needed
    - Proceed with the build-tag approach for the frontend embed?
    - Use `just --parallel` for `just dev`, or introduce a Procfile + process manager?
 2. Once agreed, implement in this order:
-   1. `.env.dev` + `.gitignore` update
+   1. `.env.example` + `.gitignore` update
    2. `just dev-frontend` (no-risk, purely additive)
    3. `air` configs + `just dev-server` / `just dev-agent`
    4. Build-tag split for the frontend embed

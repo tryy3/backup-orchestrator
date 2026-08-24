@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // defaultAllowedOrigins are the origins permitted when BACKUP_ALLOWED_ORIGINS is not set.
@@ -19,22 +20,77 @@ var defaultAllowedOrigins = []string{
 
 // Config holds server configuration values.
 type Config struct {
+	Driver         Driver
 	DBPath         string
+	DBURL          string
+	DBAuthToken    string
+	SyncInterval   time.Duration
 	HTTPPort       string
 	GRPCPort       string
 	AllowedOrigins []string // CORS allowed origins
 	EncryptionKey  []byte   // 32-byte AES-256 key for encrypting secrets at rest
 }
 
+type Driver string
+
+const (
+	DriverSQLite    Driver = "sqlite"
+	DriverTurso     Driver = "turso"
+	DriverTursoSync Driver = "turso-sync"
+)
+
+func ParseDriver(raw string) (Driver, error) {
+	switch strings.TrimSpace(raw) {
+	case "", string(DriverSQLite):
+		return DriverSQLite, nil
+	case string(DriverTurso):
+		return DriverTurso, nil
+	case string(DriverTursoSync):
+		return DriverTursoSync, nil
+	default:
+		return "", fmt.Errorf("BACKUP_DB_DRIVER must be sqlite, turso, or turso-sync, got %q", raw)
+	}
+}
+
 // Load reads configuration from environment variables with sensible defaults.
 func Load() (*Config, error) {
+	driver, err := ParseDriver(os.Getenv("BACKUP_DB_DRIVER"))
+	if err != nil {
+		return nil, err
+	}
 	dbPath := getenv("BACKUP_DB_PATH", "/var/lib/backup-orchestrator/server.db")
-	key, err := loadEncryptionKey(dbPath)
+	if driver == DriverTursoSync {
+		dbPath = strings.TrimSpace(os.Getenv("BACKUP_DB_PATH"))
+	}
+	url := strings.TrimSpace(os.Getenv("BACKUP_DB_URL"))
+	token := strings.TrimSpace(os.Getenv("BACKUP_DB_AUTH_TOKEN"))
+	interval := 30 * time.Second
+	if raw := os.Getenv("BACKUP_DB_SYNC_INTERVAL"); raw != "" {
+		interval, err = time.ParseDuration(raw)
+		if err != nil || interval <= 0 {
+			return nil, fmt.Errorf("BACKUP_DB_SYNC_INTERVAL must be a positive duration: %w", err)
+		}
+	}
+	switch driver {
+	case DriverTurso:
+		if url == "" || token == "" {
+			return nil, fmt.Errorf("BACKUP_DB_URL and BACKUP_DB_AUTH_TOKEN are required when BACKUP_DB_DRIVER=turso")
+		}
+	case DriverTursoSync:
+		if dbPath == "" || url == "" || token == "" {
+			return nil, fmt.Errorf("BACKUP_DB_PATH, BACKUP_DB_URL, and BACKUP_DB_AUTH_TOKEN are required when BACKUP_DB_DRIVER=turso-sync")
+		}
+	}
+	key, err := loadEncryptionKey(driver, dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("load encryption key: %w", err)
 	}
 	return &Config{
+		Driver:         driver,
 		DBPath:         dbPath,
+		DBURL:          url,
+		DBAuthToken:    token,
+		SyncInterval:   interval,
 		HTTPPort:       getenv("BACKUP_HTTP_PORT", "8080"),
 		GRPCPort:       getenv("BACKUP_GRPC_PORT", "8443"),
 		AllowedOrigins: getAllowedOrigins(),
@@ -46,7 +102,7 @@ func Load() (*Config, error) {
 //  1. BACKUP_ENCRYPTION_KEY env var (64 hex characters)
 //  2. Key file alongside the database (<db_dir>/encryption.key)
 //  3. Auto-generate a random key and persist it to the key file
-func loadEncryptionKey(dbPath string) ([]byte, error) {
+func loadEncryptionKey(driver Driver, dbPath string) ([]byte, error) {
 	// 1. Environment variable.
 	if hexKey := os.Getenv("BACKUP_ENCRYPTION_KEY"); hexKey != "" {
 		key, err := hex.DecodeString(hexKey)
@@ -57,6 +113,9 @@ func loadEncryptionKey(dbPath string) ([]byte, error) {
 			return nil, fmt.Errorf("BACKUP_ENCRYPTION_KEY must be 64 hex characters (32 bytes), got %d bytes", len(key))
 		}
 		return key, nil
+	}
+	if driver == DriverTurso {
+		return nil, fmt.Errorf("BACKUP_ENCRYPTION_KEY is required when BACKUP_DB_DRIVER=turso")
 	}
 
 	// 2. Key file next to the database.

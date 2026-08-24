@@ -1,12 +1,10 @@
 # Backup Orchestrator — Task Runner
 # https://github.com/casey/just
 
-# Load .env.dev when present (safe in CI — file won't exist there).
-# Override individual vars by creating .env.dev.local (git-ignored).
-set dotenv-filename := ".env.dev"
+# Load `.env` (git-ignored). Copy from `.env.example` to get started.
 set dotenv-load
 
-# Absolute path to the repository root — used to build data-dir paths.
+# Absolute path to the repository root — used for tmp/ and similar paths.
 project_root := justfile_directory()
 tmp_dir      := project_root + "/tmp"
 
@@ -216,19 +214,39 @@ pod-stop:
 
 pod-restart: pod-stop pod-start
 
+# ── Database ──────────────────────────────────────────────────────────────────
+
+# Copy an existing modernc SQLite server.db into a new Turso Sync local file and Push.
+# Requires BACKUP_DB_URL and BACKUP_DB_AUTH_TOKEN in the environment (or .env).
+# Paths may be relative to the repo root or absolute. Pass `force` to wipe remote app tables.
+# Usage:
+#   just migrate-turso-sync tmp/server.db.pre-turso tmp/server.db
+#   just migrate-turso-sync /tmp/old.db /tmp/new.db force
+migrate-turso-sync src dst force="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src_path="{{src}}"
+    dst_path="{{dst}}"
+    [[ "$src_path" = /* ]] || src_path="{{justfile_directory()}}/$src_path"
+    [[ "$dst_path" = /* ]] || dst_path="{{justfile_directory()}}/$dst_path"
+    extra=()
+    if [[ "{{force}}" == "force" || "{{force}}" == "--force" ]]; then
+      extra+=(-force)
+    fi
+    cd "{{justfile_directory()}}/server" && go run ./cmd/migrate-turso-sync -from="$src_path" -to="$dst_path" "${extra[@]}"
+
 # ── Dev (hot reload) ──────────────────────────────────────────────────────────
 
 # Run the server with air hot restart (no frontend embed; Vite handles assets).
-# Reads port settings from .env.dev; DB path is set to tmp/server.db.
+# Config comes from `.env` (see `.env.example`).
 dev-server:
     mkdir -p "{{tmp_dir}}"
-    cd server && BACKUP_DB_PATH="{{tmp_dir}}/server.db" air
+    cd server && air
 
 # Run the agent with air hot restart, pointing at the local server.
-# Reads BACKUP_SERVER_URL and BACKUP_AGENT_NAME from .env.dev.
 dev-agent:
     mkdir -p "{{tmp_dir}}/agent-data"
-    cd agent && BACKUP_DATA_DIR="{{tmp_dir}}/agent-data" air
+    cd agent && air
 
 # Run the frontend Vite dev server with HMR (proxies /api to localhost:8080).
 dev-frontend:
@@ -239,8 +257,6 @@ dev-frontend:
 # If already inside a Zellij session the tabs open in the current session.
 dev: proto-gen
     mkdir -p "{{tmp_dir}}/agent-data"
-    BACKUP_DB_PATH="{{tmp_dir}}/server.db" \
-    BACKUP_DATA_DIR="{{tmp_dir}}/agent-data" \
     zellij --layout .zellij/dev.kdl
 
 # Stop all dev processes gracefully (SIGINT → air forwards to child binary).
