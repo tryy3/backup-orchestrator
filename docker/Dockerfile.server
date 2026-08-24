@@ -37,7 +37,8 @@ RUN cd server && CGO_ENABLED=0 go build -o /server ./cmd/server
 
 # Stage 3: Runtime
 FROM docker.io/library/alpine:3.24
-RUN apk add --no-cache ca-certificates tzdata
+# libgcc: required by tursogo's musl libturso_sync_sdk_kit.so (BACKUP_DB_DRIVER=turso-sync)
+RUN apk add --no-cache ca-certificates tzdata libgcc
 COPY --from=builder /server /usr/local/bin/server
 
 EXPOSE 8080 8443
