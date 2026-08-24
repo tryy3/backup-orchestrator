@@ -18,21 +18,22 @@ func openTursoRemote(opts Options) (*DB, error) {
 	if opts.URL == "" || opts.AuthToken == "" {
 		return nil, fmt.Errorf("BACKUP_DB_URL and BACKUP_DB_AUTH_TOKEN are required for driver %q", DriverTurso)
 	}
+	ctx := context.Background()
 	sqlDB := sql.OpenDB(turso.NewConnector(opts.URL, opts.AuthToken))
 	sqlDB.SetMaxOpenConns(10)
 	sqlDB.SetMaxIdleConns(2)
 	sqlDB.SetConnMaxLifetime(5 * time.Minute)
-	if err := sqlDB.Ping(); err != nil {
+	if err := sqlDB.PingContext(ctx); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("ping turso: %w", err)
 	}
 	db := &DB{DB: sqlDB, encryptionKey: opts.EncryptionKey}
-	if err := db.migrate(context.Background()); err != nil {
+	if err := db.migrate(ctx); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 	if len(opts.EncryptionKey) == 32 {
-		if err := db.migrateEncryption(context.Background()); err != nil {
+		if err := db.migrateEncryption(ctx); err != nil {
 			_ = sqlDB.Close()
 			return nil, err
 		}

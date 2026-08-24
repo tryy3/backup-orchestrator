@@ -153,8 +153,8 @@ func TestOpen_TursoSync_StartsWhenLocalReadyAndPullFails(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, seed.Close())
 	newTursoSync = func(opts Options) (*sql.DB, remoteSync, error) {
-		sqlDB, err := sql.Open("sqlite", opts.Path)
-		require.NoError(t, err)
+		sqlDB, openErr := sql.Open("sqlite", opts.Path)
+		require.NoError(t, openErr)
 		return sqlDB, &fakeSync{pullErr: errRemoteDown}, nil
 	}
 	db, err := Open(Options{Driver: DriverTursoSync, Path: path, SyncInterval: time.Hour})
