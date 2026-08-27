@@ -83,10 +83,11 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 	}
 
 	// Load default hook timeout from settings (fallback: registry default).
-	defaultHookTimeout := int32(60)
-	if v, ok := settings.DefaultInt("default_hook_timeout_seconds"); ok {
-		defaultHookTimeout = int32(v)
+	hookDefault, ok := settings.DefaultInt("default_hook_timeout_seconds")
+	if !ok {
+		return fmt.Errorf("missing settings default default_hook_timeout_seconds")
 	}
+	defaultHookTimeout := int32(hookDefault)
 	hookTimeoutVal, err := r.db.GetSetting(ctx, "default_hook_timeout_seconds")
 	if err != nil {
 		return fmt.Errorf("get default hook timeout: %w", err)
@@ -99,10 +100,11 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 	}
 
 	// Load heartbeat interval from settings (fallback: registry default).
-	heartbeatInterval := int32(30)
-	if v, ok := settings.DefaultInt("heartbeat_interval_seconds"); ok {
-		heartbeatInterval = int32(v)
+	heartbeatDefault, ok := settings.DefaultInt("heartbeat_interval_seconds")
+	if !ok {
+		return fmt.Errorf("missing settings default heartbeat_interval_seconds")
 	}
+	heartbeatInterval := int32(heartbeatDefault)
 	hbVal, err := r.db.GetSetting(ctx, "heartbeat_interval_seconds")
 	if err != nil {
 		return fmt.Errorf("get heartbeat interval: %w", err)

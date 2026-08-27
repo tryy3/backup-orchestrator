@@ -54,6 +54,23 @@ func TestPushConfigToAgent_UsesRegistryDefaultsForHeartbeatAndHookTimeout(t *tes
 		Status:   "approved",
 	}))
 
+	plan := &database.BackupPlan{
+		Name:     "test-plan",
+		AgentID:  "agent-1",
+		Schedule: "0 * * * *",
+		Paths:    []string{"/tmp"},
+		Enabled:  true,
+	}
+	require.NoError(t, db.CreatePlan(ctx, plan))
+
+	inlineCmd := "echo pre-backup"
+	require.NoError(t, db.CreateHook(ctx, &database.PlanHook{
+		PlanID:    plan.ID,
+		OnEvent:   "pre-backup",
+		SortOrder: 0,
+		Command:   &inlineCmd,
+	}))
+
 	mgr := agentmgr.New()
 	sendCh := make(chan *backupv1.ServerMessage, 1)
 	mgr.Register("agent-1", sendCh)
@@ -67,6 +84,9 @@ func TestPushConfigToAgent_UsesRegistryDefaultsForHeartbeatAndHookTimeout(t *tes
 		cfg := msg.GetConfig()
 		require.NotNil(t, cfg)
 		assert.Equal(t, int32(30), cfg.HeartbeatIntervalSecs)
+		require.Len(t, cfg.BackupPlans, 1)
+		require.Len(t, cfg.BackupPlans[0].Hooks, 1)
+		assert.Equal(t, int32(60), cfg.BackupPlans[0].Hooks[0].TimeoutSeconds)
 		assert.Nil(t, cfg.CommandTimeouts)
 		assert.Nil(t, cfg.Outbox)
 	case <-time.After(time.Second):
