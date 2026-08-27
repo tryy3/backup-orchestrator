@@ -38,6 +38,18 @@ func DefaultJSON(key string) (json.RawMessage, bool) {
 	return append(json.RawMessage(nil), e.defaultJSON...), true
 }
 
+func DefaultInt(key string) (int, bool) {
+	raw, ok := DefaultJSON(key)
+	if !ok {
+		return 0, false
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return 0, false
+	}
+	return int(f), true
+}
+
 func Validate(input map[string]json.RawMessage) []FieldError {
 	var errs []FieldError
 	for key, raw := range input {

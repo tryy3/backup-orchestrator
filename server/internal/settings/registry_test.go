@@ -50,6 +50,23 @@ func TestDefaultJSON_Heartbeat(t *testing.T) {
 	assert.Equal(t, 30, n)
 }
 
+func TestDefaultInt_KnownKeys(t *testing.T) {
+	t.Parallel()
+	heartbeat, ok := settings.DefaultInt("heartbeat_interval_seconds")
+	require.True(t, ok)
+	assert.Equal(t, 30, heartbeat)
+
+	hookTimeout, ok := settings.DefaultInt("default_hook_timeout_seconds")
+	require.True(t, ok)
+	assert.Equal(t, 60, hookTimeout)
+}
+
+func TestDefaultInt_UnknownKey(t *testing.T) {
+	t.Parallel()
+	_, ok := settings.DefaultInt("not_a_real_key")
+	assert.False(t, ok)
+}
+
 func TestKeys_IncludesAllKnown(t *testing.T) {
 	t.Parallel()
 	keys := settings.Keys()
