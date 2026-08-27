@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import RetentionEditor from '../components/plans/RetentionEditor.vue'
 import LoadingSpinner from '../components/common/LoadingSpinner.vue'
@@ -18,7 +18,7 @@ const retention = ref<RetentionPolicy>({
   keep_yearly: 0,
 })
 
-// Global settings form refs
+// Global settings form refs — defaults only until onMounted fetch completes.
 const heartbeatInterval = ref<number>(SETTINGS_DEFAULTS.heartbeat_interval_seconds)
 const offlineThreshold = ref<number>(SETTINGS_DEFAULTS.agent_offline_threshold_seconds)
 const jobHistoryDays = ref<number>(SETTINGS_DEFAULTS.job_history_days)
@@ -47,32 +47,36 @@ const saved = ref(false)
 const serverVersion = ref<ServerVersion | null>(null)
 const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
 
+const fieldErrorEntries = computed(() => Object.entries(store.fieldErrors))
+const showErrorBanner = computed(
+  () => !!store.error || fieldErrorEntries.value.length > 0,
+)
+
 onMounted(async () => {
   await store.fetch()
   if (store.settings) {
     if (store.settings.default_retention) {
       retention.value = { ...store.settings.default_retention }
     }
-    heartbeatInterval.value = store.settings.heartbeat_interval_seconds ?? SETTINGS_DEFAULTS.heartbeat_interval_seconds
-    offlineThreshold.value = store.settings.agent_offline_threshold_seconds ?? SETTINGS_DEFAULTS.agent_offline_threshold_seconds
-    jobHistoryDays.value = store.settings.job_history_days ?? SETTINGS_DEFAULTS.job_history_days
-    healthThresholdFailing.value = (store.settings.health_threshold_failing ?? SETTINGS_DEFAULTS.health_threshold_failing) * 100
-    healthThresholdWarning.value = (store.settings.health_threshold_warning ?? SETTINGS_DEFAULTS.health_threshold_warning) * 100
-    maxHeatmapRuns.value = store.settings.max_heatmap_runs ?? SETTINGS_DEFAULTS.max_heatmap_runs
-    defaultHookTimeout.value = store.settings.default_hook_timeout_seconds ?? SETTINGS_DEFAULTS.default_hook_timeout_seconds
-    const bp = store.settings.file_browser_blocked_paths ?? SETTINGS_DEFAULTS.file_browser_blocked_paths
-    blockedPaths.value = bp.join('\n')
-    cmdTimeoutBackup.value = store.settings.command_timeout_backup_seconds ?? SETTINGS_DEFAULTS.command_timeout_backup_seconds
-    cmdTimeoutRestore.value = store.settings.command_timeout_restore_seconds ?? SETTINGS_DEFAULTS.command_timeout_restore_seconds
-    cmdTimeoutListSnapshots.value = store.settings.command_timeout_list_snapshots_seconds ?? SETTINGS_DEFAULTS.command_timeout_list_snapshots_seconds
-    cmdTimeoutBrowseSnapshot.value = store.settings.command_timeout_browse_snapshot_seconds ?? SETTINGS_DEFAULTS.command_timeout_browse_snapshot_seconds
-    cmdTimeoutBrowseFs.value = store.settings.command_timeout_browse_filesystem_seconds ?? SETTINGS_DEFAULTS.command_timeout_browse_filesystem_seconds
-    cmdTimeoutDefault.value = store.settings.command_timeout_default_seconds ?? SETTINGS_DEFAULTS.command_timeout_default_seconds
-    outboxSpillMaxRows.value = store.settings.outbox_spill_max_rows ?? SETTINGS_DEFAULTS.outbox_spill_max_rows
-    outboxSpillRetentionSeconds.value = store.settings.outbox_spill_retention_seconds ?? SETTINGS_DEFAULTS.outbox_spill_retention_seconds
-    outboxFlushIntervalSeconds.value = store.settings.outbox_flush_interval_seconds ?? SETTINGS_DEFAULTS.outbox_flush_interval_seconds
-    outboxDeliveryTimeoutSeconds.value = store.settings.outbox_delivery_timeout_seconds ?? SETTINGS_DEFAULTS.outbox_delivery_timeout_seconds
-    outboxMaxAttempts.value = store.settings.outbox_max_attempts ?? SETTINGS_DEFAULTS.outbox_max_attempts
+    heartbeatInterval.value = store.settings.heartbeat_interval_seconds
+    offlineThreshold.value = store.settings.agent_offline_threshold_seconds
+    jobHistoryDays.value = store.settings.job_history_days
+    healthThresholdFailing.value = store.settings.health_threshold_failing * 100
+    healthThresholdWarning.value = store.settings.health_threshold_warning * 100
+    maxHeatmapRuns.value = store.settings.max_heatmap_runs
+    defaultHookTimeout.value = store.settings.default_hook_timeout_seconds
+    blockedPaths.value = store.settings.file_browser_blocked_paths.join('\n')
+    cmdTimeoutBackup.value = store.settings.command_timeout_backup_seconds
+    cmdTimeoutRestore.value = store.settings.command_timeout_restore_seconds
+    cmdTimeoutListSnapshots.value = store.settings.command_timeout_list_snapshots_seconds
+    cmdTimeoutBrowseSnapshot.value = store.settings.command_timeout_browse_snapshot_seconds
+    cmdTimeoutBrowseFs.value = store.settings.command_timeout_browse_filesystem_seconds
+    cmdTimeoutDefault.value = store.settings.command_timeout_default_seconds
+    outboxSpillMaxRows.value = store.settings.outbox_spill_max_rows
+    outboxSpillRetentionSeconds.value = store.settings.outbox_spill_retention_seconds
+    outboxFlushIntervalSeconds.value = store.settings.outbox_flush_interval_seconds
+    outboxDeliveryTimeoutSeconds.value = store.settings.outbox_delivery_timeout_seconds
+    outboxMaxAttempts.value = store.settings.outbox_max_attempts
   }
   try {
     serverVersion.value = await api.version.get()
@@ -124,8 +128,16 @@ async function handleSave() {
 
     <template v-else>
       <!-- Status messages -->
-      <div v-if="store.error" class="rounded border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
-        {{ store.error }}
+      <div
+        v-if="showErrorBanner"
+        class="rounded border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400"
+      >
+        <ul v-if="fieldErrorEntries.length" class="list-disc space-y-1 pl-5">
+          <li v-for="[key, message] in fieldErrorEntries" :key="key">
+            {{ key }}: {{ message }}
+          </li>
+        </ul>
+        <template v-else>{{ store.error }}</template>
       </div>
       <div v-if="saved" class="rounded border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-400">
         Settings saved successfully.
@@ -154,6 +166,9 @@ async function handleSave() {
               />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.heartbeat_interval_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.heartbeat_interval_seconds }}
+            </p>
           </div>
 
           <!-- Offline threshold -->
@@ -170,6 +185,9 @@ async function handleSave() {
               />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.agent_offline_threshold_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.agent_offline_threshold_seconds }}
+            </p>
           </div>
 
           <!-- Job history window -->
@@ -186,6 +204,9 @@ async function handleSave() {
               />
               <span class="text-sm text-slate-500">days</span>
             </div>
+            <p v-if="store.fieldErrors.job_history_days" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.job_history_days }}
+            </p>
           </div>
 
           <!-- Health thresholds -->
@@ -206,6 +227,9 @@ async function handleSave() {
                   />
                   <span class="text-sm text-slate-500">%</span>
                 </div>
+                <p v-if="store.fieldErrors.health_threshold_failing" class="mt-1 text-xs text-red-400">
+                  {{ store.fieldErrors.health_threshold_failing }}
+                </p>
               </div>
               <div>
                 <label class="block text-xs text-slate-500">Warning below</label>
@@ -220,6 +244,9 @@ async function handleSave() {
                   />
                   <span class="text-sm text-slate-500">%</span>
                 </div>
+                <p v-if="store.fieldErrors.health_threshold_warning" class="mt-1 text-xs text-red-400">
+                  {{ store.fieldErrors.health_threshold_warning }}
+                </p>
               </div>
             </div>
           </div>
@@ -238,6 +265,9 @@ async function handleSave() {
               />
               <span class="text-sm text-slate-500">runs</span>
             </div>
+            <p v-if="store.fieldErrors.max_heatmap_runs" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.max_heatmap_runs }}
+            </p>
           </div>
 
           <!-- Default hook timeout -->
@@ -254,6 +284,9 @@ async function handleSave() {
               />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.default_hook_timeout_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.default_hook_timeout_seconds }}
+            </p>
           </div>
 
           <!-- File browser blocked paths -->
@@ -266,6 +299,9 @@ async function handleSave() {
               class="mt-1 block w-full rounded border border-surface-600 bg-surface-950 px-3 py-2 font-mono text-xs text-slate-300 placeholder:text-slate-600 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
               placeholder="/proc&#10;/sys&#10;/dev"
             />
+            <p v-if="store.fieldErrors.file_browser_blocked_paths" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.file_browser_blocked_paths }}
+            </p>
           </div>
         </div>
       </div>
@@ -287,6 +323,9 @@ async function handleSave() {
               <input v-model.number="cmdTimeoutBackup" type="number" min="60" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.command_timeout_backup_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.command_timeout_backup_seconds }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-300">Restore</label>
@@ -295,6 +334,9 @@ async function handleSave() {
               <input v-model.number="cmdTimeoutRestore" type="number" min="60" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.command_timeout_restore_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.command_timeout_restore_seconds }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-300">List Snapshots</label>
@@ -303,6 +345,9 @@ async function handleSave() {
               <input v-model.number="cmdTimeoutListSnapshots" type="number" min="5" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.command_timeout_list_snapshots_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.command_timeout_list_snapshots_seconds }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-300">Browse Snapshot</label>
@@ -311,6 +356,9 @@ async function handleSave() {
               <input v-model.number="cmdTimeoutBrowseSnapshot" type="number" min="5" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.command_timeout_browse_snapshot_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.command_timeout_browse_snapshot_seconds }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-300">Browse Filesystem</label>
@@ -319,6 +367,9 @@ async function handleSave() {
               <input v-model.number="cmdTimeoutBrowseFs" type="number" min="1" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.command_timeout_browse_filesystem_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.command_timeout_browse_filesystem_seconds }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-300">Default (other)</label>
@@ -327,6 +378,9 @@ async function handleSave() {
               <input v-model.number="cmdTimeoutDefault" type="number" min="5" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.command_timeout_default_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.command_timeout_default_seconds }}
+            </p>
           </div>
         </div>
       </div>
@@ -354,6 +408,9 @@ async function handleSave() {
               <input v-model.number="outboxSpillMaxRows" type="number" min="100" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">rows</span>
             </div>
+            <p v-if="store.fieldErrors.outbox_spill_max_rows" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.outbox_spill_max_rows }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-300">Spill Retention</label>
@@ -362,6 +419,9 @@ async function handleSave() {
               <input v-model.number="outboxSpillRetentionSeconds" type="number" min="60" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.outbox_spill_retention_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.outbox_spill_retention_seconds }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-300">Flush Interval</label>
@@ -370,6 +430,9 @@ async function handleSave() {
               <input v-model.number="outboxFlushIntervalSeconds" type="number" min="1" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.outbox_flush_interval_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.outbox_flush_interval_seconds }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-300">Delivery Timeout</label>
@@ -378,6 +441,9 @@ async function handleSave() {
               <input v-model.number="outboxDeliveryTimeoutSeconds" type="number" min="1" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">seconds</span>
             </div>
+            <p v-if="store.fieldErrors.outbox_delivery_timeout_seconds" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.outbox_delivery_timeout_seconds }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-slate-300">Max Attempts</label>
@@ -386,6 +452,9 @@ async function handleSave() {
               <input v-model.number="outboxMaxAttempts" type="number" min="1" class="w-28 rounded border border-surface-600 bg-surface-950 px-3 py-1.5 text-sm text-slate-300 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent" />
               <span class="text-sm text-slate-500">attempts</span>
             </div>
+            <p v-if="store.fieldErrors.outbox_max_attempts" class="mt-1 text-xs text-red-400">
+              {{ store.fieldErrors.outbox_max_attempts }}
+            </p>
           </div>
         </div>
       </div>
@@ -399,6 +468,9 @@ async function handleSave() {
         </p>
 
         <RetentionEditor v-model="retention" />
+        <p v-if="store.fieldErrors.default_retention" class="mt-2 text-xs text-red-400">
+          {{ store.fieldErrors.default_retention }}
+        </p>
       </div>
 
       <!-- Save button -->
