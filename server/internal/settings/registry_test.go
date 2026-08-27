@@ -41,6 +41,34 @@ func TestValidate_AcceptsValidSubset(t *testing.T) {
 	assert.Empty(t, errs)
 }
 
+func TestValidate_RejectsNullDefaultRetention(t *testing.T) {
+	t.Parallel()
+	errs := settings.Validate(map[string]json.RawMessage{
+		"default_retention": json.RawMessage(`null`),
+	})
+	require.Len(t, errs, 1)
+	assert.Equal(t, "default_retention", errs[0].Key)
+	assert.NotEmpty(t, errs[0].Message)
+}
+
+func TestValidate_RejectsNullBlockedPaths(t *testing.T) {
+	t.Parallel()
+	errs := settings.Validate(map[string]json.RawMessage{
+		"file_browser_blocked_paths": json.RawMessage(`null`),
+	})
+	require.Len(t, errs, 1)
+	assert.Equal(t, "file_browser_blocked_paths", errs[0].Key)
+	assert.NotEmpty(t, errs[0].Message)
+}
+
+func TestValidate_AcceptsEmptyBlockedPathsArray(t *testing.T) {
+	t.Parallel()
+	errs := settings.Validate(map[string]json.RawMessage{
+		"file_browser_blocked_paths": json.RawMessage(`[]`),
+	})
+	assert.Empty(t, errs)
+}
+
 func TestDefaultJSON_Heartbeat(t *testing.T) {
 	t.Parallel()
 	raw, ok := settings.DefaultJSON("heartbeat_interval_seconds")

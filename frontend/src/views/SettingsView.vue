@@ -9,14 +9,7 @@ import * as api from '../api/client'
 
 const store = useSettingsStore()
 
-const retention = ref<RetentionPolicy>({
-  keep_last: 5,
-  keep_hourly: 0,
-  keep_daily: 7,
-  keep_weekly: 4,
-  keep_monthly: 6,
-  keep_yearly: 0,
-})
+const retention = ref<RetentionPolicy>({ ...SETTINGS_DEFAULTS.default_retention })
 
 // Global settings form refs — defaults only until onMounted fetch completes.
 const heartbeatInterval = ref<number>(SETTINGS_DEFAULTS.heartbeat_interval_seconds)

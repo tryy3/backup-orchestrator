@@ -218,6 +218,14 @@ export interface Settings {
 
 /** Default values for global settings (used when no value is stored server-side). */
 export const SETTINGS_DEFAULTS = {
+  default_retention: {
+    keep_last: 5,
+    keep_hourly: 0,
+    keep_daily: 0,
+    keep_weekly: 0,
+    keep_monthly: 0,
+    keep_yearly: 0,
+  },
   heartbeat_interval_seconds: 30,
   agent_offline_threshold_seconds: 300,
   job_history_days: 30,

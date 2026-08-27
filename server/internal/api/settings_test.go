@@ -102,3 +102,36 @@ func TestUpdateSettings_Valid_WritesAndReturnsResolved(t *testing.T) {
 	require.NotNil(t, val)
 	assert.JSONEq(t, `45`, *val)
 }
+
+func TestUpdateSettings_NullComposite_NoWrite(t *testing.T) {
+	t.Parallel()
+	db := openAPITestDB(t)
+	mgr := agentmgr.New()
+	resolver := configpush.New(db, mgr)
+
+	handler := updateSettingsHandler(db, resolver)
+	payload := []byte(`{"default_retention":null,"file_browser_blocked_paths":null}`)
+	req := httptest.NewRequest(http.MethodPut, "/settings", bytes.NewReader(payload))
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+
+	var resp struct {
+		Errors []settings.FieldError `json:"errors"`
+	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	keys := make([]string, 0, len(resp.Errors))
+	for _, e := range resp.Errors {
+		keys = append(keys, e.Key)
+	}
+	assert.ElementsMatch(t, []string{"default_retention", "file_browser_blocked_paths"}, keys)
+
+	retention, err := db.GetSetting(context.Background(), "default_retention")
+	require.NoError(t, err)
+	assert.Nil(t, retention)
+
+	paths, err := db.GetSetting(context.Background(), "file_browser_blocked_paths")
+	require.NoError(t, err)
+	assert.Nil(t, paths)
+}

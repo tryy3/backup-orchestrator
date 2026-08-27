@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -104,7 +105,14 @@ func validateHealthThreshold(raw json.RawMessage) error {
 	return nil
 }
 
+func isJSONNull(raw json.RawMessage) bool {
+	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
+}
+
 func validateRetention(raw json.RawMessage) error {
+	if isJSONNull(raw) {
+		return fmt.Errorf("must be a retention object")
+	}
 	var rp database.RetentionPolicy
 	if err := json.Unmarshal(raw, &rp); err != nil {
 		return fmt.Errorf("must be a retention object")
@@ -129,8 +137,14 @@ func validateRetention(raw json.RawMessage) error {
 }
 
 func validateBlockedPaths(raw json.RawMessage) error {
+	if isJSONNull(raw) {
+		return fmt.Errorf("must be a string array")
+	}
 	var paths []string
 	if err := json.Unmarshal(raw, &paths); err != nil {
+		return fmt.Errorf("must be a string array")
+	}
+	if paths == nil {
 		return fmt.Errorf("must be a string array")
 	}
 	for _, p := range paths {
