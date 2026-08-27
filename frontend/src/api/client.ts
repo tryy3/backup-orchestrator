@@ -12,6 +12,7 @@ import type {
   JobDetail,
   SnapshotInfo,
   Settings,
+  SettingsFieldError,
   ServerVersion,
   BrowseRequest,
   RestoreRequest,
@@ -23,6 +24,15 @@ import type {
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
 
+export class SettingsValidationError extends Error {
+  errors: SettingsFieldError[]
+  constructor(errors: SettingsFieldError[]) {
+    super(errors.map((e) => `${e.key}: ${e.message}`).join('; '))
+    this.name = 'SettingsValidationError'
+    this.errors = errors
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit & { signal?: AbortSignal }): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -30,14 +40,18 @@ async function request<T>(path: string, options?: RequestInit & { signal?: Abort
   })
   if (!res.ok) {
     const body = await res.text()
-    // Server returns JSON errors as {"error":"..."} — extract the message.
+    // Server returns JSON errors as {"error":"..."} or {"errors":[{key,message}]}.
     let message = body
     try {
       const parsed = JSON.parse(body)
+      if (Array.isArray(parsed?.errors)) {
+        throw new SettingsValidationError(parsed.errors as SettingsFieldError[])
+      }
       if (typeof parsed?.error === 'string') {
         message = parsed.error
       }
-    } catch {
+    } catch (e) {
+      if (e instanceof SettingsValidationError) throw e
       // Not JSON — use the raw body as-is.
     }
     throw new Error(message)
