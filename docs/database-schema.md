@@ -55,8 +55,10 @@ CREATE TABLE settings (
     value TEXT NOT NULL  -- JSON-encoded
 );
 
--- Stores:
---   "default_retention" -> JSON of RetentionPolicy
+-- Global settings (key/value JSON). Valid keys, types, defaults, and
+-- constraints are defined in server/internal/settings (allow-listed).
+-- Unknown keys are rejected by PUT /api/settings. GET returns every
+-- known key with stored value or registry default.
 
 -- ============================================================
 -- Scripts (reusable hook definitions)
