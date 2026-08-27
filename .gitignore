@@ -63,3 +63,6 @@ data/
 # project specific stufff
 tmp/
 tmp-*
+
+# Local git worktrees
+.worktrees/
