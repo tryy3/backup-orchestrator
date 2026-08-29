@@ -5,6 +5,7 @@ import { useJobsStore } from '../stores/jobs'
 import { useSettingsStore } from '../stores/settings'
 import RunHeatmap from '../components/common/RunHeatmap.vue'
 import ErrorBanner from '../components/common/ErrorBanner.vue'
+import ConfirmDialog from '../components/common/ConfirmDialog.vue'
 import type { HeatmapRun } from '../components/common/RunHeatmap.vue'
 import type { Agent, Job } from '../types/api'
 
@@ -14,6 +15,34 @@ const settingsStore = useSettingsStore()
 const jobProgress = computed(() => jobsStore.jobProgress)
 
 const filterStatus = ref<'all' | 'failing' | 'warning' | 'healthy' | 'offline'>('all')
+
+const confirmOpen = ref(false)
+const confirmAgentId = ref('')
+const confirmAction = ref<'approve' | 'reject'>('approve')
+const confirmTitle = ref('')
+const confirmMessage = ref('')
+
+function openConfirmDialog(id: string, action: 'approve' | 'reject') {
+  confirmAgentId.value = id
+  confirmAction.value = action
+  if (action === 'approve') {
+    confirmTitle.value = 'Approve Agent'
+    confirmMessage.value = 'Approve this agent to allow it to receive backup configurations?'
+  } else {
+    confirmTitle.value = 'Reject Agent'
+    confirmMessage.value = 'Reject this agent? It will not be able to receive backup configurations.'
+  }
+  confirmOpen.value = true
+}
+
+async function handleConfirm() {
+  confirmOpen.value = false
+  if (confirmAction.value === 'approve') {
+    await agentsStore.approve(confirmAgentId.value)
+  } else {
+    await agentsStore.reject(confirmAgentId.value)
+  }
+}
 
 onMounted(() => {
   settingsStore.fetch()
@@ -281,7 +310,39 @@ function connectivityDotClass(agent: Agent) {
             />
           </div>
         </div>
+
+        <!-- Pending approval actions -->
+        <div
+          v-if="agent.status === 'pending'"
+          class="mt-3 flex items-center gap-2 border-t border-surface-700 pt-3"
+          @click.stop
+        >
+          <button
+            type="button"
+            class="rounded bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-400 ring-1 ring-green-500/20 hover:bg-green-500/20"
+            @click.stop.prevent="openConfirmDialog(agent.id, 'approve')"
+          >
+            Approve
+          </button>
+          <button
+            type="button"
+            class="rounded bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/20"
+            @click.stop.prevent="openConfirmDialog(agent.id, 'reject')"
+          >
+            Reject
+          </button>
+        </div>
       </router-link>
     </div>
+
+    <ConfirmDialog
+      :open="confirmOpen"
+      :title="confirmTitle"
+      :message="confirmMessage"
+      :confirm-text="confirmAction === 'approve' ? 'Approve' : 'Reject'"
+      :confirm-variant="confirmAction === 'approve' ? 'primary' : 'danger'"
+      @confirm="handleConfirm"
+      @cancel="confirmOpen = false"
+    />
   </div>
 </template>
