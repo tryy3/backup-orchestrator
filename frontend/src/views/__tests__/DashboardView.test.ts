@@ -81,7 +81,7 @@ async function mountDashboard(agents: Agent[]) {
     },
   })
   await flushPromises()
-  return wrapper
+  return { wrapper, router }
 }
 
 describe('DashboardView pending approval', () => {
@@ -91,7 +91,7 @@ describe('DashboardView pending approval', () => {
   })
 
   it('shows Approve and Reject on pending cards only', async () => {
-    const wrapper = await mountDashboard([pendingAgent, approvedAgent])
+    const { wrapper } = await mountDashboard([pendingAgent, approvedAgent])
 
     const buttons = wrapper.findAll('button').map((b) => b.text())
     expect(buttons).toContain('Approve')
@@ -104,8 +104,26 @@ describe('DashboardView pending approval', () => {
     wrapper.unmount()
   })
 
+  it('does not navigate when Approve or Reject is clicked', async () => {
+    const { wrapper, router } = await mountDashboard([pendingAgent])
+
+    const approveBtn = wrapper.findAll('button').find((b) => b.text() === 'Approve')
+    await approveBtn!.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe('fleet-overview')
+    expect(router.currentRoute.value.path).toBe('/')
+
+    const rejectBtn = wrapper.findAll('button').find((b) => b.text() === 'Reject')
+    await rejectBtn!.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe('fleet-overview')
+    expect(router.currentRoute.value.path).toBe('/')
+
+    wrapper.unmount()
+  })
+
   it('opens Approve confirm dialog and calls store.approve on confirm', async () => {
-    const wrapper = await mountDashboard([pendingAgent])
+    const { wrapper } = await mountDashboard([pendingAgent])
     const store = useAgentsStore()
 
     const approveBtn = wrapper.findAll('button').find((b) => b.text() === 'Approve')
@@ -130,7 +148,7 @@ describe('DashboardView pending approval', () => {
   })
 
   it('opens Reject confirm dialog and calls store.reject on confirm', async () => {
-    const wrapper = await mountDashboard([pendingAgent])
+    const { wrapper } = await mountDashboard([pendingAgent])
     const store = useAgentsStore()
 
     const rejectBtn = wrapper.findAll('button').find((b) => b.text() === 'Reject')
@@ -155,7 +173,7 @@ describe('DashboardView pending approval', () => {
   })
 
   it('cancel closes dialog without calling approve or reject', async () => {
-    const wrapper = await mountDashboard([pendingAgent])
+    const { wrapper } = await mountDashboard([pendingAgent])
     const store = useAgentsStore()
 
     const approveBtn = wrapper.findAll('button').find((b) => b.text() === 'Approve')

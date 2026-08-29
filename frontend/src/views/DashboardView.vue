@@ -253,69 +253,72 @@ function connectivityDotClass(agent: Agent) {
 
     <!-- Agent cards grid -->
     <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <router-link
+      <div
         v-for="agent in filteredAgents"
         :key="agent.id"
-        :to="`/agents/${agent.id}`"
         :class="[
-          'group block rounded-lg border bg-surface-900 p-4 transition-all',
+          'group rounded-lg border bg-surface-900 transition-all',
           cardBorderClass(agentHealthStatus(agent)),
         ]"
       >
-        <!-- Card header -->
-        <div class="mb-3 flex items-start justify-between gap-2">
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <span :class="['h-2 w-2 shrink-0 rounded-full', connectivityDotClass(agent)]" />
-              <span class="truncate text-sm font-semibold text-slate-100">{{ agent.name }}</span>
-            </div>
-            <p class="mt-0.5 truncate pl-4 text-xs text-slate-500">{{ agent.hostname || agent.os || '—' }}</p>
-          </div>
-          <span
-            v-if="agent.status === 'pending'"
-            class="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400 ring-1 ring-amber-500/30"
-          >
-            Pending
-          </span>
-        </div>
-
-        <!-- Last N runs heatmap -->
-        <div class="mb-3">
-          <RunHeatmap :runs="getHeatmapRuns(agent.id)" :max-runs="cfg.max_heatmap_runs" />
-        </div>
-
-        <!-- Reliability stat -->
-        <div class="flex items-center justify-between">
-          <span class="text-xs uppercase tracking-wider text-slate-600">{{ cfg.job_history_days }}d reliability</span>
-          <span :class="['text-sm font-semibold tabular-nums', reliabilityColor(agent.id)]">
-            {{ reliabilityText(agent.id) }}
-          </span>
-        </div>
-
-        <!-- Running job indicator -->
-        <div
-          v-if="jobProgress.get(agent.id)"
-          class="mt-2 rounded bg-cyan-500/10 px-2 py-1.5 ring-1 ring-cyan-500/20"
+        <router-link
+          :to="`/agents/${agent.id}`"
+          :class="['block p-4', agent.status === 'pending' ? 'pb-0' : '']"
         >
-          <div class="flex items-center justify-between text-xs text-cyan-400 mb-1">
-            <span class="truncate">{{ jobProgress.get(agent.id)!.planName }}</span>
-            <span v-if="jobProgress.get(agent.id)!.percent >= 0" class="shrink-0 tabular-nums ml-2">
-              {{ jobProgress.get(agent.id)!.percent.toFixed(0) }}%
+          <!-- Card header -->
+          <div class="mb-3 flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span :class="['h-2 w-2 shrink-0 rounded-full', connectivityDotClass(agent)]" />
+                <span class="truncate text-sm font-semibold text-slate-100">{{ agent.name }}</span>
+              </div>
+              <p class="mt-0.5 truncate pl-4 text-xs text-slate-500">{{ agent.hostname || agent.os || '—' }}</p>
+            </div>
+            <span
+              v-if="agent.status === 'pending'"
+              class="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400 ring-1 ring-amber-500/30"
+            >
+              Pending
             </span>
           </div>
-          <div class="h-1 w-full overflow-hidden rounded-full bg-surface-700">
-            <div
-              class="h-full rounded-full bg-cyan-500 transition-all duration-500"
-              :style="{ width: `${Math.min(jobProgress.get(agent.id)!.percent >= 0 ? jobProgress.get(agent.id)!.percent : 0, 100)}%` }"
-            />
-          </div>
-        </div>
 
-        <!-- Pending approval actions -->
+          <!-- Last N runs heatmap -->
+          <div class="mb-3">
+            <RunHeatmap :runs="getHeatmapRuns(agent.id)" :max-runs="cfg.max_heatmap_runs" />
+          </div>
+
+          <!-- Reliability stat -->
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase tracking-wider text-slate-600">{{ cfg.job_history_days }}d reliability</span>
+            <span :class="['text-sm font-semibold tabular-nums', reliabilityColor(agent.id)]">
+              {{ reliabilityText(agent.id) }}
+            </span>
+          </div>
+
+          <!-- Running job indicator -->
+          <div
+            v-if="jobProgress.get(agent.id)"
+            class="mt-2 rounded bg-cyan-500/10 px-2 py-1.5 ring-1 ring-cyan-500/20"
+          >
+            <div class="flex items-center justify-between text-xs text-cyan-400 mb-1">
+              <span class="truncate">{{ jobProgress.get(agent.id)!.planName }}</span>
+              <span v-if="jobProgress.get(agent.id)!.percent >= 0" class="shrink-0 tabular-nums ml-2">
+                {{ jobProgress.get(agent.id)!.percent.toFixed(0) }}%
+              </span>
+            </div>
+            <div class="h-1 w-full overflow-hidden rounded-full bg-surface-700">
+              <div
+                class="h-full rounded-full bg-cyan-500 transition-all duration-500"
+                :style="{ width: `${Math.min(jobProgress.get(agent.id)!.percent >= 0 ? jobProgress.get(agent.id)!.percent : 0, 100)}%` }"
+              />
+            </div>
+          </div>
+        </router-link>
+
+        <!-- Pending approval actions (sibling outside navigable link) -->
         <div
           v-if="agent.status === 'pending'"
-          class="mt-3 flex items-center gap-2 border-t border-surface-700 pt-3"
-          @click.stop
+          class="flex items-center gap-2 border-t border-surface-700 px-4 pb-4 pt-3"
         >
           <button
             type="button"
@@ -332,7 +335,7 @@ function connectivityDotClass(agent: Agent) {
             Reject
           </button>
         </div>
-      </router-link>
+      </div>
     </div>
 
     <ConfirmDialog
