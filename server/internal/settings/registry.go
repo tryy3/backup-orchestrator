@@ -77,7 +77,7 @@ func mustRegister(key string, defaultJSON json.RawMessage, validate func(json.Ra
 	keyOrder = append(keyOrder, key)
 }
 
-func validateIntMin(min int) func(json.RawMessage) error {
+func validateIntMin(minVal int) func(json.RawMessage) error {
 	return func(raw json.RawMessage) error {
 		var f float64
 		if err := json.Unmarshal(raw, &f); err != nil {
@@ -87,8 +87,8 @@ func validateIntMin(min int) func(json.RawMessage) error {
 			return fmt.Errorf("must be an integer")
 		}
 		n := int(f)
-		if n < min {
-			return fmt.Errorf("must be at least %d", min)
+		if n < minVal {
+			return fmt.Errorf("must be at least %d", minVal)
 		}
 		return nil
 	}

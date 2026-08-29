@@ -30,7 +30,7 @@ func TestGetSettings_ReturnsAllKeysWithDefaults(t *testing.T) {
 	db := openAPITestDB(t)
 
 	handler := getSettingsHandler(db)
-	req := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/settings", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
@@ -53,7 +53,7 @@ func TestUpdateSettings_UnknownAndInvalid_NoWrite(t *testing.T) {
 
 	handler := updateSettingsHandler(db, resolver)
 	payload := []byte(`{"bogus":1,"heartbeat_interval_seconds":2}`)
-	req := httptest.NewRequest(http.MethodPut, "/settings", bytes.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/settings", bytes.NewReader(payload))
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
@@ -84,7 +84,7 @@ func TestUpdateSettings_Valid_WritesAndReturnsResolved(t *testing.T) {
 
 	handler := updateSettingsHandler(db, resolver)
 	payload := []byte(`{"heartbeat_interval_seconds":45}`)
-	req := httptest.NewRequest(http.MethodPut, "/settings", bytes.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/settings", bytes.NewReader(payload))
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
@@ -111,7 +111,7 @@ func TestUpdateSettings_NullComposite_NoWrite(t *testing.T) {
 
 	handler := updateSettingsHandler(db, resolver)
 	payload := []byte(`{"default_retention":null,"file_browser_blocked_paths":null}`)
-	req := httptest.NewRequest(http.MethodPut, "/settings", bytes.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/settings", bytes.NewReader(payload))
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
