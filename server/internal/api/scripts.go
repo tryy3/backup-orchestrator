@@ -112,8 +112,6 @@ func pushConfigToAgentsUsingScript(ctx context.Context, db *database.DB, resolve
 		return
 	}
 	for _, agentID := range agentIDs {
-		if err := resolver.PushConfigToAgent(ctx, agentID); err != nil {
-			slog.Error("failed to push config to agent for script", "agent_id", agentID, "script_id", scriptID, "error", err)
-		}
+		resolver.RequestPush(agentID)
 	}
 }

@@ -15,13 +15,21 @@ import (
 
 // Resolver builds and pushes config to agents.
 type Resolver struct {
-	db  *database.DB
-	mgr *agentmgr.Manager
+	db    *database.DB
+	mgr   *agentmgr.Manager
+	queue *pushQueue
 }
 
 // New creates a new config resolver.
 func New(db *database.DB, mgr *agentmgr.Manager) *Resolver {
-	return &Resolver{db: db, mgr: mgr}
+	r := &Resolver{db: db, mgr: mgr}
+	r.queue = newPushQueue(r.PushConfigToAgent)
+	return r
+}
+
+// RequestPush schedules a non-blocking, coalesced config push for agentID.
+func (r *Resolver) RequestPush(agentID string) {
+	r.queue.Request(agentID)
 }
 
 // PushConfigToAgent builds a complete config for the given agent and sends it.
@@ -279,7 +287,7 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 	return nil
 }
 
-// PushConfigToAllAgents pushes config to every connected and approved agent.
+// PushConfigToAllAgents schedules a config push for every connected approved agent.
 func (r *Resolver) PushConfigToAllAgents(ctx context.Context) {
 	agents, err := r.db.ListAgents(ctx)
 	if err != nil {
@@ -289,9 +297,7 @@ func (r *Resolver) PushConfigToAllAgents(ctx context.Context) {
 
 	for _, a := range agents {
 		if a.Status == "approved" && r.mgr.IsOnline(a.ID) {
-			if err := r.PushConfigToAgent(ctx, a.ID); err != nil {
-				slog.Error("failed to push config to agent", "agent_id", a.ID, "error", err)
-			}
+			r.RequestPush(a.ID)
 		}
 	}
 }

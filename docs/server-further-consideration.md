@@ -56,10 +56,10 @@ Not currently tracked — no record of who approved agents, modified plans, or t
 
 ## Pass 2 — Additional Items
 
-### Config push race condition
-**Files:** `server/internal/configpush/resolver.go`, all API handlers
+### ~~Config push race condition~~ ✅ Fixed
+~~**Files:** `server/internal/configpush/resolver.go`, all API handlers~~
 
-Many handlers fire `go resolver.PushConfigToAgent(agentID)` concurrently. Two rapid updates produce two concurrent pushes that each increment `config_version` independently. The agent may receive stale data with a higher version number. Needs a per-agent debounce or serialized push queue.
+Resolved: handlers now call `RequestPush`, which serializes and coalesces pushes per agent (at most one in-flight build plus one follow-up). Approved agents also receive a push on `Connect` after stream registration so offline edits apply on reconnect. See [docs/superpowers/specs/2026-08-29-config-push-serialization-design.md](superpowers/specs/2026-08-29-config-push-serialization-design.md).
 
 ### `pushConfigForPlan` silently discards errors
 **File:** `server/internal/api/hooks.go`

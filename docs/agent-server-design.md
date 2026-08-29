@@ -167,6 +167,10 @@ Server marks agent as "unreachable" in UI if no heartbeat for 3 intervals.
 
 ### 3. Config Push (Server -> Agent, on change)
 
+The server schedules config pushes through a per-agent coalescing queue (`RequestPush`). At most one build/send is in flight per agent; rapid updates while a push is running coalesce into a single follow-up push so the agent always receives the latest resolved config.
+
+Config is also pushed when an **approved** agent connects (after the agent is registered on the `Connect` stream), so changes made while the agent was offline are delivered on reconnect.
+
 ```
 Over the Connect stream:
 Server -> Agent: {
@@ -180,7 +184,7 @@ Server -> Agent: {
 Agent -> Server: { config_version: 42, status: "applied" | "error", error: "..." }
 ```
 
-Agent persists config locally. On startup, loads local config and checks server for updates.
+The agent persists config locally and acks with `config_version`. On startup, loads local config and checks server for updates.
 
 ### 4. Job Report (Agent -> Server, after each job)
 

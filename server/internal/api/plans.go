@@ -1,9 +1,7 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -58,12 +56,7 @@ func createPlanHandler(db *database.DB, resolver *configpush.Resolver) http.Hand
 			return
 		}
 
-		// Push updated config to agent.
-		go func() {
-			if err := resolver.PushConfigToAgent(context.Background(), p.AgentID); err != nil {
-				slog.Error("failed to push config to agent after plan create", "agent_id", p.AgentID, "error", err)
-			}
-		}()
+		resolver.RequestPush(p.AgentID)
 
 		writeJSON(w, http.StatusCreated, p)
 	}
@@ -101,12 +94,7 @@ func updatePlanHandler(db *database.DB, resolver *configpush.Resolver) http.Hand
 			return
 		}
 
-		// Push updated config to agent.
-		go func() {
-			if err := resolver.PushConfigToAgent(context.Background(), p.AgentID); err != nil {
-				slog.Error("failed to push config to agent after plan update", "agent_id", p.AgentID, "error", err)
-			}
-		}()
+		resolver.RequestPush(p.AgentID)
 
 		writeJSON(w, http.StatusOK, p)
 	}
@@ -132,12 +120,7 @@ func deletePlanHandler(db *database.DB, resolver *configpush.Resolver) http.Hand
 			return
 		}
 
-		// Push updated config to agent (plan removed).
-		go func() {
-			if err := resolver.PushConfigToAgent(context.Background(), plan.AgentID); err != nil {
-				slog.Error("failed to push config to agent after plan delete", "agent_id", plan.AgentID, "error", err)
-			}
-		}()
+		resolver.RequestPush(plan.AgentID)
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 	}

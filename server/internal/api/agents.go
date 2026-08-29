@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -142,11 +141,7 @@ func approveAgentHandler(db *database.DB, cmdr AgentCommander, resolver *configp
 			_ = cmdr.Send(id, msg)
 
 			// Push initial config to the newly approved agent.
-			go func() {
-				if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
-					slog.Error("failed to push config to agent after approval", "agent_id", id, "error", err)
-				}
-			}()
+			resolver.RequestPush(id)
 		}
 
 		agent, err := db.GetAgent(r.Context(), id)
@@ -244,11 +239,7 @@ func updateRcloneHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 		}
 
 		// Push updated config to agent.
-		go func() {
-			if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
-				slog.Error("failed to push config to agent after rclone update", "agent_id", id, "error", err)
-			}
-		}()
+		resolver.RequestPush(id)
 
 		agent, err := db.GetAgent(r.Context(), id)
 		if err != nil {
@@ -303,11 +294,7 @@ func updateAgentCommandTimeoutsHandler(db *database.DB, resolver *configpush.Res
 		}
 
 		// Push updated config so the agent picks up the new timeouts immediately.
-		go func() {
-			if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
-				slog.Error("failed to push config to agent after command timeouts update", "agent_id", id, "error", err)
-			}
-		}()
+		resolver.RequestPush(id)
 
 		agent, err := db.GetAgent(r.Context(), id)
 		if err != nil {
@@ -363,11 +350,7 @@ func updateAgentOutboxOverridesHandler(db *database.DB, resolver *configpush.Res
 			return
 		}
 
-		go func() {
-			if err := resolver.PushConfigToAgent(context.Background(), id); err != nil {
-				slog.Error("failed to push config to agent after outbox overrides update", "agent_id", id, "error", err)
-			}
-		}()
+		resolver.RequestPush(id)
 
 		agent, err := db.GetAgent(r.Context(), id)
 		if err != nil {
