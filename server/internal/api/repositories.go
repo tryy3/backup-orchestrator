@@ -86,11 +86,7 @@ func createRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 
 		// New repos don't affect existing plans yet, but if local-scoped the agent might need to know.
 		if repo.Scope == "local" && repo.AgentID != nil {
-			go func() {
-				if err := resolver.PushConfigToAgent(context.Background(), *repo.AgentID); err != nil {
-					slog.Error("failed to push config to agent after repo create", "agent_id", *repo.AgentID, "error", err)
-				}
-			}()
+			resolver.RequestPush(*repo.AgentID)
 		}
 
 		writeJSON(w, http.StatusCreated, toRepositoryResponse(&repo))
@@ -183,12 +179,7 @@ func deleteRepositoryHandler(db *database.DB, resolver *configpush.Resolver) htt
 
 		// Push config to affected agents (repo removed from their config).
 		for _, agentID := range agentIDs {
-			agentID := agentID
-			go func() {
-				if err := resolver.PushConfigToAgent(context.Background(), agentID); err != nil {
-					slog.Error("failed to push config to agent after repo delete", "agent_id", agentID, "error", err)
-				}
-			}()
+			resolver.RequestPush(agentID)
 		}
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
@@ -202,8 +193,6 @@ func pushConfigToAgentsUsingRepo(ctx context.Context, db *database.DB, resolver 
 		return
 	}
 	for _, agentID := range agentIDs {
-		if err := resolver.PushConfigToAgent(ctx, agentID); err != nil {
-			slog.Error("failed to push config to agent for repo", "agent_id", agentID, "repo_id", repoID, "error", err)
-		}
+		resolver.RequestPush(agentID)
 	}
 }

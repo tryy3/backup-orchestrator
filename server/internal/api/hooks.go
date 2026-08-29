@@ -140,7 +140,7 @@ func reorderHooksHandler(db *database.DB, resolver *configpush.Resolver) http.Ha
 	}
 }
 
-// pushConfigForPlan looks up the plan's agent and triggers a config push.
+// pushConfigForPlan looks up the plan's agent and schedules a coalesced config push.
 func pushConfigForPlan(ctx context.Context, db *database.DB, resolver *configpush.Resolver, planID string) {
 	plan, err := db.GetPlan(ctx, planID)
 	if err != nil {
@@ -150,9 +150,5 @@ func pushConfigForPlan(ctx context.Context, db *database.DB, resolver *configpus
 	if plan == nil {
 		return
 	}
-	go func() {
-		if err := resolver.PushConfigToAgent(context.Background(), plan.AgentID); err != nil {
-			slog.Error("failed to push config to agent", "agent_id", plan.AgentID, "plan_id", planID, "error", err)
-		}
-	}()
+	resolver.RequestPush(plan.AgentID)
 }
