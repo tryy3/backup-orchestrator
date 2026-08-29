@@ -188,31 +188,44 @@ export interface SnapshotInfo {
   paths: string[]
 }
 
+export interface SettingsFieldError {
+  key: string
+  message: string
+}
+
 export interface Settings {
   default_retention: RetentionPolicy
-  heartbeat_interval_seconds?: number
-  agent_offline_threshold_seconds?: number
-  job_history_days?: number
-  health_threshold_failing?: number
-  health_threshold_warning?: number
-  max_heatmap_runs?: number
-  default_hook_timeout_seconds?: number
-  file_browser_blocked_paths?: string[]
-  command_timeout_backup_seconds?: number
-  command_timeout_restore_seconds?: number
-  command_timeout_list_snapshots_seconds?: number
-  command_timeout_browse_snapshot_seconds?: number
-  command_timeout_browse_filesystem_seconds?: number
-  command_timeout_default_seconds?: number
-  outbox_spill_max_rows?: number
-  outbox_spill_retention_seconds?: number
-  outbox_flush_interval_seconds?: number
-  outbox_delivery_timeout_seconds?: number
-  outbox_max_attempts?: number
+  heartbeat_interval_seconds: number
+  agent_offline_threshold_seconds: number
+  job_history_days: number
+  health_threshold_failing: number
+  health_threshold_warning: number
+  max_heatmap_runs: number
+  default_hook_timeout_seconds: number
+  file_browser_blocked_paths: string[]
+  command_timeout_backup_seconds: number
+  command_timeout_restore_seconds: number
+  command_timeout_list_snapshots_seconds: number
+  command_timeout_browse_snapshot_seconds: number
+  command_timeout_browse_filesystem_seconds: number
+  command_timeout_default_seconds: number
+  outbox_spill_max_rows: number
+  outbox_spill_retention_seconds: number
+  outbox_flush_interval_seconds: number
+  outbox_delivery_timeout_seconds: number
+  outbox_max_attempts: number
 }
 
 /** Default values for global settings (used when no value is stored server-side). */
 export const SETTINGS_DEFAULTS = {
+  default_retention: {
+    keep_last: 5,
+    keep_hourly: 0,
+    keep_daily: 0,
+    keep_weekly: 0,
+    keep_monthly: 0,
+    keep_yearly: 0,
+  },
   heartbeat_interval_seconds: 30,
   agent_offline_threshold_seconds: 300,
   job_history_days: 30,

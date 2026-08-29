@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { settings as api } from '../api/client'
+import { settings as api, SettingsValidationError } from '../api/client'
 import type { Settings } from '../types/api'
 import { SETTINGS_DEFAULTS } from '../types/api'
 
@@ -9,8 +9,9 @@ export const useSettingsStore = defineStore('settings', () => {
   const loading = ref(false)
   const saving = ref(false)
   const error = ref<string | null>(null)
+  const fieldErrors = ref<Record<string, string>>({})
 
-  /** Resolved settings with defaults applied for any missing fields. */
+  /** Resolved settings with defaults applied before the first fetch completes. */
   const resolved = computed(() => ({
     heartbeat_interval_seconds:
       settings.value?.heartbeat_interval_seconds ?? SETTINGS_DEFAULTS.heartbeat_interval_seconds,
@@ -33,6 +34,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function fetch() {
     loading.value = true
     error.value = null
+    fieldErrors.value = {}
     try {
       settings.value = await api.get()
     } catch (e) {
@@ -45,16 +47,22 @@ export const useSettingsStore = defineStore('settings', () => {
   async function update(data: Settings) {
     saving.value = true
     error.value = null
+    fieldErrors.value = {}
     try {
       settings.value = await api.update(data)
       return true
     } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
+      if (e instanceof SettingsValidationError) {
+        fieldErrors.value = Object.fromEntries(e.errors.map((x) => [x.key, x.message]))
+        error.value = e.message
+      } else {
+        error.value = e instanceof Error ? e.message : String(e)
+      }
       return false
     } finally {
       saving.value = false
     }
   }
 
-  return { settings, resolved, loading, saving, error, fetch, update }
+  return { settings, resolved, loading, saving, error, fieldErrors, fetch, update }
 })

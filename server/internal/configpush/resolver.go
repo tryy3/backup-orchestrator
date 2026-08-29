@@ -10,6 +10,7 @@ import (
 
 	"github.com/tryy3/backup-orchestrator/server/internal/agentmgr"
 	"github.com/tryy3/backup-orchestrator/server/internal/database"
+	"github.com/tryy3/backup-orchestrator/server/internal/settings"
 )
 
 // Resolver builds and pushes config to agents.
@@ -81,8 +82,12 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		}
 	}
 
-	// Load default hook timeout from settings (default: 60 seconds).
-	defaultHookTimeout := int32(60)
+	// Load default hook timeout from settings (fallback: registry default).
+	hookDefault, ok := settings.DefaultInt("default_hook_timeout_seconds")
+	if !ok {
+		return fmt.Errorf("missing settings default default_hook_timeout_seconds")
+	}
+	defaultHookTimeout := int32(hookDefault)
 	hookTimeoutVal, err := r.db.GetSetting(ctx, "default_hook_timeout_seconds")
 	if err != nil {
 		return fmt.Errorf("get default hook timeout: %w", err)
@@ -94,8 +99,12 @@ func (r *Resolver) PushConfigToAgent(ctx context.Context, agentID string) error 
 		}
 	}
 
-	// Load heartbeat interval from settings (default: 30 seconds).
-	heartbeatInterval := int32(30)
+	// Load heartbeat interval from settings (fallback: registry default).
+	heartbeatDefault, ok := settings.DefaultInt("heartbeat_interval_seconds")
+	if !ok {
+		return fmt.Errorf("missing settings default heartbeat_interval_seconds")
+	}
+	heartbeatInterval := int32(heartbeatDefault)
 	hbVal, err := r.db.GetSetting(ctx, "heartbeat_interval_seconds")
 	if err != nil {
 		return fmt.Errorf("get heartbeat interval: %w", err)

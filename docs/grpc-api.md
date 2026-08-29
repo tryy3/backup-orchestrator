@@ -371,7 +371,7 @@ GET    /api/agents/:id/snapshots?repo=:repo_id    List snapshots
 POST   /api/agents/:id/snapshots/browse            Browse snapshot files
 POST   /api/agents/:id/restore                     Trigger restore
 
-# Settings
-GET    /api/settings                Get global settings
-PUT    /api/settings                Update global settings (retention defaults, etc.)
+# Settings (allow-listed keys; see server/internal/settings)
+GET    /api/settings                Full resolved object (every known key, stored or default)
+PUT    /api/settings                Partial update; 200 → full resolved object; 400 → { "errors": [{ "key", "message" }] }
 ```
