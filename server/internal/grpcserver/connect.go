@@ -55,6 +55,9 @@ func (s *GRPCServer) Connect(stream backupv1.BackupService_ConnectServer) error 
 
 	slog.Info("agent connected", "agent_id", agentID, "hostname", agent.Hostname, "status", agent.Status)
 
+	// Push the latest config to approved agents now that they're registered.
+	requestConfigPushOnConnect(s.resolver, agentID, agent.Status)
+
 	// Broadcast agent.connected event.
 	s.hub.Broadcast(events.Event{
 		Type: "agent.connected",
