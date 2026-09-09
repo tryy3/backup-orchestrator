@@ -7,7 +7,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	google.golang.org/grpc v1.83.1
 	google.golang.org/protobuf v1.36.12
-	modernc.org/sqlite v1.57.0
+	modernc.org/sqlite v1.58.0
 )
 
 require (
