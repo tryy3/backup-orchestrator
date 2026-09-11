@@ -11,7 +11,7 @@ require (
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.57.0
 	turso.tech/database/tursogo v0.7.2
-	turso.tech/database/tursogo-serverless v0.0.0-20260822025733-9e8a19aeb52c
+	turso.tech/database/tursogo-serverless v0.0.0-20260911190849-a9a8779c1906
 )
 
 require (
